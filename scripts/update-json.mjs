@@ -46,6 +46,24 @@ async function addCookiesIfPresent(page) {
   }
 }
 
+async function clickFirstVisibleLocator(locators, label) {
+  for (const locator of locators) {
+    try {
+      const count = await locator.count();
+      if (!count) continue;
+
+      const first = locator.first();
+      await first.scrollIntoViewIfNeeded();
+      await first.click({ timeout: 5000 });
+      return true;
+    } catch {
+      // try next
+    }
+  }
+
+  return false;
+}
+
 async function downloadClubJson(browser, club) {
   const page = await browser.newPage();
 
@@ -59,32 +77,41 @@ async function downloadClubJson(browser, club) {
 
     await page.waitForTimeout(4000);
 
-    // DEBUG: show buttons if needed
     const buttons = await page.locator("button").allTextContents();
     console.log(`Buttons on ${club.id}:`, buttons);
 
-    // --- CLICK EXPORT ---
-    const exportBtn = page.getByRole("button", { name: /export/i }).first();
+    const exportLocators = [
+      page.locator('button').filter({ hasText: /Export/i }),
+      page.locator('[role="button"]').filter({ hasText: /Export/i }),
+      page.getByText(/Export/i),
+      page.locator('text=/.*Export.*/i')
+    ];
 
-    if (!(await exportBtn.count())) {
+    const exportClicked = await clickFirstVisibleLocator(exportLocators, "Export");
+
+    if (!exportClicked) {
       throw new Error("Export button not found");
     }
 
-    await exportBtn.click();
     console.log(`Clicked Export for ${club.id}`);
-
     await page.waitForTimeout(1500);
-
-    // --- CLICK JSON ---
-    const jsonBtn = page.getByText("JSON", { exact: true }).first();
-
-    if (!(await jsonBtn.count())) {
-      throw new Error("JSON option not found");
-    }
 
     const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
 
-    await jsonBtn.click();
+    const jsonLocators = [
+      page.locator('[role="menuitem"]').filter({ hasText: /JSON/i }),
+      page.locator('button').filter({ hasText: /JSON/i }),
+      page.locator('a').filter({ hasText: /JSON/i }),
+      page.getByText(/JSON/i),
+      page.locator('text=/.*JSON.*/i')
+    ];
+
+    const jsonClicked = await clickFirstVisibleLocator(jsonLocators, "JSON");
+
+    if (!jsonClicked) {
+      throw new Error("JSON option not found");
+    }
+
     console.log(`Clicked JSON for ${club.id}`);
 
     const download = await downloadPromise;
