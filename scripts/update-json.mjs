@@ -64,7 +64,8 @@ async function clickFirstMatching(page, selectors) {
     if (!count) continue;
 
     try {
-      await locator.click();
+      await locator.scrollIntoViewIfNeeded();
+      await locator.click({ timeout: 5000 });
       return selector;
     } catch {
       // try next selector
@@ -87,26 +88,40 @@ async function downloadClubJson(browser, club) {
 
     await page.waitForTimeout(3000);
 
-    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
-
-    const selectors = [
+    const exportSelectors = [
       'button:has-text("Export")',
-      'button:has-text("JSON")',
-      'button:has-text("Download")',
       'a:has-text("Export")',
-      'a:has-text("JSON")',
-      'a:has-text("Download")',
       '[aria-label*="Export"]',
-      '[aria-label*="Download"]',
+      '[title*="Export"]',
+      'text=Export'
     ];
 
-    const clickedSelector = await clickFirstMatching(page, selectors);
+    const exportClicked = await clickFirstMatching(page, exportSelectors);
 
-    if (!clickedSelector) {
-      throw new Error(`Could not find export/download button for ${club.name}`);
+    if (!exportClicked) {
+      throw new Error(`Could not find Export button for ${club.name}`);
     }
 
-    console.log(`Clicked selector for ${club.id}: ${clickedSelector}`);
+    console.log(`Clicked Export for ${club.id} using ${exportClicked}`);
+
+    await page.waitForTimeout(1500);
+
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+
+    const jsonSelectors = [
+      'button:has-text("JSON")',
+      'a:has-text("JSON")',
+      '[role="menuitem"]:has-text("JSON")',
+      'text=JSON'
+    ];
+
+    const jsonClicked = await clickFirstMatching(page, jsonSelectors);
+
+    if (!jsonClicked) {
+      throw new Error(`Could not find JSON option for ${club.name}`);
+    }
+
+    console.log(`Clicked JSON for ${club.id} using ${jsonClicked}`);
 
     const download = await downloadPromise;
     const tempPath = await download.path();
@@ -149,6 +164,7 @@ async function main() {
         continue;
       }
 
+      console.log(`Processing ${club.name} (${club.id})`);
       await downloadClubJson(browser, club);
     }
   } finally {
