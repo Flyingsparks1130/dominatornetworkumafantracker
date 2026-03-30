@@ -46,6 +46,45 @@ async function addCookiesIfPresent(page) {
   }
 }
 
+async function dismissBlockingUi(page) {
+  // Try obvious dismiss buttons first
+  const dismissCandidates = [
+    page.getByText("Dismiss", { exact: true }).first(),
+    page.getByRole("button", { name: /dismiss/i }).first(),
+    page.getByRole("button", { name: /close/i }).first(),
+    page.locator("button").filter({ hasText: "Dismiss" }).first(),
+    page.locator("button").filter({ hasText: "close" }).first(),
+  ];
+
+  for (const locator of dismissCandidates) {
+    try {
+      if (await locator.count()) {
+        await locator.click({ timeout: 3000, force: true });
+        await page.waitForTimeout(1000);
+        console.log("Dismissed blocking UI");
+        return;
+      }
+    } catch {}
+  }
+
+  // Then try clicking the Angular backdrop itself if present
+  const backdrop = page.locator(".cdk-overlay-backdrop").first();
+  try {
+    if (await backdrop.count()) {
+      await backdrop.click({ timeout: 3000, force: true });
+      await page.waitForTimeout(1000);
+      console.log("Clicked overlay backdrop");
+    }
+  } catch {}
+}
+
+async function logButtons(page, clubId) {
+  try {
+    const buttons = await page.locator("button").allTextContents();
+    console.log(`Buttons on ${clubId}:`, buttons);
+  } catch {}
+}
+
 async function downloadClubJson(browser, club) {
   const page = await browser.newPage();
 
@@ -59,11 +98,10 @@ async function downloadClubJson(browser, club) {
 
     await page.waitForTimeout(4000);
 
-    // DEBUG: log visible buttons
-    const buttons = await page.locator("button").allTextContents();
-    console.log(`Buttons on ${club.id}:`, buttons);
+    await dismissBlockingUi(page);
+    await logButtons(page, club.id);
 
-    // ===== CLICK EXPORT (EXPLICIT BUTTON) =====
+    // ===== CLICK EXPORT =====
     const exportBtn = page.locator("button").filter({
       hasText: "downloadExportexpand_more",
     }).first();
@@ -72,24 +110,39 @@ async function downloadClubJson(browser, club) {
       throw new Error("Export button not found (downloadExportexpand_more)");
     }
 
-    await exportBtn.click();
+    await exportBtn.click({ force: true });
     console.log(`Clicked Export for ${club.id}`);
 
     await page.waitForTimeout(1500);
 
     // ===== CLICK JSON =====
-    const downloadPromise = page.waitForEvent("download", {
-      timeout: 60000,
-    });
+    const jsonMenuCandidates = [
+      page.getByText("JSON", { exact: true }).first(),
+      page.getByRole("menuitem", { name: /json/i }).first(),
+      page.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
+      page.locator("button").filter({ hasText: "JSON" }).first(),
+      page.locator("a").filter({ hasText: "JSON" }).first(),
+      page.locator("text=JSON").first(),
+    ];
 
-    const jsonBtn = page.getByText("JSON", { exact: true }).first();
+    let jsonClicked = false;
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
 
-    if (!(await jsonBtn.count())) {
-      throw new Error("JSON option not found");
+    for (const locator of jsonMenuCandidates) {
+      try {
+        if (await locator.count()) {
+          await locator.scrollIntoViewIfNeeded();
+          await locator.click({ timeout: 5000, force: true });
+          jsonClicked = true;
+          console.log(`Clicked JSON for ${club.id}`);
+          break;
+        }
+      } catch {}
     }
 
-    await jsonBtn.click();
-    console.log(`Clicked JSON for ${club.id}`);
+    if (!jsonClicked) {
+      throw new Error("JSON option not found after opening Export menu");
+    }
 
     // ===== HANDLE DOWNLOAD =====
     const download = await downloadPromise;
