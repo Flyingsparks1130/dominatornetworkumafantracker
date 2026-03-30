@@ -20,59 +20,30 @@ async function ensureJson(text, clubId) {
   try {
     JSON.parse(text);
   } catch (err) {
-    throw new Error(`Downloaded file for ${clubId} is not valid JSON: ${err.message}`);
+    throw new Error(`Invalid JSON for ${clubId}: ${err.message}`);
   }
 }
 
 async function addCookiesIfPresent(page) {
   if (!process.env.DOWNLOAD_COOKIE) return;
 
-  const cookiePairs = process.env.DOWNLOAD_COOKIE
+  const cookies = process.env.DOWNLOAD_COOKIE
     .split(";")
-    .map((v) => v.trim())
-    .filter(Boolean);
-
-  const cookies = cookiePairs
+    .map((c) => c.trim())
+    .filter(Boolean)
     .map((pair) => {
-      const eq = pair.indexOf("=");
-      if (eq <= 0) return null;
-
-      const name = pair.slice(0, eq).trim();
-      const value = pair.slice(eq + 1).trim();
-
-      if (!name) return null;
-
+      const [name, ...rest] = pair.split("=");
       return {
         name,
-        value,
+        value: rest.join("="),
         domain: "uma.moe",
         path: "/",
       };
-    })
-    .filter(Boolean);
+    });
 
   if (cookies.length) {
     await page.context().addCookies(cookies);
   }
-}
-
-async function clickFirstMatching(page, selectors) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    const count = await locator.count();
-
-    if (!count) continue;
-
-    try {
-      await locator.scrollIntoViewIfNeeded();
-      await locator.click({ timeout: 5000 });
-      return selector;
-    } catch {
-      // try next selector
-    }
-  }
-
-  return null;
 }
 
 async function downloadClubJson(browser, club) {
@@ -86,48 +57,41 @@ async function downloadClubJson(browser, club) {
       timeout: 60000,
     });
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
-    const exportSelectors = [
-      'button:has-text("Export")',
-      'a:has-text("Export")',
-      '[aria-label*="Export"]',
-      '[title*="Export"]',
-      'text=Export'
-    ];
+    // DEBUG: show buttons if needed
+    const buttons = await page.locator("button").allTextContents();
+    console.log(`Buttons on ${club.id}:`, buttons);
 
-    const exportClicked = await clickFirstMatching(page, exportSelectors);
+    // --- CLICK EXPORT ---
+    const exportBtn = page.getByRole("button", { name: /export/i }).first();
 
-    if (!exportClicked) {
-      throw new Error(`Could not find Export button for ${club.name}`);
+    if (!(await exportBtn.count())) {
+      throw new Error("Export button not found");
     }
 
-    console.log(`Clicked Export for ${club.id} using ${exportClicked}`);
+    await exportBtn.click();
+    console.log(`Clicked Export for ${club.id}`);
 
     await page.waitForTimeout(1500);
 
-    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+    // --- CLICK JSON ---
+    const jsonBtn = page.getByText("JSON", { exact: true }).first();
 
-    const jsonSelectors = [
-      'button:has-text("JSON")',
-      'a:has-text("JSON")',
-      '[role="menuitem"]:has-text("JSON")',
-      'text=JSON'
-    ];
-
-    const jsonClicked = await clickFirstMatching(page, jsonSelectors);
-
-    if (!jsonClicked) {
-      throw new Error(`Could not find JSON option for ${club.name}`);
+    if (!(await jsonBtn.count())) {
+      throw new Error("JSON option not found");
     }
 
-    console.log(`Clicked JSON for ${club.id} using ${jsonClicked}`);
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+
+    await jsonBtn.click();
+    console.log(`Clicked JSON for ${club.id}`);
 
     const download = await downloadPromise;
     const tempPath = await download.path();
 
     if (!tempPath) {
-      throw new Error(`Download failed for ${club.name}`);
+      throw new Error("Download path missing");
     }
 
     const text = await fs.readFile(tempPath, "utf8");
@@ -136,7 +100,7 @@ async function downloadClubJson(browser, club) {
     const outPath = path.join(DATA_DIR, `${club.id}.json`);
     await fs.writeFile(outPath, text, "utf8");
 
-    console.log(`Saved ${club.id}.json from ${club.pageUrl}`);
+    console.log(`✅ SUCCESS: ${club.id} saved`);
   } finally {
     await page.close();
   }
@@ -146,7 +110,7 @@ async function main() {
   const nyHour = getNewYorkHour();
 
   if (process.env.GITHUB_EVENT_NAME === "schedule" && nyHour !== 12) {
-    console.log(`Skipping run because New York hour is ${nyHour}, not 12.`);
+    console.log(`Skipping run (NY hour ${nyHour})`);
     return;
   }
 
@@ -159,13 +123,14 @@ async function main() {
 
   try {
     for (const club of clubs) {
-      if (!club?.id || !club?.pageUrl) {
-        console.warn("Skipping invalid club entry:", club);
-        continue;
-      }
+      console.log(`\n=== Processing ${club.name} (${club.id}) ===`);
 
-      console.log(`Processing ${club.name} (${club.id})`);
-      await downloadClubJson(browser, club);
+      try {
+        await downloadClubJson(browser, club);
+      } catch (err) {
+        console.error(`❌ FAILED: ${club.id}`);
+        console.error(err.message);
+      }
     }
   } finally {
     await browser.close();
@@ -173,6 +138,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error("FATAL ERROR:", err);
   process.exit(1);
 });
