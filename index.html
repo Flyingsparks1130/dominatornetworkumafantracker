@@ -1,42 +1,149 @@
-[
-  {
-    "id": "114037107",
-    "name": "Dominator",
-    "sourceEnv": "https://uma.moe/api/circles/114037107"
-  },
-  {
-    "id": "278155676",
-    "name": "Dominant H",
-    "sourceEnv": "data/278155676.json"
-  },
-  {
-    "id": "754870359",
-    "name": "Dominance",
-    "sourceEnv": "CLUB_754870359_URL"
-  },
-  {
-    "id": "147185239",
-    "name": "Dominate",
-    "sourceEnv": "CLUB_147185239_URL"
-  },
-  {
-    "id": "961801794",
-    "name": "Domineer",
-    "sourceEnv": "CLUB_961801794_URL"
-  },
-  {
-    "id": "449007774",
-    "name": "Dominium",
-    "sourceEnv": "CLUB_449007774_URL"
-  },
-  {
-    "id": "510137721",
-    "name": "Dominion",
-    "sourceEnv": "CLUB_510137721_URL"
-  },
-  {
-    "id": "387070372",
-    "name": "Domicile",
-    "sourceEnv": "CLUB_387070372_URL"
-  }
-]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dominator Network — Circle Tracker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+  <style>
+    body { background:#0a0912; color:#e2e0f0; font-family:Arial,sans-serif; margin:0; padding:20px; }
+    .card { background:#111028; border:1px solid #1e1b35; border-radius:12px; padding:16px; margin-bottom:16px; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #333; background:#1a1730; color:white; cursor:pointer; }
+    select { padding:8px; border-radius:8px; background:#1a1730; color:white; border:1px solid #333; }
+    pre { white-space:pre-wrap; word-break:break-word; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useState } = React;
+
+    const CLUBS = [
+      { tier: "S",  name: "Dominator",  officer: "@mikufans.",     id: "114037107", target: 75000000 },
+      { tier: "S",  name: "Dominant H", officer: "@.stayk",        id: "278155676", target: 75000000 },
+      { tier: "S",  name: "Dominance",  officer: "@mikufans.",     id: "754870359", target: 75000000 },
+      { tier: "A+", name: "Dominate",   officer: "@reyovalt",      id: "147185239", target: 50000000 },
+      { tier: "A+", name: "Domineer",   officer: "@patuazul",      id: "961801794", target: 50000000 },
+      { tier: "A+", name: "Dominium",   officer: "@jkpokes",       id: "449007774", target: 50000000 },
+      { tier: "A",  name: "Dominion",   officer: "@virsia",        id: "510137721", target: 30000000 },
+      { tier: "B+", name: "Domicile",   officer: "@goofyahhclown", id: "387070372", target: 20000000 }
+    ];
+
+    function parseJSON(json) {
+      const membersArr = Array.isArray(json?.members) ? json.members : [];
+      const members = membersArr.map(m => ({
+        name: m.name || "Unknown",
+        fans: m.fan_count ?? 0,
+        dailyGain: m.daily_gain ?? 0,
+        monthlyGain: m.monthly_gain ?? 0,
+        projected: m.projected_monthly ?? 0,
+        isActive: m.isActive !== false
+      }));
+      return {
+        clubName: json?.circle?.name || "Unknown",
+        lastFetch: json?.circle?.last_updated || null,
+        members
+      };
+    }
+
+    function fmt(n) {
+      if (n == null) return "—";
+      return Number(n).toLocaleString();
+    }
+
+    function App() {
+      const [activeId, setActiveId] = useState(CLUBS[0].id);
+      const [clubData, setClubData] = useState({});
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState("");
+
+      async function loadAll() {
+        setLoading(true);
+        setErr("");
+        const next = {};
+
+        for (const club of CLUBS) {
+          try {
+            const res = await fetch(`./data/${club.id}.json`, {
+              headers: { Accept: "application/json" }
+            });
+            if (!res.ok) continue;
+            const json = await res.json();
+            next[club.id] = parseJSON(json);
+          } catch (e) {
+            console.error(club.id, e);
+          }
+        }
+
+        setClubData(next);
+        setLoading(false);
+      }
+
+      useEffect(() => {
+        loadAll();
+      }, []);
+
+      const club = CLUBS.find(c => c.id === activeId);
+      const data = clubData[activeId];
+      const members = data?.members || [];
+      const totalMonthly = members.reduce((s, m) => s + (m.monthlyGain || 0), 0);
+
+      return (
+        <div>
+          <div className="card">
+            <h1>Dominator Network — Circle Tracker</h1>
+            <p>{loading ? "Loading..." : "Loaded static JSON from /data/"}</p>
+            <button onClick={loadAll}>Reload JSON</button>
+          </div>
+
+          <div className="card">
+            <label>Select club: </label>{" "}
+            <select value={activeId} onChange={e => setActiveId(e.target.value)}>
+              {CLUBS.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {err && <div className="card"><pre>{err}</pre></div>}
+
+          <div className="card">
+            <h2>{data?.clubName || club.name}</h2>
+            <p>Officer: {club.officer}</p>
+            <p>Club ID: {club.id}</p>
+            <p>Last updated: {data?.lastFetch || "—"}</p>
+            <p>Members loaded: {members.length}</p>
+            <p>Total monthly gain: {fmt(totalMonthly)}</p>
+          </div>
+
+          <div className="card">
+            <h3>Members</h3>
+            {members.length === 0 ? (
+              <p>No data loaded.</p>
+            ) : (
+              <div>
+                {members
+                  .sort((a, b) => (b.monthlyGain || 0) - (a.monthlyGain || 0))
+                  .map((m, i) => (
+                    <div key={i} style={{padding:"8px 0", borderBottom:"1px solid #222"}}>
+                      <strong>{m.name}</strong><br />
+                      Fans: {fmt(m.fans)}<br />
+                      Daily: {fmt(m.dailyGain)}<br />
+                      Monthly: {fmt(m.monthlyGain)}<br />
+                      Projected: {fmt(m.projected)}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
