@@ -152,7 +152,8 @@
       if (index === 0) return { color: "#fbbf24", textShadow: "0 0 10px rgba(251,191,36,0.15)" };
       if (index === 1) return { color: "#d1d5db", textShadow: "0 0 10px rgba(209,213,219,0.12)" };
       if (index === 2) return { color: "#d97706", textShadow: "0 0 10px rgba(217,119,6,0.12)" };
-      return { color: "#e2e0f0", textShadow: "none" };
+      if (index === 3) return { color: "#9ca3af", textShadow: "none" };
+      return { color: "#6b7280", textShadow: "none" };
     }
 
     function getLineColor(index) {
@@ -1917,6 +1918,7 @@
                             .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
                             .sort((a, b) => b - a);
                           const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
+                          const medianDelta = medianValue - checkpointTarget;
                           const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length;
 
                           return (
@@ -1924,7 +1926,10 @@
                               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
                               <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
                               <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Median member actual: <b style={{ color: "#34d399" }}>{fmt(medianValue)}</b></div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>
+                                Median member actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}
+                                <span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span>
+                              </div>
                               <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{allPaceSeriesList.length} on pace at checkpoint</div>
                             </div>
                           );
