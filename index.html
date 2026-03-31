@@ -130,20 +130,22 @@
         return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
       }
 
-      if (!cdata.lastFetch) {
-        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing last-updated timestamp" };
+      const effectiveTimestamp = cdata.refreshedAt || cdata.sourceUpdatedAt || cdata.lastFetch || null;
+      if (!effectiveTimestamp) {
+        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       }
 
-      const parsed = new Date(cdata.lastFetch);
+      const parsed = new Date(effectiveTimestamp);
       if (Number.isNaN(parsed.getTime())) {
-        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid last-updated timestamp" };
+        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
       }
 
+      const prefix = cdata.refreshedAt ? "Refreshed" : "Source updated";
       if (isSameCalendarDay(parsed, now)) {
-        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Updated ${parsed.toLocaleString()}` };
+        return { label: "✅ JSON Loaded", color: "#34d399", sub: `${prefix} ${parsed.toLocaleString()}` };
       }
 
-      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last update ${parsed.toLocaleString()}` };
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `${cdata.refreshedAt ? "Last refresh" : "Last source update"} ${parsed.toLocaleString()}` };
     }
 
     function getPodiumStyle(index) {
@@ -241,8 +243,10 @@
       });
 
       const clubName = json?.circle?.name || json?.name || "Unknown";
-      const lastFetch = json?.circle?.last_updated || json?.circle?.yesterday_updated || null;
-      return { members, clubName, lastFetch };
+      const refreshedAt = json?.refreshed_at || json?.meta?.refreshed_at || null;
+      const sourceUpdatedAt = json?.circle?.last_updated || json?.circle?.yesterday_updated || null;
+      const lastFetch = refreshedAt || sourceUpdatedAt || null;
+      return { members, clubName, lastFetch, refreshedAt, sourceUpdatedAt };
     }
 
     function buildCumulativeSeries(dailyFans, dim) {
@@ -733,7 +737,8 @@
       const activeMembers = allMembers.filter((m) => m.isActive !== false);
       const tc = TIER_COLORS[club.tier] || TIER_COLORS["B+"];
       const clubName = data?.clubName || club.name;
-      const lastFetch = data?.lastFetch || null;
+      const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
+      const displayFetchLabel = data?.refreshedAt ? "Refreshed" : "Source updated";
 
       async function fetchData(idOverride = null, silent = false) {
         const targetId = idOverride || cid;
@@ -767,7 +772,9 @@
               [targetId]: {
                 members: result.members,
                 clubName: result.clubName,
-                lastFetch: result.lastFetch || new Date().toISOString(),
+                lastFetch: result.lastFetch || null,
+                refreshedAt: result.refreshedAt || null,
+                sourceUpdatedAt: result.sourceUpdatedAt || null,
               },
             }));
 
@@ -815,7 +822,9 @@
               next[c.id] = {
                 members: result.members,
                 clubName: result.clubName,
-                lastFetch: result.lastFetch || new Date().toISOString(),
+                lastFetch: result.lastFetch || null,
+                refreshedAt: result.refreshedAt || null,
+                sourceUpdatedAt: result.sourceUpdatedAt || null,
               };
               loaded = true;
               break;
@@ -921,6 +930,8 @@
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata),
           lastFetch: cdata?.lastFetch || null,
+          refreshedAt: cdata?.refreshedAt || null,
+          sourceUpdatedAt: cdata?.sourceUpdatedAt || null,
           jsonMeta: getJsonLoadMeta(entry, cdata, now),
           statusCounts: clubStatusCounts,
           topFiveMembers: [...decorated].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 5),
@@ -1616,7 +1627,7 @@
                     <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>
                       Week {currentWeek?.number || 1} · {getWeekLabel(currentWeek, year, monthIndex)}
                     </div>
-                    {lastFetch && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>Updated {new Date(lastFetch).toLocaleString()}</div>}
+                    {displayFetch && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{displayFetchLabel} {new Date(displayFetch).toLocaleString()}</div>}
                   </div>
                 </div>
               </div>
