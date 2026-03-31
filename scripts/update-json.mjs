@@ -139,10 +139,19 @@ async function downloadClubJson(browser, club) {
     const text = await fs.readFile(tempPath, "utf8");
     await ensureJson(text, club.id);
 
-    const outPath = path.join(DATA_DIR, `${club.id}.json`);
-    await fs.writeFile(outPath, text, "utf8");
+    const parsed = JSON.parse(text);
+    const refreshedAt = new Date().toISOString();
 
-    console.log(`✅ SUCCESS: ${club.id} saved`);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      parsed.refreshed_at = refreshedAt;
+    } else {
+      throw new Error(`Downloaded JSON for ${club.id} is not an object, cannot add refreshed_at`);
+    }
+
+    const outPath = path.join(DATA_DIR, `${club.id}.json`);
+    await fs.writeFile(outPath, JSON.stringify(parsed, null, 2), "utf8");
+
+    console.log(`✅ SUCCESS: ${club.id} saved (${refreshedAt})`);
   } finally {
     await page.close();
   }
