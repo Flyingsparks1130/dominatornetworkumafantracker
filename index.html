@@ -276,7 +276,13 @@
       while (day <= dim) {
         const date = new Date(year, monthIndex, day);
         const weekday = date.getDay();
-        const endDay = Math.min(dim, day + (6 - weekday));
+        let offsetToSunday = (7 - weekday) % 7;
+
+        if (weekday === 0) {
+          offsetToSunday = 7;
+        }
+
+        const endDay = Math.min(dim, day + offsetToSunday);
         weeks.push({
           index: weeks.length,
           number: weeks.length + 1,
@@ -426,7 +432,7 @@
     function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex }) {
       const [hoverIdx, setHoverIdx] = useState(null);
 
-      if (!seriesList.length || !targetSeries.length) {
+      if (!targetSeries.length) {
         return (
           <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>
             Not enough daily data to render the pace chart yet.
@@ -468,6 +474,8 @@
             yTarget: yForValue(targetSeries[hoverIdx] ?? 0),
           }
         : null;
+      const tooltipLeftPct = hover ? Math.max(14, Math.min(86, (hover.x / width) * 100)) : 50;
+      const tooltipTranslateX = tooltipLeftPct > 78 ? "-100%" : tooltipLeftPct < 22 ? "0" : "-50%";
 
       return (
         <div style={{ position: "relative" }}>
@@ -505,7 +513,7 @@
                 fill="none"
                 stroke={item.color}
                 strokeWidth="2"
-                opacity="0.85"
+                opacity="0.9"
               />
             ))}
 
@@ -556,37 +564,39 @@
             <div
               style={{
                 position: "absolute",
-                left: `${(hover.x / width) * 100}%`,
-                top: `${Math.max(8, (hover.yTarget / height) * 100 - 3)}%`,
-                transform: "translate(-50%, -100%)",
+                left: `${tooltipLeftPct}%`,
+                top: 8,
+                transform: `translateX(${tooltipTranslateX})`,
                 background: "#111028",
                 border: "1px solid #2a2540",
                 borderRadius: 10,
                 padding: "10px 12px",
-                minWidth: 230,
-                maxWidth: 300,
+                minWidth: 280,
                 boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
                 pointerEvents: "none",
+                zIndex: 5,
               }}
             >
               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 5 }}>
                 {getDateLabel(year, monthIndex, hover.day)}
               </div>
-              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 6 }}>Weekly plan by day: {fmt(hover.target)}</div>
-              <div style={{ maxHeight: 200, overflowY: "auto", paddingRight: 2 }}>
-                {hoverMembers.map((item) => (
+              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>Weekly plan by day: {fmt(hover.target)}</div>
+              {hoverMembers.length === 0 ? (
+                <div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>
+              ) : (
+                hoverMembers.map((item) => (
                   <div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontSize: 11, marginBottom: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}>
                       <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} />
-                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</span>
+                      <span>{item.name}</span>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ color: item.color, fontWeight: 700 }}>{fmt(item.value)}</div>
                       <div style={{ color: gainColor(item.delta) }}>{fmtSigned(item.delta)}</div>
                     </div>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </div>
           )}
 
@@ -625,6 +635,7 @@
       const [debugLog, setDebugLog] = useState([]);
       const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
       const [memberFilters, setMemberFilters] = useState({ name: "", status: "" });
+      const [paceHiddenMembers, setPaceHiddenMembers] = useState({});
 
       const club = CLUBS[activeIdx];
       const cid = club.id;
@@ -744,6 +755,10 @@
         }
       }, [activeIdx]);
 
+      useEffect(() => {
+        setPaceHiddenMembers({});
+      }, [cid]);
+
       function decorateMember(member, monthlyTarget) {
         return {
           ...member,
@@ -775,12 +790,13 @@
       const individualTargetSeries = Array.from({ length: dim }, (_, idx) =>
         Math.round((club.target / Math.max(dim, 1)) * (idx + 1))
       );
-      const paceSeriesList = decoratedMembers.map((member, index) => ({
+      const allPaceSeriesList = decoratedMembers.map((member, index) => ({
         name: member.name,
         statusKey: member.plan.statusKey,
         color: getLineColor(index),
         series: member.cumulativeSeries,
       }));
+      const paceSeriesList = allPaceSeriesList.filter((item) => !paceHiddenMembers[item.name]);
 
       const networkClubs = CLUBS.map((entry) => {
         const cdata = entry.id ? clubData[entry.id] : null;
@@ -882,6 +898,22 @@
         setErr("");
         setTab("dashboard");
         setView("club");
+      }
+
+      function togglePaceMember(name) {
+        setPaceHiddenMembers((prev) => ({ ...prev, [name]: !prev[name] }));
+      }
+
+      function showAllPaceMembers() {
+        setPaceHiddenMembers({});
+      }
+
+      function hideAllPaceMembers() {
+        const next = {};
+        decoratedMembers.forEach((member) => {
+          next[member.name] = true;
+        });
+        setPaceHiddenMembers(next);
       }
 
       const SORTABLE_MEMBER_COLUMNS = ["fans", "dailyGain", "monthlyGain", "projected"];
@@ -1152,7 +1184,7 @@
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Fan Quota</div>
-                            <div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}/member</div>
+                            <div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}</div>
                           </div>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div>
@@ -1211,7 +1243,7 @@
                               </div>
                             </td>
                             <td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>
-                            <td style={{ ...S.td, color: gainColor(member.plan.delta), fontWeight: 700 }}>{deltaText(member.plan.delta)}</td>
+                            <td style={{ ...S.td, color: (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)), fontWeight: 700 }}>{deltaText(member.plan.delta)}</td>
                             <td style={S.td}><StatusBadge statusKey={member.plan.statusKey} /></td>
                           </tr>
                         ))
@@ -1305,7 +1337,8 @@
                           {sortedByMonthly.map((member, index) => {
                             const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
                             const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0));
-                            const progressColor = monthPct >= 100 ? "#34d399" : tc.bar;
+                            const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
+                            const progressColor = statusMeta.color;
 
                             return (
                               <div key={`${member.name}-${index}`} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
@@ -1342,7 +1375,7 @@
                                   </div>
                                   <div>
                                     <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
-                                    <div style={{ color: gainColor(member.plan.delta), fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
+                                    <div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
                                   </div>
                                   <div style={{ justifySelf: "end" }}>
                                     <Sparkline data={member.dailyFans || []} />
@@ -1444,7 +1477,7 @@
                                   <td style={{ ...S.td, color: "#c4b5fd" }}>
                                     {member.projected != null ? fmt(member.projected) : "—"}
                                   </td>
-                                  <td style={{ ...S.td, color: gainColor(member.plan.delta), fontWeight: 700 }}>
+                                  <td style={{ ...S.td, color: (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)), fontWeight: 700 }}>
                                     {deltaText(member.plan.delta)}
                                   </td>
                                   <td style={S.td}>
@@ -1459,13 +1492,13 @@
                     </div>
                   )}
 
-                  {tab === "pace" && (
+                                    {tab === "pace" && (
                     <div style={S.card}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
                         <div>
                           <div style={S.h2}>Member Pace</div>
                           <div style={{ color: "#6b7280", fontSize: 12 }}>
-                            Sunday-start weeks (Sun–Sat), shortened at the 1st and last day of the month. Inactive members are fully excluded.
+                            Weeks roll to Sunday checkpoints, shortened only at the 1st and last day of the month. Inactive members are fully excluded.
                           </div>
                         </div>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
@@ -1478,7 +1511,7 @@
                           { label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" },
                           { label: "Per-Member Target by Today", value: fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0), sub: `${fmt(club.target)} monthly quota`, col: "#c4b5fd" },
                           { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" },
-                          { label: `✅ Members On Pace`, value: statusCounts["on-track"], sub: `${statusCounts["behind"]} behind · ${statusCounts["critical"]} critical`, col: "#e2e0f0" },
+                          { label: `Visible on Graph`, value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical`, col: "#e2e0f0" },
                         ].map((card) => (
                           <div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
@@ -1488,12 +1521,77 @@
                         ))}
                       </div>
 
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                        <div style={{ color: "#9ca3af", fontSize: 12 }}>
+                          Click a member card to hide or show that member on the graph.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button style={S.btn(false)} onClick={showAllPaceMembers}>Show All</button>
+                          <button style={S.btn(false)} onClick={hideAllPaceMembers}>Hide All</button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginBottom: 16 }}>
+                        {sortedByMonthly.map((member, index) => {
+                          const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
+                          const isHidden = Boolean(paceHiddenMembers[member.name]);
+                          const lineColor = allPaceSeriesList.find((item) => item.name === member.name)?.color || getLineColor(index);
+
+                          return (
+                            <button
+                              key={`pace-card-${member.name}`}
+                              onClick={() => togglePaceMember(member.name)}
+                              style={{
+                                background: isHidden ? "#0a0912" : "#0f0d1a",
+                                border: `1px solid ${isHidden ? "#1e1b35" : statusMeta.border}`,
+                                borderRadius: 12,
+                                padding: "12px 13px",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                opacity: isHidden ? 0.55 : 1,
+                                boxShadow: isHidden ? "none" : `0 0 0 1px ${statusMeta.bg} inset`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
+                                    <span style={{ width: 10, height: 10, borderRadius: 999, background: lineColor, display: "inline-block", flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</span>
+                                  </div>
+                                  <div style={{ color: "#6b7280", fontSize: 11, marginTop: 3 }}>{isHidden ? "Hidden from graph" : "Showing on graph"}</div>
+                                </div>
+                                <StatusBadge statusKey={member.plan.statusKey} />
+                              </div>
+
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                                <div>
+                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Fans</div>
+                                  <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 14 }}>{fmtFull(member.fans)}</div>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Gain</div>
+                                  <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}>{fmtSigned(member.monthlyGain ?? 0)}</div>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Indicator</div>
+                                  <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}>{statusMeta.icon} {statusMeta.label}</div>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
+                                  <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
                       <PaceChart seriesList={paceSeriesList} targetSeries={individualTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} />
 
                       <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                         {monthWeeks.map((week) => {
                           const checkpointTarget = Math.round((club.target / Math.max(dim, 1)) * week.endDay);
-                          const currentValues = paceSeriesList
+                          const currentValues = allPaceSeriesList
                             .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
                             .sort((a, b) => b - a);
                           const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
@@ -1505,7 +1603,7 @@
                               <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
                               <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
                               <div style={{ color: "#6b7280", fontSize: 11 }}>Median member actual: <b style={{ color: "#34d399" }}>{fmt(medianValue)}</b></div>
-                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{paceSeriesList.length} on pace at checkpoint</div>
+                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{allPaceSeriesList.length} on pace at checkpoint</div>
                             </div>
                           );
                         })}
