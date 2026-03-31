@@ -88,9 +88,9 @@
     };
 
     const STATUS_META = {
-      "on-track": { label: "On Track", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
-      "behind":   { label: "Behind",   color: "#fbbf24", bg: "#fbbf2422", border: "#fbbf2466" },
-      "critical": { label: "Critical", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
+      "on-track": { label: "On Track", icon: "✅", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
+      "behind":   { label: "Behind", icon: "⚠️", color: "#fbbf24", bg: "#fbbf2422", border: "#fbbf2466" },
+      "critical": { label: "Critical", icon: "🟥", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
     };
 
     const fmt = (n) => {
@@ -110,6 +110,46 @@
     };
     const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
+
+    function isSameCalendarDay(a, b) {
+      return (
+        a &&
+        b &&
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate()
+      );
+    }
+
+    function getJsonLoadMeta(entry, cdata, now) {
+      if (!entry.id) {
+        return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
+      }
+
+      if (!cdata) {
+        return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
+      }
+
+      if (!cdata.lastFetch) {
+        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing last-updated timestamp" };
+      }
+
+      const parsed = new Date(cdata.lastFetch);
+      if (Number.isNaN(parsed.getTime())) {
+        return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid last-updated timestamp" };
+      }
+
+      if (isSameCalendarDay(parsed, now)) {
+        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Updated ${parsed.toLocaleString()}` };
+      }
+
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last update ${parsed.toLocaleString()}` };
+    }
+
+    function getLineColor(index) {
+      const hue = (index * 47) % 360;
+      return `hsl(${hue}, 72%, 62%)`;
+    }
 
     function parseJSON(raw) {
       let json;
@@ -235,7 +275,7 @@
 
       while (day <= dim) {
         const date = new Date(year, monthIndex, day);
-        const weekday = (date.getDay() + 6) % 7;
+        const weekday = date.getDay();
         const endDay = Math.min(dim, day + (6 - weekday));
         weeks.push({
           index: weeks.length,
@@ -354,7 +394,7 @@
             whiteSpace: "nowrap",
           }}
         >
-          {meta.label}
+          {meta.icon} {meta.label}
         </span>
       );
     }
@@ -383,10 +423,10 @@
       );
     }
 
-    function PaceChart({ actualSeries = [], targetSeries = [], weeks = [], year, monthIndex }) {
+    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex }) {
       const [hoverIdx, setHoverIdx] = useState(null);
 
-      if (!actualSeries.length || !targetSeries.length) {
+      if (!seriesList.length || !targetSeries.length) {
         return (
           <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>
             Not enough daily data to render the pace chart yet.
@@ -395,29 +435,36 @@
       }
 
       const width = 980;
-      const height = 320;
+      const height = 360;
       const padding = { top: 24, right: 28, bottom: 42, left: 62 };
       const innerW = width - padding.left - padding.right;
       const innerH = height - padding.top - padding.bottom;
-      const maxVal = Math.max(...actualSeries, ...targetSeries, 1);
-      const dayCount = actualSeries.length;
+      const dayCount = targetSeries.length;
+      const allValues = [...targetSeries, ...seriesList.flatMap((item) => item.series || [])];
+      const maxVal = Math.max(...allValues, 1);
 
       const xForIndex = (index) => padding.left + (dayCount <= 1 ? 0 : (index / (dayCount - 1)) * innerW);
       const yForValue = (value) => padding.top + innerH - ((value || 0) / maxVal) * innerH;
-
       const pathFor = (series) =>
         series
           .map((value, index) => `${index === 0 ? "M" : "L"} ${xForIndex(index)} ${yForValue(value)}`)
           .join(" ");
 
-      const gridValues = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * i));
+      const gridValues = Array.from({ length: 5 }, (_, index) => Math.round((maxVal / 4) * index));
+      const hoverMembers = hoverIdx != null
+        ? [...seriesList]
+            .map((item) => ({
+              ...item,
+              value: item.series?.[hoverIdx] ?? 0,
+              delta: (item.series?.[hoverIdx] ?? 0) - (targetSeries[hoverIdx] ?? 0),
+            }))
+            .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+        : [];
       const hover = hoverIdx != null
         ? {
             day: hoverIdx + 1,
-            actual: actualSeries[hoverIdx] ?? 0,
             target: targetSeries[hoverIdx] ?? 0,
             x: xForIndex(hoverIdx),
-            yActual: yForValue(actualSeries[hoverIdx] ?? 0),
             yTarget: yForValue(targetSeries[hoverIdx] ?? 0),
           }
         : null;
@@ -449,14 +496,34 @@
               );
             })}
 
-            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2" strokeDasharray="7 6" />
-            <path d={pathFor(actualSeries)} fill="none" stroke="#34d399" strokeWidth="3" />
+            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+
+            {seriesList.map((item) => (
+              <path
+                key={item.name}
+                d={pathFor(item.series)}
+                fill="none"
+                stroke={item.color}
+                strokeWidth="2"
+                opacity="0.85"
+              />
+            ))}
 
             {hover && (
               <>
                 <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke="#7c3aed" strokeDasharray="2 4" />
-                <circle cx={hover.x} cy={hover.yActual} r="5" fill="#34d399" />
                 <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
+                {hoverMembers.map((item) => (
+                  <circle
+                    key={item.name}
+                    cx={hover.x}
+                    cy={yForValue(item.value)}
+                    r="3"
+                    fill={item.color}
+                    stroke="#0a0912"
+                    strokeWidth="1"
+                  />
+                ))}
               </>
             )}
 
@@ -476,13 +543,7 @@
                     onMouseLeave={() => setHoverIdx(null)}
                   />
                   {(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (
-                    <text
-                      x={xForIndex(index)}
-                      y={height - padding.bottom + 18}
-                      textAnchor="middle"
-                      fill="#6b7280"
-                      fontSize="10"
-                    >
+                    <text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">
                       {index + 1}
                     </text>
                   )}
@@ -496,13 +557,14 @@
               style={{
                 position: "absolute",
                 left: `${(hover.x / width) * 100}%`,
-                top: `${Math.max(8, (Math.min(hover.yActual, hover.yTarget) / height) * 100 - 3)}%`,
+                top: `${Math.max(8, (hover.yTarget / height) * 100 - 3)}%`,
                 transform: "translate(-50%, -100%)",
                 background: "#111028",
                 border: "1px solid #2a2540",
                 borderRadius: 10,
                 padding: "10px 12px",
-                minWidth: 190,
+                minWidth: 230,
+                maxWidth: 300,
                 boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
                 pointerEvents: "none",
               }}
@@ -510,23 +572,35 @@
               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 5 }}>
                 {getDateLabel(year, monthIndex, hover.day)}
               </div>
-              <div style={{ color: "#34d399", fontSize: 12, marginBottom: 3 }}>Actual: {fmt(hover.actual)}</div>
-              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 3 }}>Target: {fmt(hover.target)}</div>
-              <div style={{ color: gainColor(hover.actual - hover.target), fontSize: 12, fontWeight: 700 }}>
-                {deltaText(hover.actual - hover.target)}
+              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 6 }}>Weekly plan by day: {fmt(hover.target)}</div>
+              <div style={{ maxHeight: 200, overflowY: "auto", paddingRight: 2 }}>
+                {hoverMembers.map((item) => (
+                  <div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontSize: 11, marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} />
+                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: item.color, fontWeight: 700 }}>{fmt(item.value)}</div>
+                      <div style={{ color: gainColor(item.delta) }}>{fmtSigned(item.delta)}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 14, height: 3, background: "#34d399", borderRadius: 99, display: "inline-block" }} />
-              Actual club cumulative gain
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />
-              Target pace
+              Weekly plan guideline
             </span>
+            {seriesList.map((item) => (
+              <span key={item.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 14, height: 3, background: item.color, borderRadius: 99, display: "inline-block" }} />
+                {item.name}
+              </span>
+            ))}
           </div>
         </div>
       );
@@ -673,6 +747,7 @@
       function decorateMember(member, monthlyTarget) {
         return {
           ...member,
+          cumulativeSeries: buildCumulativeSeries(member.dailyFans, dim),
           plan: getPlanMetrics(member.monthlyGain ?? 0, monthlyTarget, today, dim, monthWeeks),
         };
       }
@@ -697,15 +772,15 @@
       const membersOnTrack = statusCounts["on-track"];
       const sortedByMonthly = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
 
-      const clubActualSeries = Array.from({ length: dim }, (_, idx) =>
-        decoratedMembers.reduce((sum, member) => {
-          const memberSeries = buildCumulativeSeries(member.dailyFans, dim);
-          return sum + (memberSeries[idx] ?? 0);
-        }, 0)
+      const individualTargetSeries = Array.from({ length: dim }, (_, idx) =>
+        Math.round((club.target / Math.max(dim, 1)) * (idx + 1))
       );
-      const clubTargetSeries = Array.from({ length: dim }, (_, idx) =>
-        Math.round((clubMonthlyTarget / Math.max(dim, 1)) * (idx + 1))
-      );
+      const paceSeriesList = decoratedMembers.map((member, index) => ({
+        name: member.name,
+        statusKey: member.plan.statusKey,
+        color: getLineColor(index),
+        series: member.cumulativeSeries,
+      }));
 
       const networkClubs = CLUBS.map((entry) => {
         const cdata = entry.id ? clubData[entry.id] : null;
@@ -721,6 +796,8 @@
           totalProjected: decorated.reduce((sum, member) => sum + (member.projected ?? 0), 0),
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata),
+          lastFetch: cdata?.lastFetch || null,
+          jsonMeta: getJsonLoadMeta(entry, cdata, now),
         };
       });
 
@@ -1086,10 +1163,9 @@
                             <div style={{ color: "#e2e0f0", fontWeight: 700 }}>{entry.hasData ? fmt(entry.totalMonthly) : "—"}</div>
                           </div>
                           <div>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
-                            <div style={{ color: gainColor((entry.totalMonthly ?? 0) - (entry.totalExpected ?? 0)), fontWeight: 700 }}>
-                              {entry.hasData ? deltaText((entry.totalMonthly ?? 0) - (entry.totalExpected ?? 0)) : "—"}
-                            </div>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div>
+                            <div style={{ color: entry.jsonMeta.color, fontWeight: 700 }}>{entry.jsonMeta.label}</div>
+                            <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{entry.jsonMeta.sub}</div>
                           </div>
                         </div>
                       </div>
@@ -1209,9 +1285,9 @@
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
                           { label: "Active Members", value: `${decoratedMembers.length}/${MAX_MEMBERS}`, sub: "Inactive excluded", col: "#e2e0f0" },
-                          { label: "On Track", value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399" },
-                          { label: "Behind", value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24" },
-                          { label: "Critical", value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171" },
+                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399" },
+                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24" },
+                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171" },
                           { label: "Club Monthly +", value: fmt(totalMonthly), sub: "All active members", col: gainColor(totalMonthly) },
                           { label: "Club Vs Weekly Plan", value: fmtSigned(clubWeeklyDelta), sub: `Target by today: ${fmt(clubExpectedToDate)}`, col: gainColor(clubWeeklyDelta) },
                         ].map((card) => (
@@ -1387,9 +1463,9 @@
                     <div style={S.card}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
                         <div>
-                          <div style={S.h2}>Club Pace</div>
+                          <div style={S.h2}>Member Pace</div>
                           <div style={{ color: "#6b7280", fontSize: 12 }}>
-                            Monday–Sunday calendar weeks. Inactive members are fully excluded from targets and actual totals.
+                            Sunday-start weeks (Sun–Sat), shortened at the 1st and last day of the month. Inactive members are fully excluded.
                           </div>
                         </div>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
@@ -1400,9 +1476,9 @@
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
                           { label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" },
-                          { label: "Club Target by Today", value: fmt(clubExpectedToDate), sub: `${decoratedMembers.length} active × ${fmt(club.target)}`, col: "#c4b5fd" },
-                          { label: "Actual by Today", value: fmt(totalMonthly), sub: "Cumulative monthly gain", col: "#34d399" },
-                          { label: "Vs Pace", value: fmtSigned(clubWeeklyDelta), sub: deltaText(clubWeeklyDelta), col: gainColor(clubWeeklyDelta) },
+                          { label: "Per-Member Target by Today", value: fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0), sub: `${fmt(club.target)} monthly quota`, col: "#c4b5fd" },
+                          { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" },
+                          { label: `✅ Members On Pace`, value: statusCounts["on-track"], sub: `${statusCounts["behind"]} behind · ${statusCounts["critical"]} critical`, col: "#e2e0f0" },
                         ].map((card) => (
                           <div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
@@ -1412,21 +1488,24 @@
                         ))}
                       </div>
 
-                      <PaceChart actualSeries={clubActualSeries} targetSeries={clubTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} />
+                      <PaceChart seriesList={paceSeriesList} targetSeries={individualTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} />
 
                       <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                         {monthWeeks.map((week) => {
-                          const checkpointTarget = Math.round((clubMonthlyTarget / Math.max(dim, 1)) * week.endDay);
-                          const checkpointActual = clubActualSeries[week.endDay - 1] ?? 0;
-                          const delta = checkpointActual - checkpointTarget;
+                          const checkpointTarget = Math.round((club.target / Math.max(dim, 1)) * week.endDay);
+                          const currentValues = paceSeriesList
+                            .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
+                            .sort((a, b) => b - a);
+                          const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
+                          const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length;
 
                           return (
                             <div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}>
                               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
                               <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Checkpoint target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Actual at end: <b style={{ color: "#34d399" }}>{fmt(checkpointActual)}</b></div>
-                              <div style={{ color: gainColor(delta), fontSize: 11, fontWeight: 700, marginTop: 5 }}>{deltaText(delta)}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Median member actual: <b style={{ color: "#34d399" }}>{fmt(medianValue)}</b></div>
+                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{paceSeriesList.length} on pace at checkpoint</div>
                             </div>
                           );
                         })}
