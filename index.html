@@ -259,12 +259,7 @@
       const [showInactive, setShowInactive] = useState(false);
       const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
       const [memberFilters, setMemberFilters] = useState({
-        rank: "",
         name: "",
-        fans: "",
-        dailyGain: "",
-        monthlyGain: "",
-        projected: "",
         status: "",
       });
 
@@ -422,7 +417,13 @@
             clubTarget: c.target,
           }));
         })
-        .sort((a, b) => (b.fans ?? 0) - (a.fans ?? 0));
+        .sort((a, b) => {
+          const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
+          if (monthDiff !== 0) return monthDiff;
+          const fanDiff = (b.fans ?? Number.NEGATIVE_INFINITY) - (a.fans ?? Number.NEGATIVE_INFINITY);
+          if (fanDiff !== 0) return fanDiff;
+          return (a.name || "").localeCompare(b.name || "");
+        });
 
       const topNetworkUsers = networkMembers.slice(0, 10);
       const loadedClubCount = networkClubs.filter((c) => c.hasData).length;
@@ -485,114 +486,78 @@
         setView("club");
       }
 
+      const SORTABLE_MEMBER_COLUMNS = ["fans", "dailyGain", "monthlyGain", "projected"];
+
       function updateMemberFilter(key, value) {
         setMemberFilters((prev) => ({ ...prev, [key]: value }));
       }
 
       function clearMemberFilters() {
         setMemberFilters({
-          rank: "",
           name: "",
-          fans: "",
-          dailyGain: "",
-          monthlyGain: "",
-          projected: "",
           status: "",
         });
         setMemberSort({ key: "monthlyGain", direction: "desc" });
       }
 
       function handleSort(key) {
+        if (!SORTABLE_MEMBER_COLUMNS.includes(key)) return;
+
         setMemberSort((prev) => {
-          if (prev.key === key) {
-            return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+          if (prev.key !== key || prev.direction === "off") {
+            return { key, direction: "desc" };
           }
-          const defaultDirection = key === "name" ? "asc" : "desc";
-          return { key, direction: defaultDirection };
+          if (prev.direction === "desc") {
+            return { key, direction: "asc" };
+          }
+          return { key: null, direction: "off" };
         });
       }
 
       function sortIndicator(key) {
-        if (memberSort.key !== key) return "↕";
+        if (!SORTABLE_MEMBER_COLUMNS.includes(key) || memberSort.key !== key || memberSort.direction === "off") return "↕";
         return memberSort.direction === "asc" ? "↑" : "↓";
       }
 
-      function matchesTextFilter(value, filterValue) {
-        const filter = String(filterValue || "").trim().toLowerCase();
-        if (!filter) return true;
-        return String(value ?? "").toLowerCase().includes(filter);
-      }
-
-      function matchesNumericFilter(value, filterValue) {
-        const raw = String(filterValue || "").trim().replace(/,/g, "");
-        if (!raw) return true;
-        if (value == null) return false;
-
-        const numeric = raw.match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
-        if (!numeric) {
-          const rendered = `${fmt(value)} ${fmtFull(value)}`.toLowerCase();
-          return rendered.includes(raw.toLowerCase());
-        }
-
-        const op = numeric[1] || ">=";
-        const target = Number(numeric[2]);
-
-        if (Number.isNaN(target)) return true;
-
-        switch (op) {
-          case ">": return value > target;
-          case ">=": return value >= target;
-          case "<": return value < target;
-          case "<=": return value <= target;
-          case "=": return value === target;
-          default: return value >= target;
-        }
+      function matchesSelectFilter(value, filterValue) {
+        if (!filterValue) return true;
+        return String(value ?? "") === String(filterValue);
       }
 
       function getMemberSortValue(member, key) {
-        if (key === "rank") return member.monthlyGain ?? Number.NEGATIVE_INFINITY;
-        if (key === "name") return (member.name || "").toLowerCase();
-        if (key === "status") return (member.projected ?? 0) >= club.target ? 1 : 0;
         return member[key] ?? Number.NEGATIVE_INFINITY;
       }
 
+      const memberNameOptions = [...new Set(members.map((m) => m.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
       const memberRows = (() => {
-        const nonRankFiltered = members.filter((m) => {
-          const onTrack = (m.projected ?? 0) >= club.target;
+        const filtered = members.filter((m) => {
+          const status = (m.projected ?? 0) >= club.target ? "on-track" : "behind";
           return (
-            matchesTextFilter(m.name, memberFilters.name) &&
-            matchesNumericFilter(m.fans, memberFilters.fans) &&
-            matchesNumericFilter(m.dailyGain, memberFilters.dailyGain) &&
-            matchesNumericFilter(m.monthlyGain, memberFilters.monthlyGain) &&
-            matchesNumericFilter(m.projected, memberFilters.projected) &&
-            matchesTextFilter(onTrack ? "on track" : "behind", memberFilters.status)
+            matchesSelectFilter(m.name, memberFilters.name) &&
+            matchesSelectFilter(status, memberFilters.status)
           );
         });
 
-        const sorted = [...nonRankFiltered].sort((a, b) => {
-          const av = getMemberSortValue(a, memberSort.key);
-          const bv = getMemberSortValue(b, memberSort.key);
-          const dir = memberSort.direction === "asc" ? 1 : -1;
+        const sorted = memberSort.key && memberSort.direction !== "off"
+          ? [...filtered].sort((a, b) => {
+              const av = getMemberSortValue(a, memberSort.key);
+              const bv = getMemberSortValue(b, memberSort.key);
+              const dir = memberSort.direction === "asc" ? 1 : -1;
 
-          if (typeof av === "string" && typeof bv === "string") {
-            const cmp = av.localeCompare(bv);
-            return cmp === 0 ? a.name.localeCompare(b.name) : cmp * dir;
-          }
+              if (av === bv) {
+                return (a.name || "").localeCompare(b.name || "");
+              }
 
-          if (av === bv) {
-            return a.name.localeCompare(b.name);
-          }
+              return ((av > bv) ? 1 : -1) * dir;
+            })
+          : filtered;
 
-          return ((av > bv) ? 1 : -1) * dir;
-        });
-
-        return sorted
-          .map((m, index) => ({
-            member: m,
-            rank: index + 1,
-            onTrack: (m.projected ?? 0) >= club.target,
-          }))
-          .filter((row) => matchesTextFilter(String(row.rank), memberFilters.rank));
+        return sorted.map((m, index) => ({
+          member: m,
+          rank: index + 1,
+          onTrack: (m.projected ?? 0) >= club.target,
+        }));
       })();
 
       const S = {
@@ -812,8 +777,8 @@
               </div>
 
               <div style={S.card}>
-                <div style={S.h2}>Top 10 Network-Wide Users by Fans</div>
-                <div style={{ color:"#6b7280", fontSize:12, marginBottom:12 }}>Members are denoted by club and tier across every loaded club file.</div>
+                <div style={S.h2}>Top 10 Network-Wide Users by Monthly Fans</div>
+                <div style={{ color:"#6b7280", fontSize:12, marginBottom:12 }}>Members are ranked by monthly fans and denoted by club and tier across every loaded club file.</div>
                 <div style={{ overflowX:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead>
@@ -821,8 +786,8 @@
                         <th style={S.th}>#</th>
                         <th style={S.th}>Member</th>
                         <th style={S.th}>Club</th>
+                        <th style={S.th}>Monthly Fans</th>
                         <th style={S.th}>Fans</th>
-                        <th style={S.th}>Month</th>
                         <th style={S.th}>Projected</th>
                       </tr>
                     </thead>
@@ -854,8 +819,8 @@
                                   <span>{m.clubName}</span>
                                 </div>
                               </td>
+                              <td style={{ ...S.td, color:gainColor(m.monthlyGain), fontWeight:700 }}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</td>
                               <td style={{ ...S.td, color:"#e2e0f0", fontWeight:700 }}>{fmtFull(m.fans)}</td>
-                              <td style={{ ...S.td, color:gainColor(m.monthlyGain) }}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</td>
                               <td style={{ ...S.td, color:"#c4b5fd" }}>{m.projected != null ? fmt(m.projected) : "—"}</td>
                             </tr>
                           );
@@ -1015,7 +980,7 @@
                         <div>
                           <div style={S.h2}>Members</div>
                           <div style={{ color:"#6b7280", fontSize:12 }}>
-                            Click any header to sort. Filters support text and numeric rules like &gt;1000000, &lt;500000, or 1000000 for minimum values.
+                            Name and Status use preset dropdown filters. Fans, Today, Month, and Projected cycle through Desc, Asc, and Off sorting.
                           </div>
                         </div>
                         <button style={S.btn(false)} onClick={clearMemberFilters}>Clear filters</button>
@@ -1026,33 +991,50 @@
                           <thead>
                             <tr style={{ textAlign:"left" }}>
                               {[
-                                { key: "rank", label: "#" },
-                                { key: "name", label: "Name" },
-                                { key: "fans", label: "Fans" },
-                                { key: "dailyGain", label: "Today" },
-                                { key: "monthlyGain", label: "Month" },
-                                { key: "projected", label: "Projected" },
-                                { key: "status", label: "Status" },
+                                { key: "rank", label: "#", sortable: false },
+                                { key: "name", label: "Name", sortable: false },
+                                { key: "fans", label: "Fans", sortable: true },
+                                { key: "dailyGain", label: "Today", sortable: true },
+                                { key: "monthlyGain", label: "Month", sortable: true },
+                                { key: "projected", label: "Projected", sortable: true },
+                                { key: "status", label: "Status", sortable: false },
                               ].map((col) => (
                                 <th key={col.key} style={S.th}>
-                                  <button
-                                    style={{ background:"transparent", border:"none", color:"inherit", font: "inherit", cursor:"pointer", padding:0, display:"inline-flex", gap:6, alignItems:"center" }}
-                                    onClick={() => handleSort(col.key)}
-                                  >
+                                  {col.sortable ? (
+                                    <button
+                                      style={{ background:"transparent", border:"none", color:"inherit", font: "inherit", cursor:"pointer", padding:0, display:"inline-flex", gap:6, alignItems:"center" }}
+                                      onClick={() => handleSort(col.key)}
+                                    >
+                                      <span>{col.label}</span>
+                                      <span style={{ color: memberSort.key === col.key ? tc.text : "#4b5563" }}>{sortIndicator(col.key)}</span>
+                                    </button>
+                                  ) : (
                                     <span>{col.label}</span>
-                                    <span style={{ color: memberSort.key === col.key ? tc.text : "#4b5563" }}>{sortIndicator(col.key)}</span>
-                                  </button>
+                                  )}
                                 </th>
                               ))}
                             </tr>
                             <tr>
-                              <th style={S.th}><input style={S.input} value={memberFilters.rank} onChange={(e) => updateMemberFilter("rank", e.target.value)} placeholder="#" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.name} onChange={(e) => updateMemberFilter("name", e.target.value)} placeholder="Filter name" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.fans} onChange={(e) => updateMemberFilter("fans", e.target.value)} placeholder=">= fans" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.dailyGain} onChange={(e) => updateMemberFilter("dailyGain", e.target.value)} placeholder=">= today" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.monthlyGain} onChange={(e) => updateMemberFilter("monthlyGain", e.target.value)} placeholder=">= month" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.projected} onChange={(e) => updateMemberFilter("projected", e.target.value)} placeholder=">= projected" /></th>
-                              <th style={S.th}><input style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)} placeholder="on / behind" /></th>
+                              <th style={S.th}></th>
+                              <th style={S.th}>
+                                <select style={S.input} value={memberFilters.name} onChange={(e) => updateMemberFilter("name", e.target.value)}>
+                                  <option value="">All Members</option>
+                                  {memberNameOptions.map((name) => (
+                                    <option key={name} value={name}>{name}</option>
+                                  ))}
+                                </select>
+                              </th>
+                              <th style={S.th}></th>
+                              <th style={S.th}></th>
+                              <th style={S.th}></th>
+                              <th style={S.th}></th>
+                              <th style={S.th}>
+                                <select style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)}>
+                                  <option value="">All Statuses</option>
+                                  <option value="on-track">On Track</option>
+                                  <option value="behind">Behind</option>
+                                </select>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
