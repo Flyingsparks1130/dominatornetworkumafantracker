@@ -182,8 +182,10 @@
       }
 
       const now = new Date();
-      const today = now.getDate();
-      const dim = daysInMonth(now.getFullYear(), now.getMonth() + 1);
+      const dataDate = new Date(now);
+      dataDate.setDate(dataDate.getDate() - 1);
+      const today = dataDate.getDate();
+      const dim = daysInMonth(dataDate.getFullYear(), dataDate.getMonth() + 1);
 
       const members = membersArr.map((m) => {
         if (m.fan_count != null) {
@@ -707,9 +709,11 @@
 
     function CircleTracker() {
       const now = new Date();
-      const year = now.getFullYear();
-      const monthIndex = now.getMonth();
-      const today = now.getDate();
+      const dataDate = new Date(now);
+      dataDate.setDate(dataDate.getDate() - 1);
+      const year = dataDate.getFullYear();
+      const monthIndex = dataDate.getMonth();
+      const today = dataDate.getDate();
       const dim = daysInMonth(year, monthIndex + 1);
       const daysLeft = dim - today;
       const monthWeeks = getMonthWeeks(year, monthIndex);
@@ -995,49 +999,54 @@
       const networkMembersAtOrAbovePlan = networkStatusCounts["on-track"];
       const criticalClubOptions = Array.from(new Set(networkMembers.filter((member) => member.plan.statusKey === "critical").map((member) => member.clubName))).sort((a, b) => a.localeCompare(b));
       const criticalAvgColor = (value) => value <= 0 ? "#f87171" : value < 200000 ? "#fbbf24" : "#34d399";
-      const criticalNetworkMembers = [...networkMembers]
+      const criticalBaseMembers = [...networkMembers]
         .filter((member) => member.plan.statusKey === "critical")
-        .filter((member) => criticalClubFilter === "all" || member.clubName === criticalClubFilter)
-        .sort((a, b) => {
-          const getValue = (member) => {
-            switch (criticalSort.key) {
-              case "projected":
-                return member.projected ?? Number.NEGATIVE_INFINITY;
-              case "rolling3DayAvg":
-                return member.rolling3DayAvg ?? Number.NEGATIVE_INFINITY;
-              case "fansNeeded":
-                return member.fansNeededForPlan ?? Number.NEGATIVE_INFINITY;
-              case "planDelta":
-              default:
-                return member.plan.delta ?? Number.NEGATIVE_INFINITY;
-            }
-          };
+        .filter((member) => criticalClubFilter === "all" || member.clubName === criticalClubFilter);
 
-          const av = getValue(a);
-          const bv = getValue(b);
-          const diff = criticalSort.direction === "asc" ? av - bv : bv - av;
-          if (diff !== 0) return diff;
-          return (a.name || "").localeCompare(b.name || "");
-        });
+      const criticalNetworkMembers = criticalSort.key && criticalSort.direction !== "off"
+        ? [...criticalBaseMembers].sort((a, b) => {
+            const getValue = (member) => {
+              switch (criticalSort.key) {
+                case "projected":
+                  return member.projected ?? Number.NEGATIVE_INFINITY;
+                case "rolling3DayAvg":
+                  return member.rolling3DayAvg ?? Number.NEGATIVE_INFINITY;
+                case "fansNeeded":
+                  return member.fansNeededForPlan ?? Number.NEGATIVE_INFINITY;
+                case "planDelta":
+                default:
+                  return member.plan.delta ?? Number.NEGATIVE_INFINITY;
+              }
+            };
 
+            const av = getValue(a);
+            const bv = getValue(b);
+            if (av === bv) return (a.name || "").localeCompare(b.name || "");
+            return criticalSort.direction === "asc" ? av - bv : bv - av;
+          })
+        : criticalBaseMembers;
 
       function toggleCriticalSort(key) {
-        setCriticalSort((prev) =>
-          prev.key === key
-            ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
-            : { key, direction: key === "fansNeeded" ? "desc" : "asc" }
-        );
+        setCriticalSort((prev) => {
+          if (prev.key !== key || prev.direction === "off") {
+            return { key, direction: "desc" };
+          }
+          if (prev.direction === "desc") {
+            return { key, direction: "asc" };
+          }
+          return { key: null, direction: "off" };
+        });
       }
 
       function criticalSortLabel(key) {
-        if (criticalSort.key !== key) return "";
-        return criticalSort.direction === "asc" ? " ↑" : " ↓";
+        if (criticalSort.key !== key || criticalSort.direction === "off") return "OFF";
+        return criticalSort.direction === "asc" ? "ASC" : "DESC";
       }
 
       function buildDiscord() {
         const P = (s, n) => String(s).padStart(n);
         const PL = (s, n) => String(s).padEnd(n);
-        const ds = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
         const statusShort = (statusKey) => statusKey === "on-track" ? "✅" : statusKey === "critical" ? "❗" : "⚠️";
 
@@ -1115,7 +1124,7 @@
       }
 
       function buildReminderDiscord() {
-        const ds = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const underPlanMembers = [...decoratedMembers]
           .filter((member) => member.plan.statusKey !== "on-track")
           .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0));
@@ -1353,7 +1362,7 @@
                 <span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span>
               </div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>
-                {now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
+                Data through {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
               </div>
             </div>
 
@@ -1397,25 +1406,20 @@
                         key={entry.name}
                         onClick={() => openClub(index)}
                         style={{
-                          background: active ? ctc.bg : "#0f0d1a",
-                          border: `1px solid ${active ? ctc.border : "#1e1b35"}`,
-                          borderRadius: 10,
-                          padding: "7px 12px",
-                          cursor: "pointer",
+                          ...S.btn(active, "#7c3aed"),
                           opacity: entry.id ? 1 : 0.65,
                           display: "flex",
                           alignItems: "center",
                           gap: 6,
-                          transition: "all 0.15s",
                         }}
                       >
                         <span
                           style={{
                             fontSize: 10,
                             fontWeight: 800,
-                            color: active ? ctc.text : "#6b7280",
-                            background: active ? ctc.bg : "#1a1730",
-                            border: `1px solid ${active ? ctc.border : "#2a2540"}`,
+                            color: active ? "#fff" : "#9ca3af",
+                            background: active ? "rgba(255,255,255,0.14)" : "#1a1730",
+                            border: `1px solid ${active ? "rgba(255,255,255,0.18)" : "#2a2540"}`,
                             borderRadius: 4,
                             padding: "1px 5px",
                           }}
@@ -1626,7 +1630,7 @@
                   </div>
                 </div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>
-                  Members currently in critical status across all loaded clubs.
+                  Members currently in critical status across all loaded clubs. All metrics reflect data through {dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.
                 </div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -1634,10 +1638,10 @@
                       <tr style={{ textAlign: "left" }}>
                         <th style={S.th}>Member</th>
                         <th style={S.th}>Club</th>
-                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("planDelta")}>Vs Weekly Plan{criticalSortLabel("planDelta")}</th>
-                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("rolling3DayAvg")}>3-Day Avg{criticalSortLabel("rolling3DayAvg")}</th>
-                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("projected")}>Projected Fans{criticalSortLabel("projected")}</th>
-                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("fansNeeded")}>Needed for Month-End Plan{criticalSortLabel("fansNeeded")}</th>
+                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("planDelta")}>Vs Weekly Plan {criticalSortLabel("planDelta")}</th>
+                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("rolling3DayAvg")}>3-Day Avg {criticalSortLabel("rolling3DayAvg")}</th>
+                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("projected")}>Projected Fans {criticalSortLabel("projected")}</th>
+                        <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("fansNeeded")}>Needed for Month-End Plan {criticalSortLabel("fansNeeded")}</th>
                       </tr>
                     </thead>
                     <tbody>
