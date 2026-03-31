@@ -7,18 +7,18 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0912; overflow-y: scroll; }
+    html, body { background: #0a0912; min-height: 100%; }
+    body { overflow-y: scroll; }
     button { font-family: inherit; }
-    textarea:focus, button:focus-visible, select:focus-visible { outline: 2px solid #7c3aed; outline-offset: 2px; }
+    textarea:focus, button:focus-visible, select:focus-visible {
+      outline: 2px solid #7c3aed;
+      outline-offset: 2px;
+    }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #0a0912; }
     ::-webkit-scrollbar-thumb { background: #1e1b35; border-radius: 3px; }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
-</head>
-<body>
+
   <script>
     window.__ALLOW_APP__ = false;
 
@@ -27,35 +27,40 @@
     if (password === "dominatornetworkumafantracker") {
       window.__ALLOW_APP__ = true;
     } else {
-      document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8" />
-            <title>Access denied</title>
-            <style>
-              body {
-                margin: 0;
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: #0a0912;
-                color: white;
-                font-family: Arial, sans-serif;
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Access denied</h1>
-          </body>
-        </html>
-      `);
+      document.documentElement.innerHTML = `
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Access denied</title>
+          <style>
+            html, body {
+              margin: 0;
+              min-height: 100vh;
+              background: #0a0912;
+              color: white;
+              font-family: Arial, sans-serif;
+            }
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            h1 { font-size: 32px; }
+          </style>
+        </head>
+        <body>
+          <h1>Access denied</h1>
+        </body>
+      `;
     }
   </script>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+</head>
+<body>
   <div id="root"></div>
-<div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect } = React;
@@ -318,6 +323,8 @@
         setErr("");
         const allLogs = [];
 
+        const next = {};
+
         for (const c of CLUBS) {
           if (!c.id) continue;
           try {
@@ -338,19 +345,17 @@
               continue;
             }
 
-            setClubData(prev => ({
-              ...prev,
-              [c.id]: {
-                members: result.members,
-                clubName: result.clubName,
-                lastFetch: result.lastFetch || new Date().toISOString()
-              }
-            }));
+            next[c.id] = {
+              members: result.members,
+              clubName: result.clubName,
+              lastFetch: result.lastFetch || new Date().toISOString()
+            };
           } catch (e) {
             allLogs.push(`✗ ./data/${c.id}.json → ${e.message}`);
           }
         }
 
+        setClubData(next);
         setDebugLog(allLogs);
         setLoading(false);
       }
@@ -732,7 +737,7 @@
                   </div>
 
                   <div style={{ color:"#9ca3af", fontSize:12, marginBottom:12, lineHeight:1.7 }}>
-                    This page now reads JSON from your deployed repo files, not pasted input.
+                    This page reads JSON from your deployed repo files.
                     Expected path for this club: <b style={{ color:"#e2e0f0" }}>data/{cid}.json</b>
                   </div>
 
@@ -758,8 +763,8 @@
     }
 
     if (window.__ALLOW_APP__) {
-  ReactDOM.createRoot(document.getElementById("root")).render(<CircleTracker />);
-}
+      ReactDOM.createRoot(document.getElementById("root")).render(<CircleTracker />);
+    }
   </script>
 </body>
 </html>
