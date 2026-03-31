@@ -64,7 +64,7 @@
 
   
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     const CLUBS = [
       { tier: "S",  name: "Dominator",  officer: "@mikufans.",     id: "114037107", target: 75_000_000 },
@@ -90,7 +90,7 @@
     const STATUS_META = {
       "on-track": { label: "On Track", icon: "✅", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
       "behind":   { label: "Behind", icon: "⚠️", color: "#fbbf24", bg: "#fbbf2422", border: "#fbbf2466" },
-      "critical": { label: "Critical", icon: "🟥", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
+      "critical": { label: "Critical", icon: "❗❗❗", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
     };
 
     const fmt = (n) => {
@@ -276,13 +276,9 @@
       while (day <= dim) {
         const date = new Date(year, monthIndex, day);
         const weekday = date.getDay();
-        let offsetToSunday = (7 - weekday) % 7;
+        const offsetToSaturday = (6 - weekday + 7) % 7;
+        const endDay = Math.min(dim, day + offsetToSaturday);
 
-        if (weekday === 0) {
-          offsetToSunday = 7;
-        }
-
-        const endDay = Math.min(dim, day + offsetToSunday);
         weeks.push({
           index: weeks.length,
           number: weeks.length + 1,
@@ -290,6 +286,7 @@
           endDay,
           dayCount: endDay - day + 1,
         });
+
         day = endDay + 1;
       }
 
@@ -348,6 +345,61 @@
       if (delta == null) return "—";
       if (delta === 0) return "On weekly plan";
       return `${fmtSigned(delta)} ${delta >= 0 ? "above" : "below"} weekly plan`;
+    }
+
+    async function svgToPngBlob(svgEl, scale = 2) {
+      if (!svgEl) return null;
+
+      const clone = svgEl.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+
+      const viewBox = svgEl.viewBox?.baseVal;
+      const width = viewBox?.width || svgEl.clientWidth || 980;
+      const height = viewBox?.height || svgEl.clientHeight || 360;
+      const svgString = new XMLSerializer().serializeToString(clone);
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const nextImg = new Image();
+          nextImg.onload = () => resolve(nextImg);
+          nextImg.onerror = reject;
+          nextImg.src = svgUrl;
+        });
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#0a0912";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
+    }
+
+    function downloadBlob(blob, filename) {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function safeFilename(value) {
+      return String(value || "graph")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "graph";
     }
 
     function ProgressBar({ pct, color = "#7c3aed", height = 8 }) {
@@ -429,7 +481,7 @@
       );
     }
 
-    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex }) {
+    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1 }) {
       const [hoverIdx, setHoverIdx] = useState(null);
 
       if (!targetSeries.length) {
@@ -478,87 +530,98 @@
       const tooltipTranslateX = tooltipLeftPct > 78 ? "-100%" : tooltipLeftPct < 22 ? "0" : "-50%";
 
       return (
-        <div style={{ position: "relative" }}>
-          <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
-            {gridValues.map((value, index) => {
-              const y = yForValue(value);
-              return (
-                <g key={index}>
-                  <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" />
-                  <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">
-                    {fmt(value)}
-                  </text>
-                </g>
-              );
-            })}
-
-            {weeks.map((week) => {
-              const x = xForIndex(week.endDay - 1);
-              return (
-                <g key={week.number}>
-                  <line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" />
-                  <text x={x - 4} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">
-                    W{week.number}
-                  </text>
-                </g>
-              );
-            })}
-
-            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-
-            {seriesList.map((item) => (
-              <path
-                key={item.name}
-                d={pathFor(item.series)}
-                fill="none"
-                stroke={item.color}
-                strokeWidth="2"
-                opacity="0.9"
-              />
-            ))}
-
-            {hover && (
-              <>
-                <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke="#7c3aed" strokeDasharray="2 4" />
-                <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
-                {hoverMembers.map((item) => (
-                  <circle
-                    key={item.name}
-                    cx={hover.x}
-                    cy={yForValue(item.value)}
-                    r="3"
-                    fill={item.color}
-                    stroke="#0a0912"
-                    strokeWidth="1"
-                  />
-                ))}
-              </>
-            )}
-
-            {Array.from({ length: dayCount }, (_, index) => {
-              const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2;
-              const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2;
-
-              return (
-                <g key={index}>
-                  <rect
-                    x={startX}
-                    y={padding.top}
-                    width={Math.max(10, endX - startX)}
-                    height={innerH}
-                    fill="transparent"
-                    onMouseEnter={() => setHoverIdx(index)}
-                    onMouseLeave={() => setHoverIdx(null)}
-                  />
-                  {(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (
-                    <text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">
-                      {index + 1}
+        <div style={{ position: "relative", overflow: "visible" }}>
+          <div style={{ overflowX: "auto", paddingBottom: 6 }}>
+            <svg
+              ref={svgRef}
+              viewBox={`0 0 ${width} ${height}`}
+              style={{
+                width: `${Math.max(100, zoom * 100)}%`,
+                minWidth: `${Math.round(width * Math.max(1, zoom))}px`,
+                height: "auto",
+                display: "block",
+              }}
+            >
+              {gridValues.map((value, index) => {
+                const y = yForValue(value);
+                return (
+                  <g key={index}>
+                    <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" />
+                    <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">
+                      {fmt(value)}
                     </text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
+                  </g>
+                );
+              })}
+
+              {weeks.map((week) => {
+                const x = xForIndex(week.endDay - 1);
+                return (
+                  <g key={week.number}>
+                    <line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" />
+                    <text x={x - 4} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">
+                      W{week.number}
+                    </text>
+                  </g>
+                );
+              })}
+
+              <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+
+              {seriesList.map((item) => (
+                <path
+                  key={item.name}
+                  d={pathFor(item.series)}
+                  fill="none"
+                  stroke={item.color}
+                  strokeWidth="2"
+                  opacity="0.9"
+                />
+              ))}
+
+              {hover && (
+                <>
+                  <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke="#7c3aed" strokeDasharray="2 4" />
+                  <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
+                  {hoverMembers.map((item) => (
+                    <circle
+                      key={item.name}
+                      cx={hover.x}
+                      cy={yForValue(item.value)}
+                      r="3"
+                      fill={item.color}
+                      stroke="#0a0912"
+                      strokeWidth="1"
+                    />
+                  ))}
+                </>
+              )}
+
+              {Array.from({ length: dayCount }, (_, index) => {
+                const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2;
+                const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2;
+
+                return (
+                  <g key={index}>
+                    <rect
+                      x={startX}
+                      y={padding.top}
+                      width={Math.max(10, endX - startX)}
+                      height={innerH}
+                      fill="transparent"
+                      onMouseEnter={() => setHoverIdx(index)}
+                      onMouseLeave={() => setHoverIdx(null)}
+                    />
+                    {(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (
+                      <text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">
+                        {index + 1}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
 
           {hover && (
             <div
@@ -571,10 +634,13 @@
                 border: "1px solid #2a2540",
                 borderRadius: 10,
                 padding: "10px 12px",
-                minWidth: 280,
+                minWidth: 320,
+                width: "max-content",
+                maxWidth: "min(92vw, 620px)",
                 boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
                 pointerEvents: "none",
                 zIndex: 5,
+                overflow: "visible",
               }}
             >
               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 5 }}>
@@ -585,14 +651,13 @@
                 <div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>
               ) : (
                 hoverMembers.map((item) => (
-                  <div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontSize: 11, marginBottom: 4 }}>
+                  <div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, marginBottom: 4, whiteSpace: "nowrap" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}>
                       <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} />
                       <span>{item.name}</span>
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ color: item.color, fontWeight: 700 }}>{fmt(item.value)}</div>
-                      <div style={{ color: gainColor(item.delta) }}>{fmtSigned(item.delta)}</div>
+                    <div style={{ textAlign: "right", color: item.color, fontWeight: 700 }}>
+                      {fmt(item.value)} <span style={{ color: gainColor(item.delta), fontWeight: 600 }}>({fmtSigned(item.delta)})</span>
                     </div>
                   </div>
                 ))
@@ -635,7 +700,11 @@
       const [debugLog, setDebugLog] = useState([]);
       const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
       const [memberFilters, setMemberFilters] = useState({ name: "", status: "" });
+      const [overviewStatusFilter, setOverviewStatusFilter] = useState("");
       const [paceHiddenMembers, setPaceHiddenMembers] = useState({});
+      const [paceZoom, setPaceZoom] = useState(1);
+      const [paceExporting, setPaceExporting] = useState(false);
+      const paceSvgRef = useRef(null);
 
       const club = CLUBS[activeIdx];
       const cid = club.id;
@@ -757,6 +826,8 @@
 
       useEffect(() => {
         setPaceHiddenMembers({});
+        setOverviewStatusFilter("");
+        setPaceZoom(1);
       }, [cid]);
 
       function decorateMember(member, monthlyTarget) {
@@ -786,6 +857,9 @@
 
       const membersOnTrack = statusCounts["on-track"];
       const sortedByMonthly = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
+      const overviewMembers = overviewStatusFilter
+        ? sortedByMonthly.filter((member) => member.plan.statusKey === overviewStatusFilter)
+        : sortedByMonthly;
 
       const individualTargetSeries = Array.from({ length: dim }, (_, idx) =>
         Math.round((club.target / Math.max(dim, 1)) * (idx + 1))
@@ -847,50 +921,96 @@
       const clubsMissingData = networkClubs.filter((entry) => entry.id && !entry.hasData).length;
 
       function buildDiscord() {
-        const bar = (p, len = 18) => {
-          const filled = Math.round((Math.min(p, 100) / 100) * len);
-          return "█".repeat(filled) + "░".repeat(len - filled);
-        };
         const P = (s, n) => String(s).padStart(n);
         const PL = (s, n) => String(s).padEnd(n);
         const ds = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
+        const statusShort = (statusKey) => statusKey === "on-track" ? "✅" : statusKey === "critical" ? "❗❗❗" : "⚠️";
 
-        let msg = `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}\n`;
-        msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        msg += `🎯 **Per-Member Target:** ${fmt(club.target)}/month\n`;
-        msg += `👥 **Active Members:** ${decoratedMembers.length}/${MAX_MEMBERS}  |  📅 Day ${today}/${dim} · ${daysLeft} days left\n`;
-        msg += `✅ On weekly plan: **${membersOnTrack}/${decoratedMembers.length || 0}** members\n`;
-        msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        msg += "```\n";
-        msg += `${PL("MEMBER",20)}${P("FANS",12)}${P("+TODAY",10)}${P("+MONTH",11)}${P("PROJ",10)}${P("ST",4)}\n`;
-        msg += "─".repeat(67) + "\n";
+        const headerLines = [
+          `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `🎯 ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
+          `📈 Club: ${fmtSigned(totalMonthly)} month · ${fmtSigned(clubWeeklyDelta)} vs plan`,
+          `✅ ${statusCounts["on-track"]} · ⚠️ ${statusCounts["behind"]} · ❗❗❗ ${statusCounts["critical"]}`,
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "```",
+          `${PL("MEMBER", 16)}${P("MONTH", 9)}${P("PLAN", 9)}${P("ST", 5)}`,
+          "─".repeat(39),
+        ];
 
-        [...decoratedMembers]
-          .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach((member) => {
-            const statusShort = member.plan.statusKey === "on-track" ? "✅" : member.plan.statusKey === "critical" ? "🟥" : "⚠️";
-            msg += `${PL(member.name.slice(0, 19), 20)}${P(fmt(member.fans), 12)}${P(fmtSigned(member.dailyGain ?? 0), 10)}${P(fmtSigned(member.monthlyGain ?? 0), 11)}${P(member.projected != null ? fmt(member.projected) : "—", 10)}${P(statusShort, 4)}\n`;
-          });
+        const rowLines = sortedMembers.map((member) =>
+          `${PL(member.name.slice(0, 15), 16)}${P(fmtSigned(member.monthlyGain ?? 0), 9)}${P(fmtSigned(member.plan.delta ?? 0), 9)}${P(statusShort(member.plan.statusKey), 5)}`
+        );
+        rowLines.push("─".repeat(39));
+        rowLines.push(`${PL("TOTAL", 16)}${P(fmtSigned(totalMonthly), 9)}${P(fmtSigned(clubWeeklyDelta), 9)}${P("—", 5)}`);
 
-        msg += "─".repeat(67) + "\n";
-        msg += `${PL("TOTAL",20)}${P(fmt(totalFans),12)}${P(fmtSigned(totalDaily),10)}${P(fmtSigned(totalMonthly),11)}${P(fmt(totalProj),10)}\n`;
-        msg += "```\n";
+        const footerLines = [
+          "```",
+          `> 🤖 *Dominator Network Tracker · ${club.officer}*`,
+        ];
 
-        [...decoratedMembers]
-          .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach((member) => {
-            const pct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
-            msg += `**${member.name}** \`${bar(pct)}\` ${pct.toFixed(1)}% of target · ${deltaText(member.plan.delta)}\n`;
-          });
+        const limit = 3900;
+        const keptRows = [];
+        let omittedCount = 0;
 
-        msg += `> 🤖 *Dominator Network Tracker · ${club.officer}*`;
-        return msg;
+        for (let i = 0; i < rowLines.length; i++) {
+          const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
+          if (candidate.length > limit) {
+            omittedCount = Math.max(0, sortedMembers.length - keptRows.length);
+            break;
+          }
+          keptRows.push(rowLines[i]);
+        }
+
+        if (omittedCount > 0) {
+          const note = `… ${omittedCount} more members omitted to stay under Discord limit`;
+          while ([...headerLines, ...keptRows, note, ...footerLines].join("\n").length > limit && keptRows.length > 0) {
+            keptRows.pop();
+          }
+          keptRows.push(note);
+        }
+
+        return [...headerLines, ...keptRows, ...footerLines].join("\n");
       }
 
       async function copyDiscord() {
-        await navigator.clipboard.writeText(buildDiscord());
-        setCopied(true);
+        const message = buildDiscord();
+        let copiedWithImage = false;
+
+        try {
+          const shouldIncludeGraph = view === "club" && tab === "pace" && paceSvgRef.current;
+          const pngBlob = shouldIncludeGraph ? await svgToPngBlob(paceSvgRef.current, 2) : null;
+
+          if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
+            await navigator.clipboard.write([
+              new ClipboardItem({
+                "text/plain": new Blob([message], { type: "text/plain" }),
+                "image/png": pngBlob,
+              }),
+            ]);
+            copiedWithImage = true;
+          } else {
+            await navigator.clipboard.writeText(message);
+          }
+        } catch (error) {
+          await navigator.clipboard.writeText(message);
+        }
+
+        setCopied(copiedWithImage ? "image" : "text");
         setTimeout(() => setCopied(false), 2200);
+      }
+
+      async function exportPaceGraph() {
+        if (!paceSvgRef.current) return;
+        setPaceExporting(true);
+        try {
+          const blob = await svgToPngBlob(paceSvgRef.current, 2);
+          if (blob) {
+            downloadBlob(blob, `${safeFilename(clubName)}-pace-chart.png`);
+          }
+        } finally {
+          setPaceExporting(false);
+        }
       }
 
       function openClub(index) {
@@ -898,6 +1018,10 @@
         setErr("");
         setTab("dashboard");
         setView("club");
+      }
+
+      function toggleOverviewStatusFilter(statusKey) {
+        setOverviewStatusFilter((prev) => prev === statusKey ? "" : statusKey);
       }
 
       function togglePaceMember(name) {
@@ -1070,7 +1194,7 @@
               </button>
               {view === "club" && (
                 <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!decoratedMembers.length}>
-                  {copied ? "✓ Copied!" : "💬 Discord"}
+                  {copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}
                 </button>
               )}
             </div>
@@ -1219,9 +1343,9 @@
                         <th style={S.th}>#</th>
                         <th style={S.th}>Member</th>
                         <th style={S.th}>Club</th>
+                        <th style={S.th}>Daily Gain</th>
                         <th style={S.th}>Monthly Fans</th>
-                        <th style={S.th}>Vs Weekly Plan</th>
-                        <th style={S.th}>Status</th>
+                        <th style={S.th}>Total Fans</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1242,9 +1366,9 @@
                                 <span>{member.clubName}</span>
                               </div>
                             </td>
+                            <td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>
                             <td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>
-                            <td style={{ ...S.td, color: (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)), fontWeight: 700 }}>{deltaText(member.plan.delta)}</td>
-                            <td style={S.td}><StatusBadge statusKey={member.plan.statusKey} /></td>
+                            <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td>
                           </tr>
                         ))
                       )}
@@ -1317,24 +1441,52 @@
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
                           { label: "Active Members", value: `${decoratedMembers.length}/${MAX_MEMBERS}`, sub: "Inactive excluded", col: "#e2e0f0" },
-                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399" },
-                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24" },
-                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171" },
+                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399", filterKey: "on-track" },
+                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24", filterKey: "behind" },
+                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171", filterKey: "critical" },
                           { label: "Club Monthly +", value: fmt(totalMonthly), sub: "All active members", col: gainColor(totalMonthly) },
                           { label: "Club Vs Weekly Plan", value: fmtSigned(clubWeeklyDelta), sub: `Target by today: ${fmt(clubExpectedToDate)}`, col: gainColor(clubWeeklyDelta) },
-                        ].map((card) => (
-                          <div key={card.label} style={{ background: "#111028", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
-                            <div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div>
-                            <div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div>
-                          </div>
-                        ))}
+                        ].map((card) => {
+                          const isFilterCard = Boolean(card.filterKey);
+                          const isActive = overviewStatusFilter === card.filterKey;
+                          const sharedStyle = {
+                            background: "#111028",
+                            border: `1px solid ${isActive ? card.col : "#1e1b35"}`,
+                            borderRadius: 12,
+                            padding: "11px 14px",
+                            boxShadow: isActive ? `0 0 0 1px ${card.col}33 inset` : "none",
+                          };
+
+                          return isFilterCard ? (
+                            <button key={card.label} onClick={() => toggleOverviewStatusFilter(card.filterKey)} style={{ ...sharedStyle, textAlign: "left", cursor: "pointer" }}>
+                              <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
+                              <div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div>
+                              <div style={{ color: isActive ? card.col : "#4b5563", fontSize: 10, marginTop: 2 }}>{isActive ? "Showing only this status" : card.sub}</div>
+                            </button>
+                          ) : (
+                            <div key={card.label} style={sharedStyle}>
+                              <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
+                              <div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div>
+                              <div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       <div style={S.card}>
                         <div style={S.h2}>Member Progress — Sorted by Monthly Gain</div>
+                        {overviewStatusFilter && (
+                          <div style={{ color: STATUS_META[overviewStatusFilter]?.color || "#9ca3af", fontSize: 12, marginBottom: 10 }}>
+                            Filtering overview to {STATUS_META[overviewStatusFilter]?.icon} {STATUS_META[overviewStatusFilter]?.label}. Click the same summary card again to clear.
+                          </div>
+                        )}
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {sortedByMonthly.map((member, index) => {
+                          {overviewMembers.length === 0 && (
+                            <div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>
+                              No members match the current overview filter.
+                            </div>
+                          )}
+                          {overviewMembers.map((member, index) => {
                             const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
                             const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0));
                             const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
@@ -1498,7 +1650,7 @@
                         <div>
                           <div style={S.h2}>Member Pace</div>
                           <div style={{ color: "#6b7280", fontSize: 12 }}>
-                            Weeks roll to Sunday checkpoints, shortened only at the 1st and last day of the month. Inactive members are fully excluded.
+                            Weeks start on Sunday and end on Saturday, shortened only at the 1st and last day of the month. Inactive members are fully excluded.
                           </div>
                         </div>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
@@ -1523,6 +1675,41 @@
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
+                          Zoom the graph, export it as an image, or copy Discord text plus the graph when your browser supports image clipboard writes.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.max(1, +(prev - 0.25).toFixed(2)))}>− Zoom</button>
+                          <button style={S.btn(false)} onClick={() => setPaceZoom(1)}>Reset</button>
+                          <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.min(3, +(prev + 0.25).toFixed(2)))}>+ Zoom</button>
+                          <button style={S.btn(false)} onClick={exportPaceGraph}>{paceExporting ? "⟳ Exporting…" : "🖼️ Export Graph"}</button>
+                        </div>
+                      </div>
+
+                      <PaceChart seriesList={paceSeriesList} targetSeries={individualTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} svgRef={paceSvgRef} zoom={paceZoom} />
+
+                      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                        {monthWeeks.map((week) => {
+                          const checkpointTarget = Math.round((club.target / Math.max(dim, 1)) * week.endDay);
+                          const currentValues = allPaceSeriesList
+                            .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
+                            .sort((a, b) => b - a);
+                          const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
+                          const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length;
+
+                          return (
+                            <div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}>
+                              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Median member actual: <b style={{ color: "#34d399" }}>{fmt(medianValue)}</b></div>
+                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{allPaceSeriesList.length} on pace at checkpoint</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 16, marginBottom: 10 }}>
+                        <div style={{ color: "#9ca3af", fontSize: 12 }}>
                           Click a member card to hide or show that member on the graph.
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1531,7 +1718,7 @@
                         </div>
                       </div>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginBottom: 16 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
                         {sortedByMonthly.map((member, index) => {
                           const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
                           const isHidden = Boolean(paceHiddenMembers[member.name]);
@@ -1582,29 +1769,6 @@
                                 </div>
                               </div>
                             </button>
-                          );
-                        })}
-                      </div>
-
-                      <PaceChart seriesList={paceSeriesList} targetSeries={individualTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} />
-
-                      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                        {monthWeeks.map((week) => {
-                          const checkpointTarget = Math.round((club.target / Math.max(dim, 1)) * week.endDay);
-                          const currentValues = allPaceSeriesList
-                            .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
-                            .sort((a, b) => b - a);
-                          const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
-                          const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length;
-
-                          return (
-                            <div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}>
-                              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
-                              <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Median member actual: <b style={{ color: "#34d399" }}>{fmt(medianValue)}</b></div>
-                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{allPaceSeriesList.length} on pace at checkpoint</div>
-                            </div>
                           );
                         })}
                       </div>
