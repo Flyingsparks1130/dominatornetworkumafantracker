@@ -22,8 +22,24 @@ jobs:
         with:
           node-version: 20
 
-      - name: Refresh JSON files
+      - name: Initialize package.json if missing
+        run: |
+          if [ ! -f package.json ]; then
+            npm init -y
+          fi
+
+      - name: Install dependencies
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
+
+      - name: Refresh JSON files from API
         run: node scripts/update-json.mjs
+
+      - name: Enrich JSON files with isActive
+        env:
+          DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
+        run: node scripts/enrich-is-active.mjs
 
       - name: Commit updated JSON files
         run: |
