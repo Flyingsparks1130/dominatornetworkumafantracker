@@ -48,7 +48,7 @@ async function dismissBlockingUi(page) {
     try {
       if (await locator.count()) {
         await locator.click({ timeout: 3000, force: true });
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(1000);
         console.log("Dismissed blocking UI");
         return;
       }
@@ -59,153 +59,13 @@ async function dismissBlockingUi(page) {
   try {
     if (await backdrop.count()) {
       await backdrop.click({ timeout: 3000, force: true });
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1000);
       console.log("Clicked overlay backdrop");
     }
   } catch {}
 }
 
-function inferInactiveFromText(text) {
-  const t = String(text || "").toLowerCase();
-  return (
-    t.includes("inactive") ||
-    t.includes("not active") ||
-    t.includes("retired") ||
-    t.includes("left club") ||
-    t.includes("left circle")
-  );
-}
-
-function inferInactiveFromClassName(className) {
-  const c = String(className || "").toLowerCase();
-  return (
-    c.includes("inactive") ||
-    c.includes("disabled") ||
-    c.includes("muted") ||
-    c.includes("archived")
-  );
-}
-
-async function extractMemberStatuses(page, club) {
-  // Give the list time to render.
-  await page.waitForTimeout(2500);
-
-  // Try to switch to list/table view if available.
-  const listViewCandidates = [
-    page.getByRole("button", { name: /view_list/i }).first(),
-    page.locator("button").filter({ hasText: "view_list" }).first(),
-  ];
-
-  for (const locator of listViewCandidates) {
-    try {
-      if (await locator.count()) {
-        await locator.click({ timeout: 2000, force: true });
-        await page.waitForTimeout(1000);
-        break;
-      }
-    } catch {}
-  }
-
-  // Broad candidate selectors to find repeated member rows/cards.
-  const rowSelectors = [
-    '[data-testid*="member"]',
-    '[class*="member"]',
-    '[class*="trainer"]',
-    'tr',
-    '[role="row"]',
-    '.mat-mdc-row',
-    '.mdc-data-table__row',
-    '.ag-row',
-    '.v-data-table__tr',
-    'li',
-  ];
-
-  let extracted = [];
-
-  for (const selector of rowSelectors) {
-    try {
-      const rows = page.locator(selector);
-      const count = await rows.count();
-      if (!count) continue;
-
-      const batch = await rows.evaluateAll((els) =>
-        els.map((el) => {
-          const text = (el.innerText || el.textContent || "").trim();
-          const className = el.className || "";
-          return { text, className };
-        })
-      );
-
-      const mapped = batch
-        .map((row) => {
-          const lines = row.text
-            .split("\n")
-            .map((v) => v.trim())
-            .filter(Boolean);
-
-          if (!lines.length) return null;
-
-          // Heuristic: first short-ish line is usually the trainer name.
-          const name =
-            lines.find((line) => line.length > 0 && line.length <= 40) || lines[0];
-
-          return {
-            name,
-            isActive:
-              !(inferInactiveFromText(row.text) || inferInactiveFromClassName(row.className)),
-            rawText: row.text,
-          };
-        })
-        .filter(Boolean)
-        .filter((row) => row.name && row.name.length > 0);
-
-      // Keep the first selector that gives us a plausible member list.
-      if (mapped.length >= 10) {
-        extracted = mapped;
-        break;
-      }
-    } catch {}
-  }
-
-  if (!extracted.length) {
-    throw new Error(`Could not extract member statuses from page for ${club.id}`);
-  }
-
-  // Deduplicate by normalized name, prefer explicit inactive if seen.
-  const byName = new Map();
-
-  for (const row of extracted) {
-    const key = normalizeName(row.name);
-    if (!key) continue;
-
-    if (!byName.has(key)) {
-      byName.set(key, { name: row.name, isActive: row.isActive });
-      continue;
-    }
-
-    const existing = byName.get(key);
-    byName.set(key, {
-      name: existing.name,
-      isActive: existing.isActive && row.isActive,
-    });
-  }
-
-  return byName;
-}
-
-async function enrichClubJson(browser, club) {
-  if (!club?.id || !club?.pageUrl) {
-    throw new Error(`Missing id or pageUrl for config entry: ${JSON.stringify(club)}`);
-  }
-
-  const outPath = path.join(DATA_DIR, `${club.id}.json`);
-  const raw = await fs.readFile(outPath, "utf8");
-  const parsed = JSON.parse(raw);
-
-  if (!Array.isArray(parsed.members)) {
-    throw new Error(`Saved JSON for ${club.id} does not contain a members array`);
-  }
-
+async function downloadPlaywrightJson(browser, club) {
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -217,40 +77,111 @@ async function enrichClubJson(browser, club) {
       timeout: 60000,
     });
 
-    await page.waitForTimeout(3500);
+    await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
 
-    const statusMap = await extractMemberStatuses(page, club);
+    const exportBtn = page.locator("button").filter({
+      hasText: "downloadExportexpand_more",
+    }).first();
 
-    let matched = 0;
-    let inactiveCount = 0;
+    if (!(await exportBtn.count())) {
+      throw new Error(`Export button not found for ${club.id}`);
+    }
 
-    parsed.members = parsed.members.map((member) => {
-      const key = normalizeName(member.trainer_name || member.name);
-      const found = statusMap.get(key);
+    await exportBtn.click({ force: true });
+    await page.waitForTimeout(1500);
 
-      if (!found) {
-        return member;
-      }
+    const jsonMenuCandidates = [
+      page.getByText("JSON", { exact: true }).first(),
+      page.getByRole("menuitem", { name: /json/i }).first(),
+      page.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
+      page.locator("button").filter({ hasText: "JSON" }).first(),
+      page.locator("a").filter({ hasText: "JSON" }).first(),
+      page.locator("text=JSON").first(),
+    ];
 
-      matched += 1;
-      if (found.isActive === false) inactiveCount += 1;
+    let jsonClicked = false;
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
 
-      return {
-        ...member,
-        isActive: found.isActive,
-      };
-    });
+    for (const locator of jsonMenuCandidates) {
+      try {
+        if (await locator.count()) {
+          await locator.scrollIntoViewIfNeeded();
+          await locator.click({ timeout: 5000, force: true });
+          jsonClicked = true;
+          break;
+        }
+      } catch {}
+    }
 
-    await fs.writeFile(outPath, JSON.stringify(parsed, null, 2), "utf8");
+    if (!jsonClicked) {
+      throw new Error(`JSON option not found for ${club.id}`);
+    }
 
-    console.log(
-      `✅ ENRICHED: ${club.id} matched ${matched}/${parsed.members.length}, inactive ${inactiveCount}`
-    );
+    const download = await downloadPromise;
+    const tempPath = await download.path();
+
+    if (!tempPath) {
+      throw new Error(`Download path missing for ${club.id}`);
+    }
+
+    const text = await fs.readFile(tempPath, "utf8");
+    return JSON.parse(text);
   } finally {
     await page.close();
     await context.close();
   }
+}
+
+async function enrichClubJson(browser, club) {
+  if (!club?.id || !club?.pageUrl) {
+    throw new Error(`Missing id or pageUrl for ${club.name || "unknown club"}`);
+  }
+
+  const apiPath = path.join(DATA_DIR, `${club.id}.json`);
+  const apiRaw = await fs.readFile(apiPath, "utf8");
+  const apiJson = JSON.parse(apiRaw);
+
+  if (!Array.isArray(apiJson.members)) {
+    throw new Error(`API JSON for ${club.id} has no members array`);
+  }
+
+  const pwJson = await downloadPlaywrightJson(browser, club);
+
+  if (!Array.isArray(pwJson.members)) {
+    throw new Error(`Playwright JSON for ${club.id} has no members array`);
+  }
+
+  const isActiveByName = new Map();
+
+  for (const member of pwJson.members) {
+    const key = normalizeName(member.name);
+    if (!key) continue;
+    isActiveByName.set(key, member.isActive !== false);
+  }
+
+  let matched = 0;
+  let inactive = 0;
+
+  apiJson.members = apiJson.members.map((member) => {
+    const key = normalizeName(member.trainer_name);
+    if (!isActiveByName.has(key)) {
+      return member;
+    }
+
+    const isActive = isActiveByName.get(key);
+    matched += 1;
+    if (isActive === false) inactive += 1;
+
+    return {
+      ...member,
+      isActive,
+    };
+  });
+
+  await fs.writeFile(apiPath, JSON.stringify(apiJson, null, 2), "utf8");
+
+  console.log(`✅ ENRICHED: ${club.id} matched ${matched}/${apiJson.members.length}, inactive ${inactive}`);
 }
 
 async function main() {
