@@ -167,10 +167,10 @@ async function downloadClubJson(browser, club) {
 async function main() {
   const nyHour = getNewYorkHour();
 
-  if (process.env.GITHUB_EVENT_NAME === "schedule" && nyHour !== 12) {
-    console.log(`Skipping run (NY hour ${nyHour})`);
-    return;
-  }
+if (process.env.GITHUB_EVENT_NAME === "schedule" && ![3, 12].includes(nyHour)) {
+  console.log(`Skipping run (NY hour ${nyHour})`);
+  return;
+}
 
   const raw = await fs.readFile(CONFIG_PATH, "utf8");
   const clubs = JSON.parse(raw);
