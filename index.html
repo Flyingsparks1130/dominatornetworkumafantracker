@@ -10,7 +10,7 @@
     html, body { background: #0a0912; min-height: 100%; }
     body { overflow-y: scroll; }
     button { font-family: inherit; }
-    textarea:focus, button:focus-visible, select:focus-visible {
+    input:focus, textarea:focus, button:focus-visible, select:focus-visible {
       outline: 2px solid #7c3aed;
       outline-offset: 2px;
     }
@@ -248,6 +248,7 @@
       const dim = daysInMonth(now.getFullYear(), now.getMonth() + 1);
       const daysLeft = dim - today;
 
+      const [view, setView] = useState("home");
       const [activeIdx, setActiveIdx] = useState(0);
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
@@ -256,12 +257,22 @@
       const [copied, setCopied] = useState(false);
       const [debugLog, setDebugLog] = useState([]);
       const [showInactive, setShowInactive] = useState(false);
+      const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
+      const [memberFilters, setMemberFilters] = useState({
+        rank: "",
+        name: "",
+        fans: "",
+        dailyGain: "",
+        monthlyGain: "",
+        projected: "",
+        status: "",
+      });
 
       const club = CLUBS[activeIdx];
       const cid = club.id;
       const data = cid ? (clubData[cid] || null) : null;
       const allMembers = data?.members || [];
-      const members = showInactive ? allMembers : allMembers.filter(m => m.isActive !== false);
+      const members = showInactive ? allMembers : allMembers.filter((m) => m.isActive !== false);
       const tc = TIER_COLORS[club.tier] || TIER_COLORS["B+"];
 
       async function fetchData(idOverride = null, silent = false) {
@@ -294,7 +305,7 @@
               continue;
             }
 
-            setClubData(prev => ({
+            setClubData((prev) => ({
               ...prev,
               [targetId]: {
                 members: result.members,
@@ -322,7 +333,6 @@
         setLoading(true);
         setErr("");
         const allLogs = [];
-
         const next = {};
 
         for (const c of CLUBS) {
@@ -370,17 +380,55 @@
         }
       }, [activeIdx]);
 
-      const activeMembers = allMembers.filter(m => m.isActive !== false);
-      const inactiveMembers = allMembers.filter(m => m.isActive === false);
-      const sorted = [...members].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
+      const activeMembers = allMembers.filter((m) => m.isActive !== false);
+      const inactiveMembers = allMembers.filter((m) => m.isActive === false);
+      const sortedByMonthly = [...members].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
       const totalFans = activeMembers.reduce((s, m) => s + (m.fans || 0), 0);
       const totalDaily = activeMembers.reduce((s, m) => s + (m.dailyGain ?? 0), 0);
       const totalMonthly = activeMembers.reduce((s, m) => s + (m.monthlyGain ?? 0), 0);
       const totalProj = activeMembers.reduce((s, m) => s + (m.projected ?? 0), 0);
       const membersOnTrack = activeMembers.length
-        ? activeMembers.filter(m => (m.projected ?? 0) >= club.target).length
+        ? activeMembers.filter((m) => (m.projected ?? 0) >= club.target).length
         : 0;
       const lastFetch = data?.lastFetch || null;
+
+      const networkClubs = CLUBS.map((c) => {
+        const cdata = c.id ? clubData[c.id] : null;
+        const cMembers = cdata?.members || [];
+        const active = cMembers.filter((m) => m.isActive !== false);
+        const fans = active.reduce((sum, m) => sum + (m.fans || 0), 0);
+        const month = active.reduce((sum, m) => sum + (m.monthlyGain ?? 0), 0);
+        const projected = active.reduce((sum, m) => sum + (m.projected ?? 0), 0);
+
+        return {
+          ...c,
+          clubName: cdata?.clubName || c.name,
+          activeMembers: active.length,
+          totalFans: fans,
+          totalMonthly: month,
+          totalProjected: projected,
+          hasData: Boolean(cdata),
+        };
+      });
+
+      const networkMembers = networkClubs
+        .filter((c) => c.id && clubData[c.id])
+        .flatMap((c) => {
+          const cMembers = (clubData[c.id]?.members || []).filter((m) => m.isActive !== false);
+          return cMembers.map((m) => ({
+            ...m,
+            clubName: clubData[c.id]?.clubName || c.name,
+            clubTier: c.tier,
+            clubTarget: c.target,
+          }));
+        })
+        .sort((a, b) => (b.fans ?? 0) - (a.fans ?? 0));
+
+      const topNetworkUsers = networkMembers.slice(0, 10);
+      const loadedClubCount = networkClubs.filter((c) => c.hasData).length;
+      const networkFanTotal = networkMembers.reduce((sum, m) => sum + (m.fans || 0), 0);
+      const networkMemberCount = networkMembers.length;
+      const clubsMissingData = networkClubs.filter((c) => c.id && !c.hasData).length;
 
       function buildDiscord() {
         const bar = (p, len = 18) => {
@@ -404,7 +452,7 @@
 
         [...activeMembers]
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach(m => {
+          .forEach((m) => {
             const ok = (m.projected ?? 0) >= club.target;
             msg += `${PL(m.name.slice(0, 19), 20)}${P(fmt(m.fans), 12)}${P(dg(m.dailyGain), 10)}${P(dg(m.monthlyGain), 11)}${P(m.projected != null ? fmt(m.projected) : "—", 10)}${P(ok ? "✅" : "⚠️", 4)}\n`;
           });
@@ -415,7 +463,7 @@
 
         [...activeMembers]
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach(m => {
+          .forEach((m) => {
             const p = club.target > 0 ? Math.min(100, ((m.monthlyGain ?? 0) / club.target) * 100) : 0;
             msg += `**${m.name}** \`${bar(p)}\` ${p.toFixed(1)}% of target\n`;
           });
@@ -430,6 +478,123 @@
         setTimeout(() => setCopied(false), 2200);
       }
 
+      function openClub(index) {
+        setActiveIdx(index);
+        setErr("");
+        setTab("dashboard");
+        setView("club");
+      }
+
+      function updateMemberFilter(key, value) {
+        setMemberFilters((prev) => ({ ...prev, [key]: value }));
+      }
+
+      function clearMemberFilters() {
+        setMemberFilters({
+          rank: "",
+          name: "",
+          fans: "",
+          dailyGain: "",
+          monthlyGain: "",
+          projected: "",
+          status: "",
+        });
+        setMemberSort({ key: "monthlyGain", direction: "desc" });
+      }
+
+      function handleSort(key) {
+        setMemberSort((prev) => {
+          if (prev.key === key) {
+            return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+          }
+          const defaultDirection = key === "name" ? "asc" : "desc";
+          return { key, direction: defaultDirection };
+        });
+      }
+
+      function sortIndicator(key) {
+        if (memberSort.key !== key) return "↕";
+        return memberSort.direction === "asc" ? "↑" : "↓";
+      }
+
+      function matchesTextFilter(value, filterValue) {
+        const filter = String(filterValue || "").trim().toLowerCase();
+        if (!filter) return true;
+        return String(value ?? "").toLowerCase().includes(filter);
+      }
+
+      function matchesNumericFilter(value, filterValue) {
+        const raw = String(filterValue || "").trim().replace(/,/g, "");
+        if (!raw) return true;
+        if (value == null) return false;
+
+        const numeric = raw.match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
+        if (!numeric) {
+          const rendered = `${fmt(value)} ${fmtFull(value)}`.toLowerCase();
+          return rendered.includes(raw.toLowerCase());
+        }
+
+        const op = numeric[1] || ">=";
+        const target = Number(numeric[2]);
+
+        if (Number.isNaN(target)) return true;
+
+        switch (op) {
+          case ">": return value > target;
+          case ">=": return value >= target;
+          case "<": return value < target;
+          case "<=": return value <= target;
+          case "=": return value === target;
+          default: return value >= target;
+        }
+      }
+
+      function getMemberSortValue(member, key) {
+        if (key === "rank") return member.monthlyGain ?? Number.NEGATIVE_INFINITY;
+        if (key === "name") return (member.name || "").toLowerCase();
+        if (key === "status") return (member.projected ?? 0) >= club.target ? 1 : 0;
+        return member[key] ?? Number.NEGATIVE_INFINITY;
+      }
+
+      const memberRows = (() => {
+        const nonRankFiltered = members.filter((m) => {
+          const onTrack = (m.projected ?? 0) >= club.target;
+          return (
+            matchesTextFilter(m.name, memberFilters.name) &&
+            matchesNumericFilter(m.fans, memberFilters.fans) &&
+            matchesNumericFilter(m.dailyGain, memberFilters.dailyGain) &&
+            matchesNumericFilter(m.monthlyGain, memberFilters.monthlyGain) &&
+            matchesNumericFilter(m.projected, memberFilters.projected) &&
+            matchesTextFilter(onTrack ? "on track" : "behind", memberFilters.status)
+          );
+        });
+
+        const sorted = [...nonRankFiltered].sort((a, b) => {
+          const av = getMemberSortValue(a, memberSort.key);
+          const bv = getMemberSortValue(b, memberSort.key);
+          const dir = memberSort.direction === "asc" ? 1 : -1;
+
+          if (typeof av === "string" && typeof bv === "string") {
+            const cmp = av.localeCompare(bv);
+            return cmp === 0 ? a.name.localeCompare(b.name) : cmp * dir;
+          }
+
+          if (av === bv) {
+            return a.name.localeCompare(b.name);
+          }
+
+          return ((av > bv) ? 1 : -1) * dir;
+        });
+
+        return sorted
+          .map((m, index) => ({
+            member: m,
+            rank: index + 1,
+            onTrack: (m.projected ?? 0) >= club.target,
+          }))
+          .filter((row) => matchesTextFilter(String(row.rank), memberFilters.rank));
+      })();
+
       const S = {
         root: {
           background: "#0a0912",
@@ -437,7 +602,7 @@
           color: "#e2e0f0",
           fontFamily: "'Inter',system-ui,sans-serif",
           padding: "16px",
-          maxWidth: 1100,
+          maxWidth: 1240,
           margin: "0 auto"
         },
         card: {
@@ -466,14 +631,40 @@
           fontWeight: 600,
           transition: "all 0.15s"
         }),
+        input: {
+          width: "100%",
+          background: "#0f0d1a",
+          border: "1px solid #2a2540",
+          color: "#e2e0f0",
+          borderRadius: 8,
+          padding: "7px 9px",
+          fontSize: 11,
+        },
+        th: {
+          padding: "10px 8px",
+          borderBottom: "1px solid #1e1b35",
+          color: "#6b7280",
+          fontSize: 11,
+          whiteSpace: "nowrap"
+        },
+        td: {
+          padding: "10px 8px",
+          borderBottom: "1px solid #1e1b35",
+          fontSize: 12,
+          verticalAlign: "middle"
+        }
       };
+
+      const refreshLabel = view === "home" ? "🔄 Refresh Network" : "🔄 Refresh Club";
+      const refreshAction = view === "home" ? loadAllData : fetchData;
+      const accent = view === "home" ? "#c4b5fd" : tc.text;
 
       return (
         <div style={S.root}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:8 }}>
             <div>
               <div style={{ fontSize:18, fontWeight:800, color:"#e2e0f0", display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ color:tc.text }}>⬡</span> Dominator Network
+                <span style={{ color: accent }}>⬡</span> Dominator Network
                 <span style={{ color:"#4b5563", fontSize:13, fontWeight:400 }}>Fan Tracker</span>
               </div>
               <div style={{ color:"#4b5563", fontSize:11, marginTop:2 }}>
@@ -482,85 +673,74 @@
             </div>
 
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              <button style={S.btn(false)} onClick={() => fetchData()} disabled={loading || !cid}>
-                {loading ? "⟳ Refreshing…" : "🔄 Refresh Data"}
+              <button style={S.btn(false)} onClick={refreshAction} disabled={loading || (view === "club" && !cid)}>
+                {loading ? "⟳ Refreshing…" : refreshLabel}
               </button>
-              <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!activeMembers.length}>
-                {copied ? "✓ Copied!" : "💬 Discord"}
-              </button>
+              {view === "club" && (
+                <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!activeMembers.length}>
+                  {copied ? "✓ Copied!" : "💬 Discord"}
+                </button>
+              )}
             </div>
           </div>
 
-          <div style={{ ...S.card, padding:"12px 14px" }}>
-            <div style={S.h2}>Select Club</div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-              {CLUBS.map((c, i) => {
-                const ctc = TIER_COLORS[c.tier] || TIER_COLORS["B+"];
-                const active = i === activeIdx;
-                const hasData = c.id && clubData[c.id];
-                return (
-                  <button
-                    key={i}
-                    onClick={() => { setActiveIdx(i); setErr(""); setTab("dashboard"); }}
-                    style={{
-                      background: active ? ctc.bg : "#0f0d1a",
-                      border: `1px solid ${active ? ctc.border : "#1e1b35"}`,
-                      borderRadius: 10,
-                      padding: "7px 12px",
-                      cursor: c.id ? "pointer" : "not-allowed",
-                      opacity: c.id ? 1 : 0.45,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      transition: "all 0.15s"
-                    }}
-                  >
-                    <span style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: active ? ctc.text : "#6b7280",
-                      background: active ? ctc.bg : "#1a1730",
-                      border: `1px solid ${active ? ctc.border : "#2a2540"}`,
-                      borderRadius: 4,
-                      padding: "1px 5px"
-                    }}>
-                      {c.tier}
-                    </span>
-                    <span style={{ fontSize:12, fontWeight:600, color: active ? "#e2e0f0" : "#6b7280" }}>
-                      {c.name}
-                    </span>
-                    {hasData && <span style={{ width:5, height:5, borderRadius:"50%", background:"#34d399", flexShrink:0 }}/>}
-                    {!c.id && <span style={{ fontSize:9, color:"#4b5563" }}>soon</span>}
-                  </button>
-                );
-              })}
+          <div style={{ ...S.card, padding:"12px 14px", display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+            <div>
+              <div style={S.h2}>Navigation</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button>
+                <button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button>
+              </div>
             </div>
-          </div>
 
-          <div style={{ ...S.card, background:tc.bg, border:`1px solid ${tc.border}`, padding:"14px 18px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <TierBadge tier={club.tier}/>
-                <div>
-                  <div style={{ fontSize:20, fontWeight:800, color:"#e2e0f0" }}>{data?.clubName || club.name}</div>
-                  <div style={{ fontSize:11, color:"#9ca3af" }}>
-                    Officer: {club.officer} · ID: {club.id || "TBD"} · Max {MAX_MEMBERS} members
-                  </div>
+            {view === "club" && (
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div style={S.h2}>Select Club</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {CLUBS.map((c, i) => {
+                    const ctc = TIER_COLORS[c.tier] || TIER_COLORS["B+"];
+                    const active = i === activeIdx;
+                    const hasData = c.id && clubData[c.id];
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => openClub(i)}
+                        style={{
+                          background: active ? ctc.bg : "#0f0d1a",
+                          border: `1px solid ${active ? ctc.border : "#1e1b35"}`,
+                          borderRadius: 10,
+                          padding: "7px 12px",
+                          cursor: "pointer",
+                          opacity: c.id ? 1 : 0.65,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: active ? ctc.text : "#6b7280",
+                          background: active ? ctc.bg : "#1a1730",
+                          border: `1px solid ${active ? ctc.border : "#2a2540"}`,
+                          borderRadius: 4,
+                          padding: "1px 5px"
+                        }}>
+                          {c.tier}
+                        </span>
+                        <span style={{ fontSize:12, fontWeight:600, color: active ? "#e2e0f0" : "#6b7280" }}>
+                          {c.name}
+                        </span>
+                        {hasData && <span style={{ width:5, height:5, borderRadius:"50%", background:"#34d399", flexShrink:0 }}/>}
+                        {!c.id && <span style={{ fontSize:9, color:"#4b5563" }}>soon</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:13, fontWeight:700, color:tc.text }}>{fmt(club.target)} / member / month</div>
-                {lastFetch && <div style={{ fontSize:10, color:"#6b7280", marginTop:2 }}>Updated {new Date(lastFetch).toLocaleString()}</div>}
-              </div>
-            </div>
+            )}
           </div>
-
-          {!cid && (
-            <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
-              <div style={{ fontSize:40, marginBottom:10 }}>🔜</div>
-              <div style={{ color:"#6b7280" }}><b style={{color:"#9ca3af"}}>{club.name}</b> is a future addition.</div>
-            </div>
-          )}
 
           {err && (
             <div style={{ background:"#450a0a", border:"1px solid #7f1d1d", borderRadius:12, padding:"12px 16px", marginBottom:14, color:"#fca5a5", fontSize:12 }}>
@@ -568,200 +748,383 @@
             </div>
           )}
 
-          {cid && !allMembers.length && (
-            <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
-              <div style={{ fontSize:44, marginBottom:10 }}>🏇</div>
-              <div style={{ color:"#6b7280", marginBottom:16 }}>
-                No data for <b style={{color:"#9ca3af"}}>{club.name}</b> yet.
-              </div>
-              <div style={{ display:"flex", justifyContent:"center", gap:8 }}>
-                <button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>
-                  🔄 Refresh Data
-                </button>
-              </div>
-            </div>
-          )}
-
-          {cid && allMembers.length > 0 && (
+          {view === "home" && (
             <>
-              <div style={{ display:"flex", gap:5, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
-                {[["dashboard","📊 Overview"],["members","👥 Members"],["debug","🔧 Debug"]].map(([t,label]) => (
-                  <button key={t} style={S.btn(tab===t, tab===t ? tc.bar : undefined)} onClick={() => setTab(t)}>
-                    {label}
-                  </button>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10, marginBottom:14 }}>
+                {[
+                  { label:"Tracked Clubs", value:`${loadedClubCount}/${CLUBS.filter((c) => c.id).length}`, sub:"Loaded club data", col:"#e2e0f0" },
+                  { label:"Network Fans", value:fmt(networkFanTotal), sub:"Across loaded clubs", col:"#c4b5fd" },
+                  { label:"Active Members", value:networkMemberCount, sub:"Network-wide active roster", col:"#34d399" },
+                  { label:"Missing Data", value:clubsMissingData, sub:"Clubs without JSON", col:clubsMissingData ? "#fbbf24" : "#34d399" },
+                ].map((card) => (
+                  <div key={card.label} style={{ ...S.card, marginBottom:0, padding:"13px 15px" }}>
+                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>{card.label}</div>
+                    <div style={{ color:card.col, fontSize:22, fontWeight:800 }}>{card.value}</div>
+                    <div style={{ color:"#6b7280", fontSize:11, marginTop:3 }}>{card.sub}</div>
+                  </div>
                 ))}
-
-                {inactiveMembers.length > 0 && (
-                  <button
-                    style={{ ...S.btn(showInactive,"#374151"), marginLeft:"auto", fontSize:11 }}
-                    onClick={() => setShowInactive(v => !v)}
-                  >
-                    {showInactive ? "👁 Hiding Inactive" : `👁 Show Inactive (${inactiveMembers.length})`}
-                  </button>
-                )}
               </div>
 
-              {tab === "dashboard" && (
-                <>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-                    {[
-                      { label:"Active Members", value:`${activeMembers.length}/${MAX_MEMBERS}`, sub:"Active / Capacity", col:"#e2e0f0" },
-                      { label:"On Track", value:`${membersOnTrack}/${activeMembers.length}`, sub:"Hit projected target", col:membersOnTrack===activeMembers.length ? "#34d399" : "#fbbf24" },
-                      { label:"Club Daily +", value:fmt(totalDaily), sub:"All active members today", col:gainColor(totalDaily) },
-                      { label:"Club Monthly +", value:fmt(totalMonthly), sub:"Since 1st of month", col:gainColor(totalMonthly) },
-                      { label:"Per-Mbr Target", value:fmt(club.target), sub:`${daysLeft} days left`, col:tc.text },
-                    ].map(p => (
-                      <div key={p.label} style={{ background:"#111028", border:"1px solid #1e1b35", borderRadius:12, padding:"11px 14px", flex:1, minWidth:110 }}>
-                        <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>{p.label}</div>
-                        <div style={{ color:p.col, fontSize:18, fontWeight:700 }}>{p.value}</div>
-                        <div style={{ color:"#4b5563", fontSize:10, marginTop:2 }}>{p.sub}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={S.card}>
-                    <div style={S.h2}>Member Progress — Sorted by Monthly Gain</div>
-                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                      {sorted.filter(m => m.isActive !== false).map((m, i) => {
-                        const monthPct = club.target > 0 ? Math.min(100, ((m.monthlyGain ?? 0) / club.target) * 100) : 0;
-                        const onTrack = (m.projected ?? 0) >= club.target;
-                        const stillNeed = Math.max(0, club.target - (m.monthlyGain ?? 0));
-
-                        return (
-                          <div key={m.name + i} style={{ background:"#0f0d1a", border:`1px solid ${onTrack ? "#34d39933" : "#1e1b35"}`, borderRadius:10, padding:"12px 14px" }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:7, flexWrap:"wrap", gap:4 }}>
-                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                <span style={{ color:"#4b5563", fontSize:11, fontWeight:700, minWidth:20 }}>#{i+1}</span>
-                                <span style={{ fontWeight:700, color:"#e2e0f0", fontSize:13 }}>{m.name}</span>
-                                <span style={{
-                                  background: onTrack ? "#34d39922" : "#fbbf2422",
-                                  color: onTrack ? "#34d399" : "#fbbf24",
-                                  border: `1px solid ${onTrack ? "#34d39966" : "#fbbf2466"}`,
-                                  borderRadius: 4,
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  padding: "1px 6px"
-                                }}>
-                                  {onTrack ? "✅ ON TRACK" : "⚠️ BEHIND"}
-                                </span>
-                              </div>
-
-                              <div style={{ display:"flex", gap:14, fontSize:11, flexWrap:"wrap" }}>
-                                <span style={{color:"#6b7280"}}>Today: <b style={{color:gainColor(m.dailyGain)}}>{m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}</b></span>
-                                <span style={{color:"#6b7280"}}>Month: <b style={{color:gainColor(m.monthlyGain)}}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</b></span>
-                                <span style={{color:"#6b7280"}}>Projected: <b style={{color:"#c4b5fd"}}>{m.projected != null ? fmt(m.projected) : "—"}</b></span>
-                              </div>
-                            </div>
-
-                            <div style={{ marginBottom:8 }}>
-                              <ProgressBar pct={monthPct} color={onTrack ? "#34d399" : tc.bar} height={9}/>
-                            </div>
-
-                            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, alignItems:"center" }}>
-                              <div>
-                                <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Fans</div>
-                                <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmtFull(m.fans)}</div>
-                              </div>
-                              <div>
-                                <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Target Progress</div>
-                                <div style={{ color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700, fontSize:14 }}>{monthPct.toFixed(1)}%</div>
-                              </div>
-                              <div>
-                                <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Still Needed</div>
-                                <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmt(stillNeed)}</div>
-                              </div>
-                              <div style={{ justifySelf:"end" }}>
-                                <Sparkline data={m.dailyFans || []}/>
-                              </div>
+              <div style={S.card}>
+                <div style={S.h2}>Club Directory</div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(250px, 1fr))", gap:10 }}>
+                  {networkClubs.map((entry, index) => {
+                    const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+                    return (
+                      <div key={entry.name} style={{ background:"#0f0d1a", border:`1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius:12, padding:"14px 14px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+                            <TierBadge tier={entry.tier} />
+                            <div>
+                              <div style={{ fontWeight:800, color:"#e2e0f0", fontSize:15 }}>{entry.clubName}</div>
+                              <div style={{ color:"#6b7280", fontSize:11 }}>Officer: {entry.officer}</div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
+                          <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>
+                            Open
+                          </button>
+                        </div>
 
-              {tab === "members" && (
-                <div style={S.card}>
-                  <div style={S.h2}>Members</div>
-                  <div style={{ overflowX:"auto" }}>
-                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                      <thead>
-                        <tr style={{ textAlign:"left", color:"#6b7280", fontSize:11 }}>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>#</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Name</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Fans</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Today</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Month</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Projected</th>
-                          <th style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>Status</th>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:10 }}>
+                          <div>
+                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Fan Quota</div>
+                            <div style={{ color:ctc.text, fontWeight:800 }}>{fmt(entry.target)}/member</div>
+                          </div>
+                          <div>
+                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Active Members</div>
+                            <div style={{ color:"#e2e0f0", fontWeight:800 }}>{entry.activeMembers}/{MAX_MEMBERS}</div>
+                          </div>
+                          <div>
+                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Total Fans</div>
+                            <div style={{ color:"#e2e0f0", fontWeight:700 }}>{entry.hasData ? fmt(entry.totalFans) : "—"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Status</div>
+                            <div style={{ color: entry.id ? (entry.hasData ? "#34d399" : "#fbbf24") : "#6b7280", fontWeight:700 }}>
+                              {!entry.id ? "Coming Soon" : entry.hasData ? "Loaded" : "Waiting for JSON"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={S.card}>
+                <div style={S.h2}>Top 10 Network-Wide Users by Fans</div>
+                <div style={{ color:"#6b7280", fontSize:12, marginBottom:12 }}>Members are denoted by club and tier across every loaded club file.</div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign:"left" }}>
+                        <th style={S.th}>#</th>
+                        <th style={S.th}>Member</th>
+                        <th style={S.th}>Club</th>
+                        <th style={S.th}>Fans</th>
+                        <th style={S.th}>Month</th>
+                        <th style={S.th}>Projected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topNetworkUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ ...S.td, color:"#6b7280", textAlign:"center", padding:"22px 8px" }}>
+                            No club data loaded yet.
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {sorted.map((m, i) => {
-                          const onTrack = (m.projected ?? 0) >= club.target;
+                      ) : (
+                        topNetworkUsers.map((m, i) => {
+                          const ctc = TIER_COLORS[m.clubTier] || TIER_COLORS["B+"];
                           return (
-                            <tr key={m.name + i}>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:"#6b7280" }}>{i + 1}</td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:"#e2e0f0", fontWeight:700 }}>{m.name}</td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35" }}>{fmtFull(m.fans)}</td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:gainColor(m.dailyGain) }}>
-                                {m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}
+                            <tr key={`${m.clubName}-${m.name}-${i}`}>
+                              <td style={{ ...S.td, color:"#6b7280" }}>{i + 1}</td>
+                              <td style={{ ...S.td, color:"#e2e0f0", fontWeight:800 }}>{m.name}</td>
+                              <td style={{ ...S.td }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                  <span style={{
+                                    background: ctc.bg,
+                                    border: `1px solid ${ctc.border}`,
+                                    color: ctc.text,
+                                    borderRadius: 4,
+                                    padding: "1px 6px",
+                                    fontSize: 10,
+                                    fontWeight: 800
+                                  }}>{m.clubTier}</span>
+                                  <span>{m.clubName}</span>
+                                </div>
                               </td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:gainColor(m.monthlyGain) }}>
-                                {m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}
-                              </td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:"#c4b5fd" }}>
-                                {m.projected != null ? fmt(m.projected) : "—"}
-                              </td>
-                              <td style={{ padding:"10px 8px", borderBottom:"1px solid #1e1b35", color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700 }}>
-                                {onTrack ? "On Track" : "Behind"}
-                              </td>
+                              <td style={{ ...S.td, color:"#e2e0f0", fontWeight:700 }}>{fmtFull(m.fans)}</td>
+                              <td style={{ ...S.td, color:gainColor(m.monthlyGain) }}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</td>
+                              <td style={{ ...S.td, color:"#c4b5fd" }}>{m.projected != null ? fmt(m.projected) : "—"}</td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {view === "club" && (
+            <>
+              <div style={{ ...S.card, background:tc.bg, border:`1px solid ${tc.border}`, padding:"14px 18px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <TierBadge tier={club.tier}/>
+                    <div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#e2e0f0" }}>{data?.clubName || club.name}</div>
+                      <div style={{ fontSize:11, color:"#9ca3af" }}>
+                        Officer: {club.officer} · ID: {club.id || "TBD"} · Max {MAX_MEMBERS} members
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:tc.text }}>{fmt(club.target)} / member / month</div>
+                    {lastFetch && <div style={{ fontSize:10, color:"#6b7280", marginTop:2 }}>Updated {new Date(lastFetch).toLocaleString()}</div>}
+                  </div>
+                </div>
+              </div>
+
+              {!cid && (
+                <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
+                  <div style={{ fontSize:40, marginBottom:10 }}>🔜</div>
+                  <div style={{ color:"#6b7280" }}><b style={{color:"#9ca3af"}}>{club.name}</b> is a future addition.</div>
+                </div>
+              )}
+
+              {cid && !allMembers.length && (
+                <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
+                  <div style={{ fontSize:44, marginBottom:10 }}>🏇</div>
+                  <div style={{ color:"#6b7280", marginBottom:16 }}>
+                    No data for <b style={{color:"#9ca3af"}}>{club.name}</b> yet.
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"center", gap:8 }}>
+                    <button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>
+                      🔄 Refresh Data
+                    </button>
                   </div>
                 </div>
               )}
 
-              {tab === "debug" && (
-                <div style={S.card}>
-                  <div style={S.h2}>Debug</div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
-                    <button style={S.btn(false)} onClick={() => fetchData()}>Reload current club</button>
-                    <button style={S.btn(false)} onClick={() => loadAllData()}>Reload all clubs</button>
-                    <button style={S.btn(false)} onClick={() => setDebugLog([])}>Clear log</button>
+              {cid && allMembers.length > 0 && (
+                <>
+                  <div style={{ display:"flex", gap:5, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+                    {[["dashboard","📊 Overview"],["members","👥 Members"],["debug","🔧 Debug"]].map(([t,label]) => (
+                      <button key={t} style={S.btn(tab===t, tab===t ? tc.bar : undefined)} onClick={() => setTab(t)}>
+                        {label}
+                      </button>
+                    ))}
+
+                    {inactiveMembers.length > 0 && (
+                      <button
+                        style={{ ...S.btn(showInactive,"#374151"), marginLeft:"auto", fontSize:11 }}
+                        onClick={() => setShowInactive((v) => !v)}
+                      >
+                        {showInactive ? "👁 Hiding Inactive" : `👁 Show Inactive (${inactiveMembers.length})`}
+                      </button>
+                    )}
                   </div>
 
-                  <div style={{ color:"#9ca3af", fontSize:12, marginBottom:12, lineHeight:1.7 }}>
-                    This page reads JSON from your deployed repo files.
-                    Expected path for this club: <b style={{ color:"#e2e0f0" }}>data/{cid}.json</b>
-                  </div>
+                  {tab === "dashboard" && (
+                    <>
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+                        {[
+                          { label:"Active Members", value:`${activeMembers.length}/${MAX_MEMBERS}`, sub:"Active / Capacity", col:"#e2e0f0" },
+                          { label:"On Track", value:`${membersOnTrack}/${activeMembers.length}`, sub:"Hit projected target", col:membersOnTrack===activeMembers.length ? "#34d399" : "#fbbf24" },
+                          { label:"Club Daily +", value:fmt(totalDaily), sub:"All active members today", col:gainColor(totalDaily) },
+                          { label:"Club Monthly +", value:fmt(totalMonthly), sub:"Since 1st of month", col:gainColor(totalMonthly) },
+                          { label:"Per-Mbr Target", value:fmt(club.target), sub:`${daysLeft} days left`, col:tc.text },
+                        ].map((p) => (
+                          <div key={p.label} style={{ background:"#111028", border:"1px solid #1e1b35", borderRadius:12, padding:"11px 14px", flex:1, minWidth:110 }}>
+                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>{p.label}</div>
+                            <div style={{ color:p.col, fontSize:18, fontWeight:700 }}>{p.value}</div>
+                            <div style={{ color:"#4b5563", fontSize:10, marginTop:2 }}>{p.sub}</div>
+                          </div>
+                        ))}
+                      </div>
 
-                  <pre style={{
-                    whiteSpace:"pre-wrap",
-                    wordBreak:"break-word",
-                    background:"#0a0912",
-                    border:"1px solid #1e1b35",
-                    borderRadius:10,
-                    padding:12,
-                    color:"#c4b5fd",
-                    fontSize:12,
-                    lineHeight:1.55
-                  }}>
+                      <div style={S.card}>
+                        <div style={S.h2}>Member Progress — Sorted by Monthly Gain</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {sortedByMonthly.filter((m) => m.isActive !== false).map((m, i) => {
+                            const monthPct = club.target > 0 ? Math.min(100, ((m.monthlyGain ?? 0) / club.target) * 100) : 0;
+                            const onTrack = (m.projected ?? 0) >= club.target;
+                            const stillNeed = Math.max(0, club.target - (m.monthlyGain ?? 0));
+
+                            return (
+                              <div key={m.name + i} style={{ background:"#0f0d1a", border:`1px solid ${onTrack ? "#34d39933" : "#1e1b35"}`, borderRadius:10, padding:"12px 14px" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:7, flexWrap:"wrap", gap:4 }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <span style={{ color:"#4b5563", fontSize:11, fontWeight:700, minWidth:20 }}>#{i+1}</span>
+                                    <span style={{ fontWeight:700, color:"#e2e0f0", fontSize:13 }}>{m.name}</span>
+                                    <span style={{
+                                      background: onTrack ? "#34d39922" : "#fbbf2422",
+                                      color: onTrack ? "#34d399" : "#fbbf24",
+                                      border: `1px solid ${onTrack ? "#34d39966" : "#fbbf2466"}`,
+                                      borderRadius: 4,
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      padding: "1px 6px"
+                                    }}>
+                                      {onTrack ? "✅ ON TRACK" : "⚠️ BEHIND"}
+                                    </span>
+                                  </div>
+
+                                  <div style={{ display:"flex", gap:14, fontSize:11, flexWrap:"wrap" }}>
+                                    <span style={{color:"#6b7280"}}>Today: <b style={{color:gainColor(m.dailyGain)}}>{m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}</b></span>
+                                    <span style={{color:"#6b7280"}}>Month: <b style={{color:gainColor(m.monthlyGain)}}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</b></span>
+                                    <span style={{color:"#6b7280"}}>Projected: <b style={{color:"#c4b5fd"}}>{m.projected != null ? fmt(m.projected) : "—"}</b></span>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginBottom:8 }}>
+                                  <ProgressBar pct={monthPct} color={onTrack ? "#34d399" : tc.bar} height={9}/>
+                                </div>
+
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, alignItems:"center" }}>
+                                  <div>
+                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Fans</div>
+                                    <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmtFull(m.fans)}</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Target Progress</div>
+                                    <div style={{ color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700, fontSize:14 }}>{monthPct.toFixed(1)}%</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Still Needed</div>
+                                    <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmt(stillNeed)}</div>
+                                  </div>
+                                  <div style={{ justifySelf:"end" }}>
+                                    <Sparkline data={m.dailyFans || []}/>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {tab === "members" && (
+                    <div style={S.card}>
+                      <div style={{ display:"flex", justifyContent:"space-between", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:10 }}>
+                        <div>
+                          <div style={S.h2}>Members</div>
+                          <div style={{ color:"#6b7280", fontSize:12 }}>
+                            Click any header to sort. Filters support text and numeric rules like &gt;1000000, &lt;500000, or 1000000 for minimum values.
+                          </div>
+                        </div>
+                        <button style={S.btn(false)} onClick={clearMemberFilters}>Clear filters</button>
+                      </div>
+
+                      <div style={{ overflowX:"auto" }}>
+                        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                          <thead>
+                            <tr style={{ textAlign:"left" }}>
+                              {[
+                                { key: "rank", label: "#" },
+                                { key: "name", label: "Name" },
+                                { key: "fans", label: "Fans" },
+                                { key: "dailyGain", label: "Today" },
+                                { key: "monthlyGain", label: "Month" },
+                                { key: "projected", label: "Projected" },
+                                { key: "status", label: "Status" },
+                              ].map((col) => (
+                                <th key={col.key} style={S.th}>
+                                  <button
+                                    style={{ background:"transparent", border:"none", color:"inherit", font: "inherit", cursor:"pointer", padding:0, display:"inline-flex", gap:6, alignItems:"center" }}
+                                    onClick={() => handleSort(col.key)}
+                                  >
+                                    <span>{col.label}</span>
+                                    <span style={{ color: memberSort.key === col.key ? tc.text : "#4b5563" }}>{sortIndicator(col.key)}</span>
+                                  </button>
+                                </th>
+                              ))}
+                            </tr>
+                            <tr>
+                              <th style={S.th}><input style={S.input} value={memberFilters.rank} onChange={(e) => updateMemberFilter("rank", e.target.value)} placeholder="#" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.name} onChange={(e) => updateMemberFilter("name", e.target.value)} placeholder="Filter name" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.fans} onChange={(e) => updateMemberFilter("fans", e.target.value)} placeholder=">= fans" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.dailyGain} onChange={(e) => updateMemberFilter("dailyGain", e.target.value)} placeholder=">= today" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.monthlyGain} onChange={(e) => updateMemberFilter("monthlyGain", e.target.value)} placeholder=">= month" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.projected} onChange={(e) => updateMemberFilter("projected", e.target.value)} placeholder=">= projected" /></th>
+                              <th style={S.th}><input style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)} placeholder="on / behind" /></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {memberRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} style={{ ...S.td, color:"#6b7280", textAlign:"center", padding:"22px 8px" }}>
+                                  No members match the current filters.
+                                </td>
+                              </tr>
+                            ) : (
+                              memberRows.map(({ member: m, rank, onTrack }) => (
+                                <tr key={`${m.name}-${rank}`}>
+                                  <td style={{ ...S.td, color:"#6b7280" }}>{rank}</td>
+                                  <td style={{ ...S.td, color:"#e2e0f0", fontWeight:700 }}>{m.name}</td>
+                                  <td style={S.td}>{fmtFull(m.fans)}</td>
+                                  <td style={{ ...S.td, color:gainColor(m.dailyGain) }}>
+                                    {m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}
+                                  </td>
+                                  <td style={{ ...S.td, color:gainColor(m.monthlyGain) }}>
+                                    {m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}
+                                  </td>
+                                  <td style={{ ...S.td, color:"#c4b5fd" }}>
+                                    {m.projected != null ? fmt(m.projected) : "—"}
+                                  </td>
+                                  <td style={{ ...S.td, color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700 }}>
+                                    {onTrack ? "On Track" : "Behind"}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {tab === "debug" && (
+                    <div style={S.card}>
+                      <div style={S.h2}>Debug</div>
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+                        <button style={S.btn(false)} onClick={() => fetchData()}>Reload current club</button>
+                        <button style={S.btn(false)} onClick={() => loadAllData()}>Reload all clubs</button>
+                        <button style={S.btn(false)} onClick={() => setDebugLog([])}>Clear log</button>
+                      </div>
+
+                      <div style={{ color:"#9ca3af", fontSize:12, marginBottom:12, lineHeight:1.7 }}>
+                        This page reads JSON from your deployed repo files.
+                        Expected path for this club: <b style={{ color:"#e2e0f0" }}>data/{cid}.json</b>
+                      </div>
+
+                      <pre style={{
+                        whiteSpace:"pre-wrap",
+                        wordBreak:"break-word",
+                        background:"#0a0912",
+                        border:"1px solid #1e1b35",
+                        borderRadius:10,
+                        padding:12,
+                        color:"#c4b5fd",
+                        fontSize:12,
+                        lineHeight:1.55
+                      }}>
 {debugLog.length ? debugLog.join("\n") : "No debug entries yet."}
-                  </pre>
-                </div>
+                      </pre>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
         </div>
       );
     }
-
     if (window.__ALLOW_APP__) {
       ReactDOM.createRoot(document.getElementById("root")).render(<CircleTracker />);
     }
