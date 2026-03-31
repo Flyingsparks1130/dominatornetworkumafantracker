@@ -5,17 +5,6 @@ import { chromium } from "playwright";
 const CONFIG_PATH = path.join(process.cwd(), "scripts", "clubs.config.json");
 const DATA_DIR = path.join(process.cwd(), "data");
 
-function getNewYorkHour() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const hourPart = parts.find((p) => p.type === "hour");
-  return Number(hourPart?.value ?? "0");
-}
-
 async function ensureJson(text, clubId) {
   try {
     JSON.parse(text);
@@ -47,7 +36,6 @@ async function addCookiesIfPresent(page) {
 }
 
 async function dismissBlockingUi(page) {
-  // Try obvious dismiss buttons first
   const dismissCandidates = [
     page.getByText("Dismiss", { exact: true }).first(),
     page.getByRole("button", { name: /dismiss/i }).first(),
@@ -67,7 +55,6 @@ async function dismissBlockingUi(page) {
     } catch {}
   }
 
-  // Then try clicking the Angular backdrop itself if present
   const backdrop = page.locator(".cdk-overlay-backdrop").first();
   try {
     if (await backdrop.count()) {
@@ -101,7 +88,6 @@ async function downloadClubJson(browser, club) {
     await dismissBlockingUi(page);
     await logButtons(page, club.id);
 
-    // ===== CLICK EXPORT =====
     const exportBtn = page.locator("button").filter({
       hasText: "downloadExportexpand_more",
     }).first();
@@ -115,7 +101,6 @@ async function downloadClubJson(browser, club) {
 
     await page.waitForTimeout(1500);
 
-    // ===== CLICK JSON =====
     const jsonMenuCandidates = [
       page.getByText("JSON", { exact: true }).first(),
       page.getByRole("menuitem", { name: /json/i }).first(),
@@ -144,7 +129,6 @@ async function downloadClubJson(browser, club) {
       throw new Error("JSON option not found after opening Export menu");
     }
 
-    // ===== HANDLE DOWNLOAD =====
     const download = await downloadPromise;
     const tempPath = await download.path();
 
@@ -165,13 +149,6 @@ async function downloadClubJson(browser, club) {
 }
 
 async function main() {
-  const nyHour = getNewYorkHour();
-
-if (process.env.GITHUB_EVENT_NAME === "schedule" && ![3, 12].includes(nyHour)) {
-  console.log(`Skipping run (NY hour ${nyHour})`);
-  return;
-}
-
   const raw = await fs.readFile(CONFIG_PATH, "utf8");
   const clubs = JSON.parse(raw);
 
