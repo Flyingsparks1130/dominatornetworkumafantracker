@@ -146,6 +146,13 @@
       return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last update ${parsed.toLocaleString()}` };
     }
 
+    function getPodiumStyle(index) {
+      if (index === 0) return { color: "#fbbf24", textShadow: "0 0 10px rgba(251,191,36,0.15)" };
+      if (index === 1) return { color: "#d1d5db", textShadow: "0 0 10px rgba(209,213,219,0.12)" };
+      if (index === 2) return { color: "#d97706", textShadow: "0 0 10px rgba(217,119,6,0.12)" };
+      return { color: "#e2e0f0", textShadow: "none" };
+    }
+
     function getLineColor(index) {
       const hue = (index * 47) % 360;
       return `hsl(${hue}, 72%, 62%)`;
@@ -709,6 +716,7 @@
       const [err, setErr] = useState("");
       const [tab, setTab] = useState("dashboard");
       const [copied, setCopied] = useState(false);
+      const [reminderCopied, setReminderCopied] = useState(false);
       const [debugLog, setDebugLog] = useState([]);
       const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
       const [memberFilters, setMemberFilters] = useState({ name: "", status: "" });
@@ -941,7 +949,15 @@
           return (a.name || "").localeCompare(b.name || "");
         });
 
-      const topNetworkUsers = networkMembers.slice(0, 10);
+      const topNetworkUsers = [...networkMembers]
+        .sort((a, b) => {
+          const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY);
+          if (dayDiff !== 0) return dayDiff;
+          const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
+          if (monthDiff !== 0) return monthDiff;
+          return (a.name || "").localeCompare(b.name || "");
+        })
+        .slice(0, 10);
       const loadedClubCount = networkClubs.filter((entry) => entry.hasData).length;
       const networkMonthlyTotal = networkMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
       const networkFanTotal = networkMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
@@ -1037,6 +1053,53 @@
 
         setCopied(copiedWithImage ? "image" : "text");
         setTimeout(() => setCopied(false), 2200);
+      }
+
+      function buildReminderDiscord() {
+        const ds = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const underPlanMembers = [...decoratedMembers]
+          .filter((member) => member.plan.statusKey !== "on-track")
+          .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0));
+
+        const lines = [
+          `🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`,
+          `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`,
+          "",
+        ];
+
+        if (!underPlanMembers.length) {
+          lines.push("✅ Everyone is currently on track.");
+          return lines.join("\n");
+        }
+
+        underPlanMembers.forEach((member) => {
+          const meta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
+          lines.push(`${meta.icon} **${member.name}** — ${deltaText(member.plan.delta)} vs plan · ${fmt(member.fansNeededForPlan)} still needed this month`);
+        });
+
+        const footer = `\n> 🤖 *Dominator Network Tracker · ${club.officer}*`;
+        let message = lines.join("\n") + footer;
+
+        if (message.length > 3900) {
+          const trimmed = [];
+          for (const line of lines) {
+            const candidate = [...trimmed, line].join("\n") + footer;
+            if (candidate.length > 3900) break;
+            trimmed.push(line);
+          }
+          const omitted = Math.max(0, underPlanMembers.length - Math.max(0, trimmed.length - 3));
+          if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`);
+          message = trimmed.join("\n") + footer;
+        }
+
+        return message;
+      }
+
+      async function copyReminderDiscord() {
+        const message = buildReminderDiscord();
+        await navigator.clipboard.writeText(message);
+        setReminderCopied(true);
+        setTimeout(() => setReminderCopied(false), 2200);
       }
 
       async function exportPaceGraph() {
@@ -1240,9 +1303,14 @@
                 {loading ? "⟳ Refreshing…" : refreshLabel}
               </button>
               {view === "club" && (
-                <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!decoratedMembers.length}>
-                  {copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}
-                </button>
+                <>
+                  <button style={S.btn(false, reminderCopied ? "#059669" : "#f59e0b")} onClick={copyReminderDiscord} disabled={!decoratedMembers.length}>
+                    {reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}
+                  </button>
+                  <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!decoratedMembers.length}>
+                    {copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1318,6 +1386,10 @@
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
+                  { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
+                  { label: "Network Monthly +", value: fmt(networkMonthlyTotal), sub: "Across loaded clubs", col: "#c4b5fd" },
+                  { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
+                  { label: "Active Members", value: networkMemberCount, sub: `${clubsMissingData} clubs missing JSON`, col: clubsMissingData ? "#fbbf24" : "#34d399" },
                   { label: `${STATUS_META["on-track"].icon} On Track`, value: networkStatusCounts["on-track"], sub: "Members at or above plan", col: STATUS_META["on-track"].color },
                   { label: `${STATUS_META["behind"].icon} Behind`, value: networkStatusCounts["behind"], sub: "Members below plan", col: STATUS_META["behind"].color },
                   { label: `${STATUS_META["critical"].icon} Critical`, value: networkStatusCounts["critical"], sub: "Members under 25% of plan", col: STATUS_META["critical"].color },
@@ -1378,9 +1450,9 @@
               </div>
 
               <div style={S.card}>
-                <div style={S.h2}>Top 10 Network-Wide Users by Monthly Fans</div>
+                <div style={S.h2}>Top 10 Network-Wide Users by Daily Change</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>
-                  Members are ranked by monthly fans and denoted by club and tier across every loaded club file.
+                  Members are ranked by daily gain to spotlight the hottest performers right now, with club, monthly fans, and total fans shown for context.
                 </div>
 
                 <div style={{ overflowX: "auto" }}>
@@ -1399,7 +1471,7 @@
                       {topNetworkUsers.length === 0 ? (
                         <tr>
                           <td colSpan={6} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
-                            Load club JSON files to populate the network leaderboard.
+                            Load club JSON files to populate the daily leaderboard.
                           </td>
                         </tr>
                       ) : (
@@ -1454,14 +1526,17 @@
                               <div>Day</div>
                               <div>Month</div>
                             </div>
-                            {entry.topFiveMembers.map((member, index) => (
+                            {entry.topFiveMembers.map((member, index) => {
+                              const podiumStyle = getPodiumStyle(index);
+                              return (
                               <div key={`${entry.clubName}-${member.name}-${index}`} style={{ display: "grid", gridTemplateColumns: "28px minmax(0, 1fr) auto auto", gap: 8, alignItems: "center" }}>
-                                <div style={{ color: "#6b7280", fontSize: 11, fontWeight: 700 }}>#{index + 1}</div>
-                                <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
+                                <div style={{ color: podiumStyle.color, textShadow: podiumStyle.textShadow, fontSize: 11, fontWeight: 800 }}>#{index + 1}</div>
+                                <div style={{ color: podiumStyle.color, textShadow: podiumStyle.textShadow, fontWeight: 800, fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
                                 <div style={{ color: gainColor(member.dailyGain), fontWeight: 700, fontSize: 11 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</div>
                                 <div style={{ color: gainColor(member.monthlyGain), fontWeight: 700, fontSize: 11 }}>{fmtSigned(member.monthlyGain ?? 0)}</div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
