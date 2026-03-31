@@ -62,6 +62,7 @@
 <body>
   <div id="root"></div>
 
+  
   <script type="text/babel">
     const { useState, useEffect } = React;
 
@@ -86,16 +87,27 @@
       "B+": { bg: "#60a5fa22", border: "#60a5fa", text: "#60a5fa", bar: "#2563eb" },
     };
 
+    const STATUS_META = {
+      "on-track": { label: "On Track", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
+      "behind":   { label: "Behind",   color: "#fbbf24", bg: "#fbbf2422", border: "#fbbf2466" },
+      "critical": { label: "Critical", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
+    };
+
     const fmt = (n) => {
       if (n == null) return "—";
-      const abs = Math.abs(n), sign = n < 0 ? "-" : "";
+      const abs = Math.abs(n);
+      const sign = n < 0 ? "-" : "";
       if (abs >= 1_000_000_000) return sign + (abs / 1_000_000_000).toFixed(2) + "B";
-      if (abs >= 1_000_000)     return sign + (abs / 1_000_000).toFixed(2) + "M";
-      if (abs >= 1_000)         return sign + (abs / 1_000).toFixed(1) + "K";
-      return Number(n).toLocaleString();
+      if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(2) + "M";
+      if (abs >= 1_000) return sign + (abs / 1_000).toFixed(1) + "K";
+      return sign + Number(abs).toLocaleString();
     };
 
     const fmtFull = (n) => (n == null ? "—" : Number(n).toLocaleString());
+    const fmtSigned = (n) => {
+      if (n == null) return "—";
+      return `${n >= 0 ? "+" : ""}${fmt(n)}`;
+    };
     const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
 
@@ -138,7 +150,8 @@
 
         const df = Array.isArray(m.daily_fans) ? m.daily_fans : [];
         const todayIdx = Math.min(today - 1, df.length - 1);
-        let currentFans = 0, latestIdx = -1;
+        let currentFans = 0;
+        let latestIdx = -1;
 
         for (let i = todayIdx; i >= 0; i--) {
           if (df[i] > 0) {
@@ -158,9 +171,9 @@
           }
         }
 
-        const firstNZ = df.find(v => v > 0);
+        const firstNZ = df.find((v) => v > 0);
         const monthlyGain = firstNZ != null && currentFans > 0 ? currentFans - firstNZ : null;
-        const daysWithData = df.slice(0, todayIdx + 1).filter(v => v > 0).length;
+        const daysWithData = df.slice(0, todayIdx + 1).filter((v) => v > 0).length;
         let projected = null;
 
         if (monthlyGain !== null && daysWithData > 0) {
@@ -175,7 +188,7 @@
           dailyGain,
           monthlyGain,
           projected,
-          isActive: true,
+          isActive: m.isActive !== false,
           dailyFans: df,
         };
       });
@@ -183,6 +196,112 @@
       const clubName = json?.circle?.name || json?.name || "Unknown";
       const lastFetch = json?.circle?.last_updated || json?.circle?.yesterday_updated || null;
       return { members, clubName, lastFetch };
+    }
+
+    function buildCumulativeSeries(dailyFans, dim) {
+      const df = Array.isArray(dailyFans) ? dailyFans : [];
+      const series = [];
+      let baseline = null;
+      let lastSeen = 0;
+
+      for (let i = 0; i < dim; i++) {
+        const raw = Number(df[i] ?? 0);
+
+        if (baseline == null) {
+          if (raw > 0) {
+            baseline = raw;
+            lastSeen = raw;
+            series.push(0);
+          } else {
+            series.push(0);
+          }
+          continue;
+        }
+
+        if (raw > 0) {
+          lastSeen = raw;
+        }
+
+        series.push(Math.max(0, lastSeen - baseline));
+      }
+
+      return series;
+    }
+
+    function getMonthWeeks(year, monthIndex) {
+      const dim = daysInMonth(year, monthIndex + 1);
+      const weeks = [];
+      let day = 1;
+
+      while (day <= dim) {
+        const date = new Date(year, monthIndex, day);
+        const weekday = (date.getDay() + 6) % 7;
+        const endDay = Math.min(dim, day + (6 - weekday));
+        weeks.push({
+          index: weeks.length,
+          number: weeks.length + 1,
+          startDay: day,
+          endDay,
+          dayCount: endDay - day + 1,
+        });
+        day = endDay + 1;
+      }
+
+      return weeks;
+    }
+
+    function findWeekForDay(weeks, day) {
+      return weeks.find((week) => day >= week.startDay && day <= week.endDay) || weeks[weeks.length - 1];
+    }
+
+    function getDateLabel(year, monthIndex, day) {
+      return new Date(year, monthIndex, day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+
+    function getWeekLabel(week, year, monthIndex) {
+      if (!week) return "—";
+      return `${getDateLabel(year, monthIndex, week.startDay)} – ${getDateLabel(year, monthIndex, week.endDay)}`;
+    }
+
+    function getPlanMetrics(monthlyGain, monthlyTarget, today, dim, weeks) {
+      const safeGain = monthlyGain ?? 0;
+      const dailyTarget = monthlyTarget > 0 ? monthlyTarget / dim : 0;
+      const expectedToDate = Math.round(dailyTarget * today);
+      const delta = safeGain - expectedToDate;
+      const ratio = expectedToDate > 0 ? safeGain / expectedToDate : 1;
+
+      let statusKey = "on-track";
+      if (expectedToDate > 0 && ratio < 0.25) {
+        statusKey = "critical";
+      } else if (expectedToDate > 0 && ratio < 1) {
+        statusKey = "behind";
+      }
+
+      const currentWeek = findWeekForDay(weeks, today);
+      const currentWeekTarget = currentWeek ? Math.round(dailyTarget * currentWeek.dayCount) : 0;
+      const currentWeekElapsedDays = currentWeek ? Math.max(0, today - currentWeek.startDay + 1) : 0;
+      const currentWeekExpectedToDate = Math.round(dailyTarget * currentWeekElapsedDays);
+      const currentWeekCheckpointTarget = currentWeek ? Math.round(dailyTarget * currentWeek.endDay) : expectedToDate;
+
+      return {
+        dailyTarget,
+        expectedToDate,
+        delta,
+        ratio,
+        statusKey,
+        status: STATUS_META[statusKey].label,
+        currentWeek,
+        currentWeekTarget,
+        currentWeekElapsedDays,
+        currentWeekExpectedToDate,
+        currentWeekCheckpointTarget,
+      };
+    }
+
+    function deltaText(delta) {
+      if (delta == null) return "—";
+      if (delta === 0) return "On weekly plan";
+      return `${fmtSigned(delta)} ${delta >= 0 ? "above" : "below"} weekly plan`;
     }
 
     function ProgressBar({ pct, color = "#7c3aed", height = 8 }) {
@@ -194,7 +313,7 @@
               height: "100%",
               background: color,
               borderRadius: 99,
-              transition: "width 0.5s ease"
+              transition: "width 0.5s ease",
             }}
           />
         </div>
@@ -204,22 +323,44 @@
     function TierBadge({ tier }) {
       const c = TIER_COLORS[tier] || TIER_COLORS["B+"];
       return (
-        <span style={{
-          background: c.bg,
-          border: `1px solid ${c.border}`,
-          color: c.text,
-          borderRadius: 6,
-          padding: "2px 8px",
-          fontSize: 11,
-          fontWeight: 800
-        }}>
+        <span
+          style={{
+            background: c.bg,
+            border: `1px solid ${c.border}`,
+            color: c.text,
+            borderRadius: 6,
+            padding: "2px 8px",
+            fontSize: 11,
+            fontWeight: 800,
+          }}
+        >
           {tier}
         </span>
       );
     }
 
+    function StatusBadge({ statusKey }) {
+      const meta = STATUS_META[statusKey] || STATUS_META["behind"];
+      return (
+        <span
+          style={{
+            background: meta.bg,
+            border: `1px solid ${meta.border}`,
+            color: meta.color,
+            borderRadius: 6,
+            padding: "2px 8px",
+            fontSize: 10,
+            fontWeight: 800,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {meta.label}
+        </span>
+      );
+    }
+
     function Sparkline({ data = [], width = 90, height = 26 }) {
-      const vals = data.filter(v => v > 0);
+      const vals = data.filter((v) => v > 0);
       if (vals.length < 2) return <span style={{ color: "#4b5563", fontSize: 10 }}>—</span>;
 
       const min = Math.min(...vals);
@@ -242,11 +383,163 @@
       );
     }
 
+    function PaceChart({ actualSeries = [], targetSeries = [], weeks = [], year, monthIndex }) {
+      const [hoverIdx, setHoverIdx] = useState(null);
+
+      if (!actualSeries.length || !targetSeries.length) {
+        return (
+          <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>
+            Not enough daily data to render the pace chart yet.
+          </div>
+        );
+      }
+
+      const width = 980;
+      const height = 320;
+      const padding = { top: 24, right: 28, bottom: 42, left: 62 };
+      const innerW = width - padding.left - padding.right;
+      const innerH = height - padding.top - padding.bottom;
+      const maxVal = Math.max(...actualSeries, ...targetSeries, 1);
+      const dayCount = actualSeries.length;
+
+      const xForIndex = (index) => padding.left + (dayCount <= 1 ? 0 : (index / (dayCount - 1)) * innerW);
+      const yForValue = (value) => padding.top + innerH - ((value || 0) / maxVal) * innerH;
+
+      const pathFor = (series) =>
+        series
+          .map((value, index) => `${index === 0 ? "M" : "L"} ${xForIndex(index)} ${yForValue(value)}`)
+          .join(" ");
+
+      const gridValues = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * i));
+      const hover = hoverIdx != null
+        ? {
+            day: hoverIdx + 1,
+            actual: actualSeries[hoverIdx] ?? 0,
+            target: targetSeries[hoverIdx] ?? 0,
+            x: xForIndex(hoverIdx),
+            yActual: yForValue(actualSeries[hoverIdx] ?? 0),
+            yTarget: yForValue(targetSeries[hoverIdx] ?? 0),
+          }
+        : null;
+
+      return (
+        <div style={{ position: "relative" }}>
+          <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {gridValues.map((value, index) => {
+              const y = yForValue(value);
+              return (
+                <g key={index}>
+                  <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" />
+                  <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">
+                    {fmt(value)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {weeks.map((week) => {
+              const x = xForIndex(week.endDay - 1);
+              return (
+                <g key={week.number}>
+                  <line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" />
+                  <text x={x - 4} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">
+                    W{week.number}
+                  </text>
+                </g>
+              );
+            })}
+
+            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2" strokeDasharray="7 6" />
+            <path d={pathFor(actualSeries)} fill="none" stroke="#34d399" strokeWidth="3" />
+
+            {hover && (
+              <>
+                <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke="#7c3aed" strokeDasharray="2 4" />
+                <circle cx={hover.x} cy={hover.yActual} r="5" fill="#34d399" />
+                <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
+              </>
+            )}
+
+            {Array.from({ length: dayCount }, (_, index) => {
+              const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2;
+              const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2;
+
+              return (
+                <g key={index}>
+                  <rect
+                    x={startX}
+                    y={padding.top}
+                    width={Math.max(10, endX - startX)}
+                    height={innerH}
+                    fill="transparent"
+                    onMouseEnter={() => setHoverIdx(index)}
+                    onMouseLeave={() => setHoverIdx(null)}
+                  />
+                  {(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (
+                    <text
+                      x={xForIndex(index)}
+                      y={height - padding.bottom + 18}
+                      textAnchor="middle"
+                      fill="#6b7280"
+                      fontSize="10"
+                    >
+                      {index + 1}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {hover && (
+            <div
+              style={{
+                position: "absolute",
+                left: `${(hover.x / width) * 100}%`,
+                top: `${Math.max(8, (Math.min(hover.yActual, hover.yTarget) / height) * 100 - 3)}%`,
+                transform: "translate(-50%, -100%)",
+                background: "#111028",
+                border: "1px solid #2a2540",
+                borderRadius: 10,
+                padding: "10px 12px",
+                minWidth: 190,
+                boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 5 }}>
+                {getDateLabel(year, monthIndex, hover.day)}
+              </div>
+              <div style={{ color: "#34d399", fontSize: 12, marginBottom: 3 }}>Actual: {fmt(hover.actual)}</div>
+              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 3 }}>Target: {fmt(hover.target)}</div>
+              <div style={{ color: gainColor(hover.actual - hover.target), fontSize: 12, fontWeight: 700 }}>
+                {deltaText(hover.actual - hover.target)}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 14, height: 3, background: "#34d399", borderRadius: 99, display: "inline-block" }} />
+              Actual club cumulative gain
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />
+              Target pace
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     function CircleTracker() {
       const now = new Date();
+      const year = now.getFullYear();
+      const monthIndex = now.getMonth();
       const today = now.getDate();
-      const dim = daysInMonth(now.getFullYear(), now.getMonth() + 1);
+      const dim = daysInMonth(year, monthIndex + 1);
       const daysLeft = dim - today;
+      const monthWeeks = getMonthWeeks(year, monthIndex);
 
       const [view, setView] = useState("home");
       const [activeIdx, setActiveIdx] = useState(0);
@@ -256,19 +549,17 @@
       const [tab, setTab] = useState("dashboard");
       const [copied, setCopied] = useState(false);
       const [debugLog, setDebugLog] = useState([]);
-      const [showInactive, setShowInactive] = useState(false);
       const [memberSort, setMemberSort] = useState({ key: "monthlyGain", direction: "desc" });
-      const [memberFilters, setMemberFilters] = useState({
-        name: "",
-        status: "",
-      });
+      const [memberFilters, setMemberFilters] = useState({ name: "", status: "" });
 
       const club = CLUBS[activeIdx];
       const cid = club.id;
       const data = cid ? (clubData[cid] || null) : null;
       const allMembers = data?.members || [];
-      const members = showInactive ? allMembers : allMembers.filter((m) => m.isActive !== false);
+      const activeMembers = allMembers.filter((m) => m.isActive !== false);
       const tc = TIER_COLORS[club.tier] || TIER_COLORS["B+"];
+      const clubName = data?.clubName || club.name;
+      const lastFetch = data?.lastFetch || null;
 
       async function fetchData(idOverride = null, silent = false) {
         const targetId = idOverride || cid;
@@ -280,10 +571,7 @@
         }
 
         const log = [];
-        const candidates = [
-          `./data/${targetId}.json`,
-          `/data/${targetId}.json`
-        ];
+        const candidates = [`./data/${targetId}.json`, `/data/${targetId}.json`];
 
         for (const url of candidates) {
           try {
@@ -305,8 +593,8 @@
               [targetId]: {
                 members: result.members,
                 clubName: result.clubName,
-                lastFetch: result.lastFetch || new Date().toISOString()
-              }
+                lastFetch: result.lastFetch || new Date().toISOString(),
+              },
             }));
 
             setDebugLog(log);
@@ -332,31 +620,38 @@
 
         for (const c of CLUBS) {
           if (!c.id) continue;
-          try {
-            const res = await fetch(`./data/${c.id}.json`, {
-              headers: { Accept: "application/json" },
-              cache: "no-store"
-            });
+          const candidates = [`./data/${c.id}.json`, `/data/${c.id}.json`];
+          let loaded = false;
 
-            allLogs.push(`${res.ok ? "✓" : "✗"} ./data/${c.id}.json → ${res.status}`);
+          for (const url of candidates) {
+            try {
+              const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+              allLogs.push(`${res.ok ? "✓" : "✗"} ${url} → ${res.status}`);
 
-            if (!res.ok) continue;
+              if (!res.ok) continue;
 
-            const text = await res.text();
-            const result = parseJSON(text);
+              const text = await res.text();
+              const result = parseJSON(text);
 
-            if (result.error) {
-              allLogs.push(`  ↳ ${c.id}: ${result.error}`);
-              continue;
+              if (result.error) {
+                allLogs.push(`  ↳ ${c.id}: ${result.error}`);
+                continue;
+              }
+
+              next[c.id] = {
+                members: result.members,
+                clubName: result.clubName,
+                lastFetch: result.lastFetch || new Date().toISOString(),
+              };
+              loaded = true;
+              break;
+            } catch (e) {
+              allLogs.push(`✗ ${url} → ${e.message}`);
             }
+          }
 
-            next[c.id] = {
-              members: result.members,
-              clubName: result.clubName,
-              lastFetch: result.lastFetch || new Date().toISOString()
-            };
-          } catch (e) {
-            allLogs.push(`✗ ./data/${c.id}.json → ${e.message}`);
+          if (!loaded) {
+            allLogs.push(`⚠ ${c.id} not loaded`);
           }
         }
 
@@ -375,98 +670,124 @@
         }
       }, [activeIdx]);
 
-      const activeMembers = allMembers.filter((m) => m.isActive !== false);
-      const inactiveMembers = allMembers.filter((m) => m.isActive === false);
-      const sortedByMonthly = [...members].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
-      const totalFans = activeMembers.reduce((s, m) => s + (m.fans || 0), 0);
-      const totalDaily = activeMembers.reduce((s, m) => s + (m.dailyGain ?? 0), 0);
-      const totalMonthly = activeMembers.reduce((s, m) => s + (m.monthlyGain ?? 0), 0);
-      const totalProj = activeMembers.reduce((s, m) => s + (m.projected ?? 0), 0);
-      const membersOnTrack = activeMembers.length
-        ? activeMembers.filter((m) => (m.projected ?? 0) >= club.target).length
-        : 0;
-      const lastFetch = data?.lastFetch || null;
+      function decorateMember(member, monthlyTarget) {
+        return {
+          ...member,
+          plan: getPlanMetrics(member.monthlyGain ?? 0, monthlyTarget, today, dim, monthWeeks),
+        };
+      }
 
-      const networkClubs = CLUBS.map((c) => {
-        const cdata = c.id ? clubData[c.id] : null;
-        const cMembers = cdata?.members || [];
-        const active = cMembers.filter((m) => m.isActive !== false);
-        const fans = active.reduce((sum, m) => sum + (m.fans || 0), 0);
-        const month = active.reduce((sum, m) => sum + (m.monthlyGain ?? 0), 0);
-        const projected = active.reduce((sum, m) => sum + (m.projected ?? 0), 0);
+      const decoratedMembers = activeMembers.map((member) => decorateMember(member, club.target));
+      const totalFans = decoratedMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
+      const totalDaily = decoratedMembers.reduce((sum, member) => sum + (member.dailyGain ?? 0), 0);
+      const totalMonthly = decoratedMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
+      const totalProj = decoratedMembers.reduce((sum, member) => sum + (member.projected ?? 0), 0);
+      const clubMonthlyTarget = decoratedMembers.length * club.target;
+      const clubExpectedToDate = Math.round((clubMonthlyTarget / Math.max(dim, 1)) * today);
+      const clubWeeklyDelta = totalMonthly - clubExpectedToDate;
+
+      const statusCounts = decoratedMembers.reduce(
+        (acc, member) => {
+          acc[member.plan.statusKey] += 1;
+          return acc;
+        },
+        { "on-track": 0, "behind": 0, "critical": 0 }
+      );
+
+      const membersOnTrack = statusCounts["on-track"];
+      const sortedByMonthly = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
+
+      const clubActualSeries = Array.from({ length: dim }, (_, idx) =>
+        decoratedMembers.reduce((sum, member) => {
+          const memberSeries = buildCumulativeSeries(member.dailyFans, dim);
+          return sum + (memberSeries[idx] ?? 0);
+        }, 0)
+      );
+      const clubTargetSeries = Array.from({ length: dim }, (_, idx) =>
+        Math.round((clubMonthlyTarget / Math.max(dim, 1)) * (idx + 1))
+      );
+
+      const networkClubs = CLUBS.map((entry) => {
+        const cdata = entry.id ? clubData[entry.id] : null;
+        const cMembers = (cdata?.members || []).filter((member) => member.isActive !== false);
+        const decorated = cMembers.map((member) => decorateMember(member, entry.target));
 
         return {
-          ...c,
-          clubName: cdata?.clubName || c.name,
-          activeMembers: active.length,
-          totalFans: fans,
-          totalMonthly: month,
-          totalProjected: projected,
+          ...entry,
+          clubName: cdata?.clubName || entry.name,
+          activeMembers: decorated.length,
+          totalFans: decorated.reduce((sum, member) => sum + (member.fans || 0), 0),
+          totalMonthly: decorated.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0),
+          totalProjected: decorated.reduce((sum, member) => sum + (member.projected ?? 0), 0),
+          totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata),
         };
       });
 
       const networkMembers = networkClubs
-        .filter((c) => c.id && clubData[c.id])
-        .flatMap((c) => {
-          const cMembers = (clubData[c.id]?.members || []).filter((m) => m.isActive !== false);
-          return cMembers.map((m) => ({
-            ...m,
-            clubName: clubData[c.id]?.clubName || c.name,
-            clubTier: c.tier,
-            clubTarget: c.target,
-          }));
+        .filter((entry) => entry.id && clubData[entry.id])
+        .flatMap((entry) => {
+          const members = (clubData[entry.id]?.members || [])
+            .filter((member) => member.isActive !== false)
+            .map((member) => ({
+              ...decorateMember(member, entry.target),
+              clubName: clubData[entry.id]?.clubName || entry.name,
+              clubTier: entry.tier,
+              clubTarget: entry.target,
+            }));
+
+          return members;
         })
         .sort((a, b) => {
           const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
           if (monthDiff !== 0) return monthDiff;
-          const fanDiff = (b.fans ?? Number.NEGATIVE_INFINITY) - (a.fans ?? Number.NEGATIVE_INFINITY);
-          if (fanDiff !== 0) return fanDiff;
+          const projectedDiff = (b.projected ?? Number.NEGATIVE_INFINITY) - (a.projected ?? Number.NEGATIVE_INFINITY);
+          if (projectedDiff !== 0) return projectedDiff;
           return (a.name || "").localeCompare(b.name || "");
         });
 
       const topNetworkUsers = networkMembers.slice(0, 10);
-      const loadedClubCount = networkClubs.filter((c) => c.hasData).length;
-      const networkFanTotal = networkMembers.reduce((sum, m) => sum + (m.fans || 0), 0);
+      const loadedClubCount = networkClubs.filter((entry) => entry.hasData).length;
+      const networkMonthlyTotal = networkMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
+      const networkFanTotal = networkMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
       const networkMemberCount = networkMembers.length;
-      const clubsMissingData = networkClubs.filter((c) => c.id && !c.hasData).length;
+      const clubsMissingData = networkClubs.filter((entry) => entry.id && !entry.hasData).length;
 
       function buildDiscord() {
         const bar = (p, len = 18) => {
-          const f = Math.round(Math.min(p, 100) / 100 * len);
-          return "█".repeat(f) + "░".repeat(len - f);
+          const filled = Math.round((Math.min(p, 100) / 100) * len);
+          return "█".repeat(filled) + "░".repeat(len - filled);
         };
         const P = (s, n) => String(s).padStart(n);
         const PL = (s, n) => String(s).padEnd(n);
-        const dg = (n) => n != null ? ((n >= 0 ? "+" : "") + fmt(n)) : "—";
         const ds = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
         let msg = `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}\n`;
         msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
         msg += `🎯 **Per-Member Target:** ${fmt(club.target)}/month\n`;
-        msg += `👥 **Active Members:** ${activeMembers.length}/${MAX_MEMBERS}  |  📅 Day ${today}/${dim} · ${daysLeft} days left\n`;
-        msg += `✅ On track: **${membersOnTrack}/${activeMembers.length || 0}** members\n`;
+        msg += `👥 **Active Members:** ${decoratedMembers.length}/${MAX_MEMBERS}  |  📅 Day ${today}/${dim} · ${daysLeft} days left\n`;
+        msg += `✅ On weekly plan: **${membersOnTrack}/${decoratedMembers.length || 0}** members\n`;
         msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
         msg += "```\n";
         msg += `${PL("MEMBER",20)}${P("FANS",12)}${P("+TODAY",10)}${P("+MONTH",11)}${P("PROJ",10)}${P("ST",4)}\n`;
         msg += "─".repeat(67) + "\n";
 
-        [...activeMembers]
+        [...decoratedMembers]
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach((m) => {
-            const ok = (m.projected ?? 0) >= club.target;
-            msg += `${PL(m.name.slice(0, 19), 20)}${P(fmt(m.fans), 12)}${P(dg(m.dailyGain), 10)}${P(dg(m.monthlyGain), 11)}${P(m.projected != null ? fmt(m.projected) : "—", 10)}${P(ok ? "✅" : "⚠️", 4)}\n`;
+          .forEach((member) => {
+            const statusShort = member.plan.statusKey === "on-track" ? "✅" : member.plan.statusKey === "critical" ? "🟥" : "⚠️";
+            msg += `${PL(member.name.slice(0, 19), 20)}${P(fmt(member.fans), 12)}${P(fmtSigned(member.dailyGain ?? 0), 10)}${P(fmtSigned(member.monthlyGain ?? 0), 11)}${P(member.projected != null ? fmt(member.projected) : "—", 10)}${P(statusShort, 4)}\n`;
           });
 
         msg += "─".repeat(67) + "\n";
-        msg += `${PL("TOTAL",20)}${P(fmt(totalFans),12)}${P(dg(totalDaily),10)}${P(dg(totalMonthly),11)}${P(fmt(totalProj),10)}\n`;
+        msg += `${PL("TOTAL",20)}${P(fmt(totalFans),12)}${P(fmtSigned(totalDaily),10)}${P(fmtSigned(totalMonthly),11)}${P(fmt(totalProj),10)}\n`;
         msg += "```\n";
 
-        [...activeMembers]
+        [...decoratedMembers]
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
-          .forEach((m) => {
-            const p = club.target > 0 ? Math.min(100, ((m.monthlyGain ?? 0) / club.target) * 100) : 0;
-            msg += `**${m.name}** \`${bar(p)}\` ${p.toFixed(1)}% of target\n`;
+          .forEach((member) => {
+            const pct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
+            msg += `**${member.name}** \`${bar(pct)}\` ${pct.toFixed(1)}% of target · ${deltaText(member.plan.delta)}\n`;
           });
 
         msg += `> 🤖 *Dominator Network Tracker · ${club.officer}*`;
@@ -493,10 +814,7 @@
       }
 
       function clearMemberFilters() {
-        setMemberFilters({
-          name: "",
-          status: "",
-        });
+        setMemberFilters({ name: "", status: "" });
         setMemberSort({ key: "monthlyGain", direction: "desc" });
       }
 
@@ -515,8 +833,9 @@
       }
 
       function sortIndicator(key) {
-        if (!SORTABLE_MEMBER_COLUMNS.includes(key) || memberSort.key !== key || memberSort.direction === "off") return "↕";
-        return memberSort.direction === "asc" ? "↑" : "↓";
+        if (!SORTABLE_MEMBER_COLUMNS.includes(key)) return "";
+        if (memberSort.key !== key || memberSort.direction === "off") return "OFF";
+        return memberSort.direction === "asc" ? "ASC" : "DESC";
       }
 
       function matchesSelectFilter(value, filterValue) {
@@ -528,16 +847,14 @@
         return member[key] ?? Number.NEGATIVE_INFINITY;
       }
 
-      const memberNameOptions = [...new Set(members.map((m) => m.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const memberNameOptions = [...new Set(decoratedMembers.map((member) => member.name).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
 
       const memberRows = (() => {
-        const filtered = members.filter((m) => {
-          const status = (m.projected ?? 0) >= club.target ? "on-track" : "behind";
-          return (
-            matchesSelectFilter(m.name, memberFilters.name) &&
-            matchesSelectFilter(status, memberFilters.status)
-          );
-        });
+        const filtered = decoratedMembers.filter((member) =>
+          matchesSelectFilter(member.name, memberFilters.name) &&
+          matchesSelectFilter(member.plan.statusKey, memberFilters.status)
+        );
 
         const sorted = memberSort.key && memberSort.direction !== "off"
           ? [...filtered].sort((a, b) => {
@@ -553,12 +870,13 @@
             })
           : filtered;
 
-        return sorted.map((m, index) => ({
-          member: m,
+        return sorted.map((member, index) => ({
+          member,
           rank: index + 1,
-          onTrack: (m.projected ?? 0) >= club.target,
         }));
       })();
+
+      const currentWeek = findWeekForDay(monthWeeks, today);
 
       const S = {
         root: {
@@ -568,14 +886,14 @@
           fontFamily: "'Inter',system-ui,sans-serif",
           padding: "16px",
           maxWidth: 1240,
-          margin: "0 auto"
+          margin: "0 auto",
         },
         card: {
           background: "#111028",
           border: "1px solid #1e1b35",
           borderRadius: 14,
           padding: "16px 18px",
-          marginBottom: 14
+          marginBottom: 14,
         },
         h2: {
           fontSize: 11,
@@ -583,7 +901,7 @@
           color: "#6b7280",
           textTransform: "uppercase",
           letterSpacing: "0.12em",
-          margin: "0 0 14px"
+          margin: "0 0 14px",
         },
         btn: (active, col = "#7c3aed") => ({
           background: active ? col : "#13112a",
@@ -594,7 +912,7 @@
           cursor: "pointer",
           fontSize: 12,
           fontWeight: 600,
-          transition: "all 0.15s"
+          transition: "all 0.15s",
         }),
         input: {
           width: "100%",
@@ -610,14 +928,14 @@
           borderBottom: "1px solid #1e1b35",
           color: "#6b7280",
           fontSize: 11,
-          whiteSpace: "nowrap"
+          whiteSpace: "nowrap",
         },
         td: {
           padding: "10px 8px",
           borderBottom: "1px solid #1e1b35",
           fontSize: 12,
-          verticalAlign: "middle"
-        }
+          verticalAlign: "middle",
+        },
       };
 
       const refreshLabel = view === "home" ? "🔄 Refresh Network" : "🔄 Refresh Club";
@@ -626,33 +944,33 @@
 
       return (
         <div style={S.root}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontSize:18, fontWeight:800, color:"#e2e0f0", display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ color: accent }}>⬡</span> Dominator Network
-                <span style={{ color:"#4b5563", fontSize:13, fontWeight:400 }}>Fan Tracker</span>
+                <span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span>
               </div>
-              <div style={{ color:"#4b5563", fontSize:11, marginTop:2 }}>
-                {now.toLocaleString("en-US",{month:"long",day:"numeric",year:"numeric"})} · Day {today}/{dim} · {daysLeft} days left
+              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>
+                {now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
               </div>
             </div>
 
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button style={S.btn(false)} onClick={refreshAction} disabled={loading || (view === "club" && !cid)}>
                 {loading ? "⟳ Refreshing…" : refreshLabel}
               </button>
               {view === "club" && (
-                <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!activeMembers.length}>
+                <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!decoratedMembers.length}>
                   {copied ? "✓ Copied!" : "💬 Discord"}
                 </button>
               )}
             </div>
           </div>
 
-          <div style={{ ...S.card, padding:"12px 14px", display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <div style={S.h2}>Navigation</div>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button>
                 <button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button>
               </div>
@@ -661,44 +979,47 @@
             {view === "club" && (
               <div style={{ flex: 1, minWidth: 280 }}>
                 <div style={S.h2}>Select Club</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {CLUBS.map((c, i) => {
-                    const ctc = TIER_COLORS[c.tier] || TIER_COLORS["B+"];
-                    const active = i === activeIdx;
-                    const hasData = c.id && clubData[c.id];
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {CLUBS.map((entry, index) => {
+                    const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+                    const active = index === activeIdx;
+                    const hasData = entry.id && clubData[entry.id];
+
                     return (
                       <button
-                        key={i}
-                        onClick={() => openClub(i)}
+                        key={entry.name}
+                        onClick={() => openClub(index)}
                         style={{
                           background: active ? ctc.bg : "#0f0d1a",
                           border: `1px solid ${active ? ctc.border : "#1e1b35"}`,
                           borderRadius: 10,
                           padding: "7px 12px",
                           cursor: "pointer",
-                          opacity: c.id ? 1 : 0.65,
+                          opacity: entry.id ? 1 : 0.65,
                           display: "flex",
                           alignItems: "center",
                           gap: 6,
-                          transition: "all 0.15s"
+                          transition: "all 0.15s",
                         }}
                       >
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: active ? ctc.text : "#6b7280",
-                          background: active ? ctc.bg : "#1a1730",
-                          border: `1px solid ${active ? ctc.border : "#2a2540"}`,
-                          borderRadius: 4,
-                          padding: "1px 5px"
-                        }}>
-                          {c.tier}
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            color: active ? ctc.text : "#6b7280",
+                            background: active ? ctc.bg : "#1a1730",
+                            border: `1px solid ${active ? ctc.border : "#2a2540"}`,
+                            borderRadius: 4,
+                            padding: "1px 5px",
+                          }}
+                        >
+                          {entry.tier}
                         </span>
-                        <span style={{ fontSize:12, fontWeight:600, color: active ? "#e2e0f0" : "#6b7280" }}>
-                          {c.name}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: active ? "#e2e0f0" : "#6b7280" }}>
+                          {entry.name}
                         </span>
-                        {hasData && <span style={{ width:5, height:5, borderRadius:"50%", background:"#34d399", flexShrink:0 }}/>}
-                        {!c.id && <span style={{ fontSize:9, color:"#4b5563" }}>soon</span>}
+                        {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
+                        {!entry.id && <span style={{ fontSize: 9, color: "#4b5563" }}>soon</span>}
                       </button>
                     );
                   })}
@@ -708,41 +1029,42 @@
           </div>
 
           {err && (
-            <div style={{ background:"#450a0a", border:"1px solid #7f1d1d", borderRadius:12, padding:"12px 16px", marginBottom:14, color:"#fca5a5", fontSize:12 }}>
+            <div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>
               ⚠️ {err}
             </div>
           )}
 
           {view === "home" && (
             <>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10, marginBottom:14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
-                  { label:"Tracked Clubs", value:`${loadedClubCount}/${CLUBS.filter((c) => c.id).length}`, sub:"Loaded club data", col:"#e2e0f0" },
-                  { label:"Network Fans", value:fmt(networkFanTotal), sub:"Across loaded clubs", col:"#c4b5fd" },
-                  { label:"Active Members", value:networkMemberCount, sub:"Network-wide active roster", col:"#34d399" },
-                  { label:"Missing Data", value:clubsMissingData, sub:"Clubs without JSON", col:clubsMissingData ? "#fbbf24" : "#34d399" },
+                  { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
+                  { label: "Network Monthly +", value: fmt(networkMonthlyTotal), sub: "Across loaded clubs", col: "#c4b5fd" },
+                  { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
+                  { label: "Active Members", value: networkMemberCount, sub: `${clubsMissingData} clubs missing JSON`, col: clubsMissingData ? "#fbbf24" : "#34d399" },
                 ].map((card) => (
-                  <div key={card.label} style={{ ...S.card, marginBottom:0, padding:"13px 15px" }}>
-                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>{card.label}</div>
-                    <div style={{ color:card.col, fontSize:22, fontWeight:800 }}>{card.value}</div>
-                    <div style={{ color:"#6b7280", fontSize:11, marginTop:3 }}>{card.sub}</div>
+                  <div key={card.label} style={{ ...S.card, marginBottom: 0, padding: "13px 15px" }}>
+                    <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{card.label}</div>
+                    <div style={{ color: card.col, fontSize: 22, fontWeight: 800 }}>{card.value}</div>
+                    <div style={{ color: "#6b7280", fontSize: 11, marginTop: 3 }}>{card.sub}</div>
                   </div>
                 ))}
               </div>
 
               <div style={S.card}>
                 <div style={S.h2}>Club Directory</div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(250px, 1fr))", gap:10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
                   {networkClubs.map((entry, index) => {
                     const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+
                     return (
-                      <div key={entry.name} style={{ background:"#0f0d1a", border:`1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius:12, padding:"14px 14px" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+                      <div key={entry.name} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                             <TierBadge tier={entry.tier} />
                             <div>
-                              <div style={{ fontWeight:800, color:"#e2e0f0", fontSize:15 }}>{entry.clubName}</div>
-                              <div style={{ color:"#6b7280", fontSize:11 }}>Officer: {entry.officer}</div>
+                              <div style={{ fontWeight: 800, color: "#e2e0f0", fontSize: 15 }}>{entry.clubName}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div>
                             </div>
                           </div>
                           <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>
@@ -750,23 +1072,23 @@
                           </button>
                         </div>
 
-                        <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div>
-                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Fan Quota</div>
-                            <div style={{ color:ctc.text, fontWeight:800 }}>{fmt(entry.target)}/member</div>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Fan Quota</div>
+                            <div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}/member</div>
                           </div>
                           <div>
-                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Active Members</div>
-                            <div style={{ color:"#e2e0f0", fontWeight:800 }}>{entry.activeMembers}/{MAX_MEMBERS}</div>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div>
+                            <div style={{ color: "#e2e0f0", fontWeight: 800 }}>{entry.activeMembers}/{MAX_MEMBERS}</div>
                           </div>
                           <div>
-                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Total Fans</div>
-                            <div style={{ color:"#e2e0f0", fontWeight:700 }}>{entry.hasData ? fmt(entry.totalFans) : "—"}</div>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
+                            <div style={{ color: "#e2e0f0", fontWeight: 700 }}>{entry.hasData ? fmt(entry.totalMonthly) : "—"}</div>
                           </div>
                           <div>
-                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Status</div>
-                            <div style={{ color: entry.id ? (entry.hasData ? "#34d399" : "#fbbf24") : "#6b7280", fontWeight:700 }}>
-                              {!entry.id ? "Coming Soon" : entry.hasData ? "Loaded" : "Waiting for JSON"}
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
+                            <div style={{ color: gainColor((entry.totalMonthly ?? 0) - (entry.totalExpected ?? 0)), fontWeight: 700 }}>
+                              {entry.hasData ? deltaText((entry.totalMonthly ?? 0) - (entry.totalExpected ?? 0)) : "—"}
                             </div>
                           </div>
                         </div>
@@ -778,53 +1100,45 @@
 
               <div style={S.card}>
                 <div style={S.h2}>Top 10 Network-Wide Users by Monthly Fans</div>
-                <div style={{ color:"#6b7280", fontSize:12, marginBottom:12 }}>Members are ranked by monthly fans and denoted by club and tier across every loaded club file.</div>
-                <div style={{ overflowX:"auto" }}>
-                  <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>
+                  Members are ranked by monthly fans and denoted by club and tier across every loaded club file.
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{ textAlign:"left" }}>
+                      <tr style={{ textAlign: "left" }}>
                         <th style={S.th}>#</th>
                         <th style={S.th}>Member</th>
                         <th style={S.th}>Club</th>
                         <th style={S.th}>Monthly Fans</th>
-                        <th style={S.th}>Fans</th>
-                        <th style={S.th}>Projected</th>
+                        <th style={S.th}>Vs Weekly Plan</th>
+                        <th style={S.th}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {topNetworkUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ ...S.td, color:"#6b7280", textAlign:"center", padding:"22px 8px" }}>
-                            No club data loaded yet.
+                          <td colSpan={6} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
+                            Load club JSON files to populate the network leaderboard.
                           </td>
                         </tr>
                       ) : (
-                        topNetworkUsers.map((m, i) => {
-                          const ctc = TIER_COLORS[m.clubTier] || TIER_COLORS["B+"];
-                          return (
-                            <tr key={`${m.clubName}-${m.name}-${i}`}>
-                              <td style={{ ...S.td, color:"#6b7280" }}>{i + 1}</td>
-                              <td style={{ ...S.td, color:"#e2e0f0", fontWeight:800 }}>{m.name}</td>
-                              <td style={{ ...S.td }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                  <span style={{
-                                    background: ctc.bg,
-                                    border: `1px solid ${ctc.border}`,
-                                    color: ctc.text,
-                                    borderRadius: 4,
-                                    padding: "1px 6px",
-                                    fontSize: 10,
-                                    fontWeight: 800
-                                  }}>{m.clubTier}</span>
-                                  <span>{m.clubName}</span>
-                                </div>
-                              </td>
-                              <td style={{ ...S.td, color:gainColor(m.monthlyGain), fontWeight:700 }}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</td>
-                              <td style={{ ...S.td, color:"#e2e0f0", fontWeight:700 }}>{fmtFull(m.fans)}</td>
-                              <td style={{ ...S.td, color:"#c4b5fd" }}>{m.projected != null ? fmt(m.projected) : "—"}</td>
-                            </tr>
-                          );
-                        })
+                        topNetworkUsers.map((member, index) => (
+                          <tr key={`${member.clubName}-${member.name}-${index}`}>
+                            <td style={{ ...S.td, color: "#6b7280" }}>{index + 1}</td>
+                            <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td>
+                            <td style={S.td}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <TierBadge tier={member.clubTier} />
+                                <span>{member.clubName}</span>
+                              </div>
+                            </td>
+                            <td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>
+                            <td style={{ ...S.td, color: gainColor(member.plan.delta), fontWeight: 700 }}>{deltaText(member.plan.delta)}</td>
+                            <td style={S.td}><StatusBadge statusKey={member.plan.statusKey} /></td>
+                          </tr>
+                        ))
                       )}
                     </tbody>
                   </table>
@@ -833,137 +1147,129 @@
             </>
           )}
 
-          {view === "club" && (
+          {view === "club" && !cid && (
+            <div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🔜</div>
+              <div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div>
+            </div>
+          )}
+
+          {view === "club" && cid && (
             <>
-              <div style={{ ...S.card, background:tc.bg, border:`1px solid ${tc.border}`, padding:"14px 18px" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <TierBadge tier={club.tier}/>
+              <div style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <TierBadge tier={club.tier} />
                     <div>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#e2e0f0" }}>{data?.clubName || club.name}</div>
-                      <div style={{ fontSize:11, color:"#9ca3af" }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e0f0" }}>{clubName}</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af" }}>
                         Officer: {club.officer} · ID: {club.id || "TBD"} · Max {MAX_MEMBERS} members
                       </div>
                     </div>
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:tc.text }}>{fmt(club.target)} / member / month</div>
-                    {lastFetch && <div style={{ fontSize:10, color:"#6b7280", marginTop:2 }}>Updated {new Date(lastFetch).toLocaleString()}</div>}
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: tc.text }}>{fmt(club.target)} / member / month</div>
+                    <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>
+                      Week {currentWeek?.number || 1} · {getWeekLabel(currentWeek, year, monthIndex)}
+                    </div>
+                    {lastFetch && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>Updated {new Date(lastFetch).toLocaleString()}</div>}
                   </div>
                 </div>
               </div>
 
-              {!cid && (
-                <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
-                  <div style={{ fontSize:40, marginBottom:10 }}>🔜</div>
-                  <div style={{ color:"#6b7280" }}><b style={{color:"#9ca3af"}}>{club.name}</b> is a future addition.</div>
-                </div>
-              )}
-
-              {cid && !allMembers.length && (
-                <div style={{ ...S.card, textAlign:"center", padding:"50px 20px" }}>
-                  <div style={{ fontSize:44, marginBottom:10 }}>🏇</div>
-                  <div style={{ color:"#6b7280", marginBottom:16 }}>
-                    No data for <b style={{color:"#9ca3af"}}>{club.name}</b> yet.
+              {!decoratedMembers.length ? (
+                <div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}>
+                  <div style={{ fontSize: 44, marginBottom: 10 }}>🏇</div>
+                  <div style={{ color: "#6b7280", marginBottom: 16 }}>
+                    No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.
                   </div>
-                  <div style={{ display:"flex", justifyContent:"center", gap:8 }}>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                     <button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>
                       🔄 Refresh Data
                     </button>
                   </div>
                 </div>
-              )}
-
-              {cid && allMembers.length > 0 && (
+              ) : (
                 <>
-                  <div style={{ display:"flex", gap:5, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
-                    {[["dashboard","📊 Overview"],["members","👥 Members"],["debug","🔧 Debug"]].map(([t,label]) => (
-                      <button key={t} style={S.btn(tab===t, tab===t ? tc.bar : undefined)} onClick={() => setTab(t)}>
+                  <div style={{ display: "flex", gap: 5, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                    {[
+                      ["dashboard", "📊 Overview"],
+                      ["members", "👥 Members"],
+                      ["pace", "📈 Pace"],
+                      ["debug", "🔧 Debug"],
+                    ].map(([tabKey, label]) => (
+                      <button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>
                         {label}
                       </button>
                     ))}
-
-                    {inactiveMembers.length > 0 && (
-                      <button
-                        style={{ ...S.btn(showInactive,"#374151"), marginLeft:"auto", fontSize:11 }}
-                        onClick={() => setShowInactive((v) => !v)}
-                      >
-                        {showInactive ? "👁 Hiding Inactive" : `👁 Show Inactive (${inactiveMembers.length})`}
-                      </button>
-                    )}
                   </div>
 
                   {tab === "dashboard" && (
                     <>
-                      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
-                          { label:"Active Members", value:`${activeMembers.length}/${MAX_MEMBERS}`, sub:"Active / Capacity", col:"#e2e0f0" },
-                          { label:"On Track", value:`${membersOnTrack}/${activeMembers.length}`, sub:"Hit projected target", col:membersOnTrack===activeMembers.length ? "#34d399" : "#fbbf24" },
-                          { label:"Club Daily +", value:fmt(totalDaily), sub:"All active members today", col:gainColor(totalDaily) },
-                          { label:"Club Monthly +", value:fmt(totalMonthly), sub:"Since 1st of month", col:gainColor(totalMonthly) },
-                          { label:"Per-Mbr Target", value:fmt(club.target), sub:`${daysLeft} days left`, col:tc.text },
-                        ].map((p) => (
-                          <div key={p.label} style={{ background:"#111028", border:"1px solid #1e1b35", borderRadius:12, padding:"11px 14px", flex:1, minWidth:110 }}>
-                            <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>{p.label}</div>
-                            <div style={{ color:p.col, fontSize:18, fontWeight:700 }}>{p.value}</div>
-                            <div style={{ color:"#4b5563", fontSize:10, marginTop:2 }}>{p.sub}</div>
+                          { label: "Active Members", value: `${decoratedMembers.length}/${MAX_MEMBERS}`, sub: "Inactive excluded", col: "#e2e0f0" },
+                          { label: "On Track", value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399" },
+                          { label: "Behind", value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24" },
+                          { label: "Critical", value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171" },
+                          { label: "Club Monthly +", value: fmt(totalMonthly), sub: "All active members", col: gainColor(totalMonthly) },
+                          { label: "Club Vs Weekly Plan", value: fmtSigned(clubWeeklyDelta), sub: `Target by today: ${fmt(clubExpectedToDate)}`, col: gainColor(clubWeeklyDelta) },
+                        ].map((card) => (
+                          <div key={card.label} style={{ background: "#111028", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
+                            <div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div>
+                            <div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div>
                           </div>
                         ))}
                       </div>
 
                       <div style={S.card}>
                         <div style={S.h2}>Member Progress — Sorted by Monthly Gain</div>
-                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                          {sortedByMonthly.filter((m) => m.isActive !== false).map((m, i) => {
-                            const monthPct = club.target > 0 ? Math.min(100, ((m.monthlyGain ?? 0) / club.target) * 100) : 0;
-                            const onTrack = (m.projected ?? 0) >= club.target;
-                            const stillNeed = Math.max(0, club.target - (m.monthlyGain ?? 0));
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {sortedByMonthly.map((member, index) => {
+                            const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
+                            const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0));
+                            const progressColor = monthPct >= 100 ? "#34d399" : tc.bar;
 
                             return (
-                              <div key={m.name + i} style={{ background:"#0f0d1a", border:`1px solid ${onTrack ? "#34d39933" : "#1e1b35"}`, borderRadius:10, padding:"12px 14px" }}>
-                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:7, flexWrap:"wrap", gap:4 }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                    <span style={{ color:"#4b5563", fontSize:11, fontWeight:700, minWidth:20 }}>#{i+1}</span>
-                                    <span style={{ fontWeight:700, color:"#e2e0f0", fontSize:13 }}>{m.name}</span>
-                                    <span style={{
-                                      background: onTrack ? "#34d39922" : "#fbbf2422",
-                                      color: onTrack ? "#34d399" : "#fbbf24",
-                                      border: `1px solid ${onTrack ? "#34d39966" : "#fbbf2466"}`,
-                                      borderRadius: 4,
-                                      fontSize: 10,
-                                      fontWeight: 700,
-                                      padding: "1px 6px"
-                                    }}>
-                                      {onTrack ? "✅ ON TRACK" : "⚠️ BEHIND"}
-                                    </span>
+                              <div key={`${member.name}-${index}`} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, flexWrap: "wrap", gap: 4 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ color: "#4b5563", fontSize: 11, fontWeight: 700, minWidth: 20 }}>#{index + 1}</span>
+                                    <span style={{ fontWeight: 700, color: "#e2e0f0", fontSize: 13 }}>{member.name}</span>
+                                    <StatusBadge statusKey={member.plan.statusKey} />
                                   </div>
 
-                                  <div style={{ display:"flex", gap:14, fontSize:11, flexWrap:"wrap" }}>
-                                    <span style={{color:"#6b7280"}}>Today: <b style={{color:gainColor(m.dailyGain)}}>{m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}</b></span>
-                                    <span style={{color:"#6b7280"}}>Month: <b style={{color:gainColor(m.monthlyGain)}}>{m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}</b></span>
-                                    <span style={{color:"#6b7280"}}>Projected: <b style={{color:"#c4b5fd"}}>{m.projected != null ? fmt(m.projected) : "—"}</b></span>
+                                  <div style={{ display: "flex", gap: 14, fontSize: 11, flexWrap: "wrap" }}>
+                                    <span style={{ color: "#6b7280" }}>Today: <b style={{ color: gainColor(member.dailyGain) }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</b></span>
+                                    <span style={{ color: "#6b7280" }}>Month: <b style={{ color: gainColor(member.monthlyGain) }}>{member.monthlyGain != null ? fmtSigned(member.monthlyGain) : "—"}</b></span>
+                                    <span style={{ color: "#6b7280" }}>Projected: <b style={{ color: "#c4b5fd" }}>{member.projected != null ? fmt(member.projected) : "—"}</b></span>
                                   </div>
                                 </div>
 
-                                <div style={{ marginBottom:8 }}>
-                                  <ProgressBar pct={monthPct} color={onTrack ? "#34d399" : tc.bar} height={9}/>
+                                <div style={{ marginBottom: 8 }}>
+                                  <ProgressBar pct={monthPct} color={progressColor} height={9} />
                                 </div>
 
-                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, alignItems:"center" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, alignItems: "center" }}>
                                   <div>
-                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Fans</div>
-                                    <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmtFull(m.fans)}</div>
+                                    <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Fans</div>
+                                    <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 14 }}>{fmtFull(member.fans)}</div>
                                   </div>
                                   <div>
-                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Target Progress</div>
-                                    <div style={{ color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700, fontSize:14 }}>{monthPct.toFixed(1)}%</div>
+                                    <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Target Progress</div>
+                                    <div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{monthPct.toFixed(1)}%</div>
                                   </div>
                                   <div>
-                                    <div style={{ color:"#4b5563", fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em" }}>Still Needed</div>
-                                    <div style={{ color:"#e2e0f0", fontWeight:700, fontSize:14 }}>{fmt(stillNeed)}</div>
+                                    <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Still Needed</div>
+                                    <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 14 }}>{fmt(stillNeed)}</div>
                                   </div>
-                                  <div style={{ justifySelf:"end" }}>
-                                    <Sparkline data={m.dailyFans || []}/>
+                                  <div>
+                                    <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
+                                    <div style={{ color: gainColor(member.plan.delta), fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
+                                  </div>
+                                  <div style={{ justifySelf: "end" }}>
+                                    <Sparkline data={member.dailyFans || []} />
                                   </div>
                                 </div>
                               </div>
@@ -976,20 +1282,20 @@
 
                   {tab === "members" && (
                     <div style={S.card}>
-                      <div style={{ display:"flex", justifyContent:"space-between", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                         <div>
                           <div style={S.h2}>Members</div>
-                          <div style={{ color:"#6b7280", fontSize:12 }}>
-                            Name and Status use preset dropdown filters. Fans, Today, Month, and Projected cycle through Desc, Asc, and Off sorting.
+                          <div style={{ color: "#6b7280", fontSize: 12 }}>
+                            Name and Status use dropdown filters. Fans, Today, Month, and Projected cycle through Desc, Asc, and Off sorting.
                           </div>
                         </div>
                         <button style={S.btn(false)} onClick={clearMemberFilters}>Clear filters</button>
                       </div>
 
-                      <div style={{ overflowX:"auto" }}>
-                        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr style={{ textAlign:"left" }}>
+                            <tr style={{ textAlign: "left" }}>
                               {[
                                 { key: "rank", label: "#", sortable: false },
                                 { key: "name", label: "Name", sortable: false },
@@ -997,16 +1303,17 @@
                                 { key: "dailyGain", label: "Today", sortable: true },
                                 { key: "monthlyGain", label: "Month", sortable: true },
                                 { key: "projected", label: "Projected", sortable: true },
+                                { key: "weeklyDelta", label: "Vs Weekly Plan", sortable: false },
                                 { key: "status", label: "Status", sortable: false },
                               ].map((col) => (
                                 <th key={col.key} style={S.th}>
                                   {col.sortable ? (
                                     <button
-                                      style={{ background:"transparent", border:"none", color:"inherit", font: "inherit", cursor:"pointer", padding:0, display:"inline-flex", gap:6, alignItems:"center" }}
+                                      style={{ background: "transparent", border: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0, display: "inline-flex", gap: 6, alignItems: "center" }}
                                       onClick={() => handleSort(col.key)}
                                     >
                                       <span>{col.label}</span>
-                                      <span style={{ color: memberSort.key === col.key ? tc.text : "#4b5563" }}>{sortIndicator(col.key)}</span>
+                                      <span style={{ color: memberSort.key === col.key ? tc.text : "#4b5563", fontSize: 10 }}>{sortIndicator(col.key)}</span>
                                     </button>
                                   ) : (
                                     <span>{col.label}</span>
@@ -1028,11 +1335,13 @@
                               <th style={S.th}></th>
                               <th style={S.th}></th>
                               <th style={S.th}></th>
+                              <th style={S.th}></th>
                               <th style={S.th}>
                                 <select style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)}>
                                   <option value="">All Statuses</option>
                                   <option value="on-track">On Track</option>
                                   <option value="behind">Behind</option>
+                                  <option value="critical">Critical</option>
                                 </select>
                               </th>
                             </tr>
@@ -1040,27 +1349,30 @@
                           <tbody>
                             {memberRows.length === 0 ? (
                               <tr>
-                                <td colSpan={7} style={{ ...S.td, color:"#6b7280", textAlign:"center", padding:"22px 8px" }}>
+                                <td colSpan={8} style={{ ...S.td, color: "#6b7280", textAlign: "center", padding: "22px 8px" }}>
                                   No members match the current filters.
                                 </td>
                               </tr>
                             ) : (
-                              memberRows.map(({ member: m, rank, onTrack }) => (
-                                <tr key={`${m.name}-${rank}`}>
-                                  <td style={{ ...S.td, color:"#6b7280" }}>{rank}</td>
-                                  <td style={{ ...S.td, color:"#e2e0f0", fontWeight:700 }}>{m.name}</td>
-                                  <td style={S.td}>{fmtFull(m.fans)}</td>
-                                  <td style={{ ...S.td, color:gainColor(m.dailyGain) }}>
-                                    {m.dailyGain != null ? (m.dailyGain >= 0 ? "+" : "") + fmt(m.dailyGain) : "—"}
+                              memberRows.map(({ member, rank }) => (
+                                <tr key={`${member.name}-${rank}`}>
+                                  <td style={{ ...S.td, color: "#6b7280" }}>{rank}</td>
+                                  <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td>
+                                  <td style={S.td}>{fmtFull(member.fans)}</td>
+                                  <td style={{ ...S.td, color: gainColor(member.dailyGain) }}>
+                                    {member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}
                                   </td>
-                                  <td style={{ ...S.td, color:gainColor(m.monthlyGain) }}>
-                                    {m.monthlyGain != null ? (m.monthlyGain >= 0 ? "+" : "") + fmt(m.monthlyGain) : "—"}
+                                  <td style={{ ...S.td, color: gainColor(member.monthlyGain) }}>
+                                    {member.monthlyGain != null ? fmtSigned(member.monthlyGain) : "—"}
                                   </td>
-                                  <td style={{ ...S.td, color:"#c4b5fd" }}>
-                                    {m.projected != null ? fmt(m.projected) : "—"}
+                                  <td style={{ ...S.td, color: "#c4b5fd" }}>
+                                    {member.projected != null ? fmt(member.projected) : "—"}
                                   </td>
-                                  <td style={{ ...S.td, color:onTrack ? "#34d399" : "#fbbf24", fontWeight:700 }}>
-                                    {onTrack ? "On Track" : "Behind"}
+                                  <td style={{ ...S.td, color: gainColor(member.plan.delta), fontWeight: 700 }}>
+                                    {deltaText(member.plan.delta)}
+                                  </td>
+                                  <td style={S.td}>
+                                    <StatusBadge statusKey={member.plan.statusKey} />
                                   </td>
                                 </tr>
                               ))
@@ -1071,31 +1383,83 @@
                     </div>
                   )}
 
+                  {tab === "pace" && (
+                    <div style={S.card}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                        <div>
+                          <div style={S.h2}>Club Pace</div>
+                          <div style={{ color: "#6b7280", fontSize: 12 }}>
+                            Monday–Sunday calendar weeks. Inactive members are fully excluded from targets and actual totals.
+                          </div>
+                        </div>
+                        <div style={{ color: "#9ca3af", fontSize: 12 }}>
+                          {getWeekLabel(currentWeek, year, monthIndex)}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
+                        {[
+                          { label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" },
+                          { label: "Club Target by Today", value: fmt(clubExpectedToDate), sub: `${decoratedMembers.length} active × ${fmt(club.target)}`, col: "#c4b5fd" },
+                          { label: "Actual by Today", value: fmt(totalMonthly), sub: "Cumulative monthly gain", col: "#34d399" },
+                          { label: "Vs Pace", value: fmtSigned(clubWeeklyDelta), sub: deltaText(clubWeeklyDelta), col: gainColor(clubWeeklyDelta) },
+                        ].map((card) => (
+                          <div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
+                            <div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div>
+                            <div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <PaceChart actualSeries={clubActualSeries} targetSeries={clubTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} />
+
+                      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                        {monthWeeks.map((week) => {
+                          const checkpointTarget = Math.round((clubMonthlyTarget / Math.max(dim, 1)) * week.endDay);
+                          const checkpointActual = clubActualSeries[week.endDay - 1] ?? 0;
+                          const delta = checkpointActual - checkpointTarget;
+
+                          return (
+                            <div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}>
+                              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Checkpoint target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Actual at end: <b style={{ color: "#34d399" }}>{fmt(checkpointActual)}</b></div>
+                              <div style={{ color: gainColor(delta), fontSize: 11, fontWeight: 700, marginTop: 5 }}>{deltaText(delta)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {tab === "debug" && (
                     <div style={S.card}>
                       <div style={S.h2}>Debug</div>
-                      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
                         <button style={S.btn(false)} onClick={() => fetchData()}>Reload current club</button>
                         <button style={S.btn(false)} onClick={() => loadAllData()}>Reload all clubs</button>
                         <button style={S.btn(false)} onClick={() => setDebugLog([])}>Clear log</button>
                       </div>
 
-                      <div style={{ color:"#9ca3af", fontSize:12, marginBottom:12, lineHeight:1.7 }}>
-                        This page reads JSON from your deployed repo files.
-                        Expected path for this club: <b style={{ color:"#e2e0f0" }}>data/{cid}.json</b>
+                      <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
+                        This page reads JSON from your deployed repo files. Expected path for this club: <b style={{ color: "#e2e0f0" }}>data/{cid}.json</b>
                       </div>
 
-                      <pre style={{
-                        whiteSpace:"pre-wrap",
-                        wordBreak:"break-word",
-                        background:"#0a0912",
-                        border:"1px solid #1e1b35",
-                        borderRadius:10,
-                        padding:12,
-                        color:"#c4b5fd",
-                        fontSize:12,
-                        lineHeight:1.55
-                      }}>
+                      <pre
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          background: "#0a0912",
+                          border: "1px solid #1e1b35",
+                          borderRadius: 10,
+                          padding: 12,
+                          color: "#c4b5fd",
+                          fontSize: 12,
+                          lineHeight: 1.55,
+                        }}
+                      >
 {debugLog.length ? debugLog.join("\n") : "No debug entries yet."}
                       </pre>
                     </div>
@@ -1107,9 +1471,11 @@
         </div>
       );
     }
+
     if (window.__ALLOW_APP__) {
       ReactDOM.createRoot(document.getElementById("root")).render(<CircleTracker />);
     }
   </script>
+
 </body>
 </html>
