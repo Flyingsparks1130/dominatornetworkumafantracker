@@ -22,20 +22,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Initialize package.json if missing
-        run: |
-          if [ ! -f package.json ]; then
-            npm init -y
-          fi
-
-      - name: Install Playwright
-        run: |
-          npm install playwright
-          npx playwright install --with-deps chromium
-
       - name: Refresh JSON files
-        env:
-          DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
         run: node scripts/update-json.mjs
 
       - name: Commit updated JSON files
