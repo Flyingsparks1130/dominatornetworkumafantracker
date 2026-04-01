@@ -6,7 +6,6 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 chromium.use(StealthPlugin());
 
 const CONFIG_PATH = path.join(process.cwd(), "scripts", "chronogenesis.clubs.config.json");
-const UMA_REFERENCE_DIR = path.join(process.cwd(), "data");
 const CHRONO_DATA_DIR = path.join(process.cwd(), "data", "chronogenesis");
 
 const SITE_ORIGIN = "https://chronogenesis.net";
@@ -135,7 +134,7 @@ async function waitForKuronoCookie(context, timeoutMs = 30_000) {
 }
 
 async function bootstrapSession(page, context, bootstrapUrl) {
-  await page.goto(bootstrapUrl, {
+  await page.goto(bootstrapUrl || SITE_ORIGIN, {
     waitUntil: "domcontentloaded",
     timeout: DEFAULT_TIMEOUT_MS,
   });
@@ -153,7 +152,7 @@ async function bootstrapSession(page, context, bootstrapUrl) {
     throw new Error("Could not derive cg-carrot from the kurono cookie payload");
   }
 
-  console.log(`Bootstrapped ChronoGenesis session via ${bootstrapUrl}`);
+  console.log(`Bootstrapped ChronoGenesis session via ${bootstrapUrl || SITE_ORIGIN}`);
   return { cgCarrot, kurono: kuronoCookie.value };
 }
 
@@ -216,7 +215,11 @@ async function fetchClubProfileWithRefresh(client, club) {
       if (attempt === 2) throw error;
 
       console.warn(`Retrying ${club.id} after refreshing session: ${error.message}`);
-      const refreshed = await bootstrapSession(client.page, client.context, club.pageUrl);
+      const refreshed = await bootstrapSession(
+        client.page,
+        client.context,
+        club.pageUrl || SITE_ORIGIN
+      );
       client.cgCarrot = refreshed.cgCarrot;
     }
   }
@@ -224,122 +227,79 @@ async function fetchClubProfileWithRefresh(client, club) {
   throw new Error(`Unreachable fetch retry state for ${club.id}`);
 }
 
-async function loadUmaReference(circleId) {
-  const filePath = path.join(UMA_REFERENCE_DIR, `${circleId}.json`);
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function buildReferenceLookup(referenceJson) {
-  const map = new Map();
-
-  if (!referenceJson || !Array.isArray(referenceJson.members)) {
-    return map;
-  }
-
-  for (const member of referenceJson.members) {
-    const viewerId = normalizeViewerId(member.viewer_id);
-    if (!viewerId) continue;
-
-    map.set(viewerId, {
-      id: member.id ?? null,
-      viewer_id: member.viewer_id ?? null,
-      trainer_name: member.trainer_name || member.name || null,
-      isActive: member.isActive,
-      year: member.year ?? null,
-      month: member.month ?? null,
-    });
-  }
-
-  return map;
-}
-
-function inferCircleMeta(apiPayload, referenceJson, club, memberCount) {
-  const clubInfo = Array.isArray(apiPayload.club) && apiPayload.club.length ? apiPayload.club[0] : {};
-  const refCircle = referenceJson?.circle || {};
+function buildCirclePayload(club, apiPayload) {
+  const clubInfo = Array.isArray(apiPayload.club) && apiPayload.club.length
+    ? apiPayload.club[0]
+    : {};
 
   return {
     circle_id: Number(club.id),
-    name: clubInfo.name ?? refCircle.name ?? club.name ?? null,
-    comment: clubInfo.comment ?? refCircle.comment ?? null,
-    leader_viewer_id: clubInfo.leader_viewer_id ?? refCircle.leader_viewer_id ?? null,
-    leader_name: refCircle.leader_name ?? null,
-    member_count: clubInfo.member_num ?? refCircle.member_count ?? memberCount,
-    join_style: clubInfo.join_style ?? refCircle.join_style ?? null,
-    policy: clubInfo.policy ?? refCircle.policy ?? null,
-    created_at: clubInfo.make_time ?? refCircle.created_at ?? null,
-    updated_at: clubInfo.updated_at ?? refCircle.last_updated ?? null,
-    fan_count: clubInfo.fan_count ?? null,
+    leader_viewer_id: clubInfo.leader_viewer_id ?? null,
+    name: clubInfo.name ?? club.name ?? null,
+    comment: clubInfo.comment ?? null,
+    member_num: clubInfo.member_num ?? null,
+    join_style: clubInfo.join_style ?? null,
+    policy: clubInfo.policy ?? null,
+    make_time: clubInfo.make_time ?? null,
+    circle_user_array: Array.isArray(clubInfo.circle_user_array) ? clubInfo.circle_user_array : [],
     daily_average: clubInfo.daily_average ?? null,
     monthly_average: clubInfo.monthly_average ?? null,
+    fan_count: clubInfo.fan_count ?? null,
     rank: clubInfo.rank ?? null,
-    rank_diff: clubInfo.rank_diff ?? null,
+    updated_at: clubInfo.updated_at ?? null,
     is_active: clubInfo.is_active ?? null,
+    rank_diff: clubInfo.rank_diff ?? null,
     names: Array.isArray(clubInfo.names) ? clubInfo.names : clubInfo.name ? [clubInfo.name] : [],
-    archived: refCircle.archived ?? false,
-    yesterday_updated: refCircle.yesterday_updated ?? null,
-    yesterday_points: refCircle.yesterday_points ?? null,
-    yesterday_rank: refCircle.yesterday_rank ?? null,
-    live_points: refCircle.live_points ?? null,
-    live_rank: refCircle.live_rank ?? null,
   };
 }
 
-function buildChronogenesisJson(club, apiPayload, referenceJson) {
-  const refLookup = buildReferenceLookup(referenceJson);
+function buildMembers(apiPayload) {
+  const friendProfiles = Array.isArray(apiPayload.club_friend_profile)
+    ? apiPayload.club_friend_profile
+    : [];
+
+  return friendProfiles.map((member) => ({
+    viewer_id: normalizeViewerId(member.friend_viewer_id)
+      ? Number(normalizeViewerId(member.friend_viewer_id))
+      : null,
+    trainer_name: member.name ?? null,
+    friend_viewer_id: member.friend_viewer_id ?? null,
+    name: member.name ?? null,
+    leader_chara_id: member.leader_chara_id ?? null,
+    membership: member.membership ?? null,
+    daily_average: member.daily_average ?? null,
+    monthly_average: member.monthly_average ?? null,
+    join_time: member.join_time ?? null,
+    fan_count: member.fan_count ?? null,
+    honor_id: member.honor_id ?? null,
+    last_login_time: member.last_login_time ?? null,
+    leader_chara_dress_id: member.leader_chara_dress_id ?? null,
+    support_card_id: member.support_card_id ?? null,
+    team_evaluation_point: member.team_evaluation_point ?? null,
+    updated_at: member.updated_at ?? null,
+    names: Array.isArray(member.names) ? member.names : member.name ? [member.name] : [],
+  }));
+}
+
+function buildChronogenesisJson(club, apiPayload) {
   const now = new Date();
-
-  let matched = 0;
-  const friendProfiles = Array.isArray(apiPayload.club_friend_profile) ? apiPayload.club_friend_profile : [];
-
-  const members = friendProfiles.map((member) => {
-    const viewerId = normalizeViewerId(member.friend_viewer_id);
-    const ref = refLookup.get(viewerId);
-
-    if (ref) matched += 1;
-
-    return {
-      id: ref?.id ?? null,
-      circle_id: Number(club.id),
-      viewer_id: viewerId ? Number(viewerId) : null,
-      trainer_name: ref?.trainer_name ?? member.name ?? null,
-      year: ref?.year ?? now.getUTCFullYear(),
-      month: ref?.month ?? now.getUTCMonth() + 1,
-      daily_fans: [],
-      fan_count: member.fan_count ?? null,
-      daily_average: member.daily_average ?? null,
-      monthly_average: member.monthly_average ?? null,
-      membership: member.membership ?? null,
-      join_time: member.join_time ?? null,
-      last_login_time: member.last_login_time ?? null,
-      updated_at: member.updated_at ?? null,
-      leader_chara_id: member.leader_chara_id ?? null,
-      leader_chara_dress_id: member.leader_chara_dress_id ?? null,
-      support_card_id: member.support_card_id ?? null,
-      team_evaluation_point: member.team_evaluation_point ?? null,
-      honor_id: member.honor_id ?? null,
-      names: Array.isArray(member.names) ? member.names : member.name ? [member.name] : [],
-      isActive: ref?.isActive ?? true,
-    };
-  });
+  const members = buildMembers(apiPayload);
 
   return {
     source: "chronogenesis_api",
     endpoint: "club_profile",
     refreshed_at: now.toISOString(),
-    circle: inferCircleMeta(apiPayload, referenceJson, club, members.length),
-    club_daily_history: Array.isArray(apiPayload.club_daily_history) ? apiPayload.club_daily_history : [],
-    club_monthly_history: Array.isArray(apiPayload.club_monthly_history) ? apiPayload.club_monthly_history : [],
+    circle: buildCirclePayload(club, apiPayload),
+    club_daily_history: Array.isArray(apiPayload.club_daily_history)
+      ? apiPayload.club_daily_history
+      : [],
+    club_monthly_history: Array.isArray(apiPayload.club_monthly_history)
+      ? apiPayload.club_monthly_history
+      : [],
     members,
     meta: {
-      matched_members: matched,
       total_members: members.length,
-      member_history_available: false,
-      note: "club_profile provides club and friend profile snapshots, not per-member daily_fans arrays",
+      note: "Separate ChronoGenesis-only export. No UMA reference merge.",
     },
   };
 }
@@ -347,9 +307,7 @@ function buildChronogenesisJson(club, apiPayload, referenceJson) {
 async function saveChronogenesisJson(club, payload) {
   const outPath = path.join(CHRONO_DATA_DIR, `${club.id}.json`);
   await fs.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
-  console.log(
-    `✅ CHRONO SAVED: ${club.id} matched ${payload.meta?.matched_members ?? 0}/${payload.meta?.total_members ?? 0}`
-  );
+  console.log(`✅ CHRONO SAVED: ${club.id} members ${payload.meta?.total_members ?? 0}`);
 }
 
 async function processClub(client, club) {
@@ -358,8 +316,7 @@ async function processClub(client, club) {
   }
 
   const apiPayload = await fetchClubProfileWithRefresh(client, club);
-  const referenceJson = await loadUmaReference(club.id);
-  const output = buildChronogenesisJson(club, apiPayload, referenceJson);
+  const output = buildChronogenesisJson(club, apiPayload);
   await saveChronogenesisJson(club, output);
 }
 
@@ -425,7 +382,7 @@ async function main() {
 
     const bootstrapClub = clubs.find((club) => club?.pageUrl) || { pageUrl: SITE_ORIGIN };
     const session = await bootstrapSession(page, context, bootstrapClub.pageUrl);
-    const client = { browser, context, page, cgCarrot: session.cgCarrot };
+    const client = { context, page, cgCarrot: session.cgCarrot };
 
     for (const club of clubs) {
       console.log(`\n=== Chronogenesis API ${club.name || "Unknown"} (${club.id}) ===`);
