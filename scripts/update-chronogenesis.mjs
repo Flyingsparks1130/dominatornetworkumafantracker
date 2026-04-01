@@ -55,6 +55,18 @@ async function dismissBlockingUi(page) {
   }
 }
 
+async function logButtons(page, clubId) {
+  try {
+    const buttons = await page.locator("button").allTextContents();
+    console.log(`Buttons on ${clubId}:`, buttons);
+  } catch {}
+
+  try {
+    const links = await page.locator("a").allTextContents();
+    console.log(`Links on ${clubId}:`, links.filter(Boolean).slice(0, 50));
+  } catch {}
+}
+
 function normalizeViewerId(value) {
   return String(value ?? "").replace(/\D+/g, "").trim();
 }
@@ -73,6 +85,7 @@ async function downloadChronogenesisCsv(browser, club) {
 
     await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
+    await logButtons(page, club.id);
 
     const exportCandidates = [
       page.getByRole("button", { name: new RegExp(SELECTORS.exportButtonText, "i") }).first(),
@@ -86,6 +99,7 @@ async function downloadChronogenesisCsv(browser, club) {
         if (await locator.count()) {
           await locator.click({ timeout: 5000, force: true });
           exportClicked = true;
+          console.log(`Clicked export for ${club.id}`);
           break;
         }
       } catch {}
@@ -96,6 +110,7 @@ async function downloadChronogenesisCsv(browser, club) {
     }
 
     await page.waitForTimeout(1000);
+    await logButtons(page, `${club.id} (after export click)`);
 
     const csvCandidates = [
       page.getByText(/^csv$/i).first(),
@@ -115,6 +130,7 @@ async function downloadChronogenesisCsv(browser, club) {
           await locator.scrollIntoViewIfNeeded();
           await locator.click({ timeout: 5000, force: true });
           csvClicked = true;
+          console.log(`Clicked CSV for ${club.id}`);
           break;
         }
       } catch {}
