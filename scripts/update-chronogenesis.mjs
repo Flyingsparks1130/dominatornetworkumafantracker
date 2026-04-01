@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { chromium } from "playwright-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { parse } from "csv-parse/sync";
+
+// Apply stealth patches — hides navigator.webdriver, plugin/mimeType
+// fingerprints, WebGL vendor, Chrome runtime checks, etc.
+chromium.use(StealthPlugin());
 
 const CONFIG_PATH = path.join(process.cwd(), "scripts", "chronogenesis.clubs.config.json");
 const UMA_REFERENCE_DIR = path.join(process.cwd(), "data");
@@ -538,6 +543,32 @@ async function getChronogenesisMembers(browser, club) {
     timezoneId: "America/New_York",
   });
 
+  // Patch webdriver flag and add realistic browser properties before any page loads
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+    Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [1, 2, 3, 4, 5], // non-empty array passes simple length checks
+    });
+
+    // Patch chrome runtime to look like a real browser
+    window.chrome = {
+      runtime: {},
+      loadTimes: function () {},
+      csi: function () {},
+      app: { isInstalled: false },
+    };
+
+    // Override permissions query to report "prompt" (real browser default)
+    const originalQuery = window.navigator.permissions?.query;
+    if (originalQuery) {
+      window.navigator.permissions.query = (parameters) =>
+        parameters.name === "notifications"
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters);
+    }
+  });
+
   const page = await context.newPage();
 
   try {
@@ -550,7 +581,26 @@ async function getChronogenesisMembers(browser, club) {
       timeout: 60000,
     });
 
-    await page.waitForTimeout(10000);
+    // Wait for Cloudflare Turnstile challenge to resolve, then extra settle time
+    console.log(`Waiting for Turnstile / page content to settle for ${club.id}...`);
+    await page
+      .waitForFunction(
+        () => {
+          // Turnstile injects a hidden input with cf-turnstile-response when solved
+          const solved = document.querySelector('input[name="cf-turnstile-response"]');
+          // Or just check if the real page content has loaded (e.g. chart/table/export)
+          const hasContent =
+            document.querySelector(".save-button") ||
+            document.querySelector("canvas") ||
+            document.querySelector("table") ||
+            document.querySelector(".chart-container");
+          return solved || hasContent;
+        },
+        { timeout: 30000 }
+      )
+      .catch(() => console.log(`Turnstile/content wait timed out for ${club.id}, continuing...`));
+
+    await page.waitForTimeout(5000);
     await dismissBlockingUi(page);
     await logInteractiveElements(page, club.id);
 
@@ -602,7 +652,16 @@ async function main() {
   await fs.mkdir(CHRONO_DATA_DIR, { recursive: true });
 
   let successCount = 0;
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-infobars",
+      "--window-size=1440,900",
+    ],
+  });
 
   try {
     for (const club of clubs) {
