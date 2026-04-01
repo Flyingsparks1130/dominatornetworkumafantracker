@@ -38,17 +38,31 @@ jobs:
             echo "DOWNLOAD_COOKIE is SET"
           fi
       - name: Refresh Chronogenesis JSON files
+        id: refresh
+        continue-on-error: true
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
         run: xvfb-run --auto-servernum node scripts/update-chronogenesis.mjs
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronogenesis-debug
+          path: |
+            data/chronogenesis/debug-*.png
+            data/chronogenesis/debug-*.html
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Verify Chronogenesis output exists
+        if: steps.refresh.outcome == 'success'
         run: |
           mkdir -p data/chronogenesis
-          if ! find data/chronogenesis -maxdepth 1 -name '*.json' | grep -q .; then
+          if ! find data/chronogenesis -maxdepth 1 -name '*.json' -not -name 'debug-*' | grep -q .; then
             echo "No Chronogenesis JSON files were generated"
             exit 1
           fi
       - name: Commit updated Chronogenesis JSON files
+        if: steps.refresh.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -59,4 +73,10 @@ jobs:
             echo "No Chronogenesis JSON files found to commit"
           fi
       - name: Push changes
+        if: steps.refresh.outcome == 'success'
         run: git push
+      - name: Fail if refresh failed
+        if: steps.refresh.outcome == 'failure'
+        run: |
+          echo "Refresh step failed — check debug artifacts for screenshots and HTML dumps"
+          exit 1
