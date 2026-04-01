@@ -17,15 +17,19 @@ async function addCookiesIfPresent(context) {
     .map((pair) => {
       const [name, ...rest] = pair.split("=");
       return {
-        name,
-        value: rest.join("="),
-        domain: "chronogenesis.net",
+        name: name.trim(),
+        value: rest.join("=").trim(),
+        url: "https://chronogenesis.net",
         path: "/",
+        secure: true,
+        httpOnly: false,
+        sameSite: "None",
       };
     });
 
   if (cookies.length) {
     await context.addCookies(cookies);
+    console.log(`Injected ${cookies.length} cookie(s) for chronogenesis.net`);
   }
 }
 
@@ -75,18 +79,6 @@ async function logInteractiveElements(page, clubId) {
   } catch {}
 
   try {
-    const roleButtons = await page.locator('[role="button"]').evaluateAll((els) =>
-      els.map((el) => ({
-        text: (el.innerText || el.textContent || "").trim(),
-        aria: el.getAttribute("aria-label"),
-        title: el.getAttribute("title"),
-        className: el.className || "",
-      }))
-    );
-    console.log(`Role buttons on ${clubId}:`, roleButtons);
-  } catch {}
-
-  try {
     const bodyText = await page.locator("body").innerText();
     console.log(`Body text preview on ${clubId}:`, bodyText.slice(0, 2000));
   } catch {}
@@ -101,72 +93,274 @@ function normalizeViewerId(value) {
   return String(value ?? "").replace(/\D+/g, "").trim();
 }
 
-async function downloadChronogenesisCsv(browser, club) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
+function isLikelyStructuredData(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function searchObjectForMemberData(root, seen = new WeakSet(), pathName = "root", hits = []) {
+  if (!root || typeof root !== "object") return hits;
+  if (seen.has(root)) return hits;
+  seen.add(root);
 
   try {
-    await addCookiesIfPresent(context);
+    if (Array.isArray(root)) {
+      if (
+        root.length &&
+        root.some(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            (
+              "viewer_id" in item ||
+              "trainer_name" in item ||
+              "daily_fans" in item ||
+              "name" in item
+            )
+        )
+      ) {
+        hits.push({ path: pathName, value: root });
+      }
 
-    await page.goto(club.pageUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-
-    await page.waitForTimeout(5000);
-    await dismissBlockingUi(page);
-
-    const exportLocator = page
-      .locator('div.save-button.expanded[title="Export as .csv"]')
-      .first();
-
-    const pageReadyCandidates = [
-      page.locator('text=/Member Cumulative Fan Count/i').first(),
-      page.locator('text=/Show active members only/i').first(),
-      exportLocator,
-      page.locator("select#month").first(),
-    ];
-
-    let pageReady = false;
-    for (const locator of pageReadyCandidates) {
-      try {
-        await locator.waitFor({ state: "visible", timeout: 15000 });
-        pageReady = true;
-        break;
-      } catch {}
+      for (let i = 0; i < root.length; i++) {
+        searchObjectForMemberData(root[i], seen, `${pathName}[${i}]`, hits);
+      }
+      return hits;
     }
 
-    await logInteractiveElements(page, club.id);
+    const keys = Object.keys(root);
 
-    if (!pageReady) {
-      throw new Error(
-        `Chronogenesis club content did not finish loading for ${club.id}. ` +
-          `Likely blocked by Cloudflare or delayed app rendering.`
-      );
+    if (
+      ("members" in root && Array.isArray(root.members)) ||
+      ("datasets" in root && Array.isArray(root.datasets)) ||
+      ("series" in root && Array.isArray(root.series))
+    ) {
+      hits.push({ path: pathName, value: root });
     }
 
-    await exportLocator.scrollIntoViewIfNeeded().catch(() => {});
-    await exportLocator.hover({ timeout: 3000 }).catch(() => {});
-
-    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
-
-    await exportLocator.click({ timeout: 5000, force: true });
-    console.log(`Clicked export icon for ${club.id}`);
-
-    const download = await downloadPromise;
-    const tempPath = await download.path();
-
-    if (!tempPath) {
-      throw new Error(`Download path missing for ${club.id}`);
+    for (const key of keys) {
+      const child = root[key];
+      searchObjectForMemberData(child, seen, `${pathName}.${key}`, hits);
     }
+  } catch {}
 
-    const csvText = await fs.readFile(tempPath, "utf8");
-    console.log(`Downloaded CSV for ${club.id}, length=${csvText.length}`);
-    return csvText;
-  } finally {
-    await page.close().catch(() => {});
-    await context.close().catch(() => {});
+  return hits;
+}
+
+function normalizeChronoMembersFromJson(payload, clubId) {
+  if (!payload) return null;
+
+  const candidateArrays = [];
+
+  if (Array.isArray(payload)) candidateArrays.push(payload);
+  if (Array.isArray(payload.members)) candidateArrays.push(payload.members);
+  if (Array.isArray(payload.data?.members)) candidateArrays.push(payload.data.members);
+  if (Array.isArray(payload.trainers)) candidateArrays.push(payload.trainers);
+  if (Array.isArray(payload.data?.trainers)) candidateArrays.push(payload.data.trainers);
+  if (Array.isArray(payload.series)) candidateArrays.push(payload.series);
+
+  for (const arr of candidateArrays) {
+    const normalized = arr
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+
+        const viewerId =
+          item.viewer_id ??
+          item.trainer_id ??
+          item.member_id ??
+          item.trainer ??
+          item.id ??
+          null;
+
+        const dailyFans =
+          Array.isArray(item.daily_fans)
+            ? item.daily_fans
+            : Array.isArray(item.data)
+            ? item.data
+            : Array.isArray(item.values)
+            ? item.values
+            : null;
+
+        if (!dailyFans || !Array.isArray(dailyFans)) return null;
+
+        return {
+          viewer_id: normalizeViewerId(viewerId) ? Number(normalizeViewerId(viewerId)) : null,
+          trainer_name: item.trainer_name || item.name || null,
+          daily_fans: dailyFans.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0)),
+        };
+      })
+      .filter(Boolean);
+
+    if (normalized.length) {
+      console.log(`Normalized ${normalized.length} member rows from JSON/object for ${clubId}`);
+      return normalized;
+    }
   }
+
+  return null;
+}
+
+async function tryCaptureNetworkData(page, clubId) {
+  const captured = [];
+
+  page.on("response", async (response) => {
+    try {
+      const url = response.url();
+      const headers = response.headers();
+      const contentType = headers["content-type"] || "";
+      const requestType = response.request().resourceType();
+
+      if (
+        !(
+          contentType.includes("application/json") ||
+          contentType.includes("text/csv") ||
+          requestType === "xhr" ||
+          requestType === "fetch"
+        )
+      ) {
+        return;
+      }
+
+      const text = await response.text();
+
+      captured.push({
+        url,
+        contentType,
+        text,
+      });
+    } catch {}
+  });
+
+  await page.waitForTimeout(5000);
+
+  console.log(`Captured ${captured.length} network candidate response(s) for ${clubId}`);
+
+  for (const item of captured) {
+    try {
+      if (item.contentType.includes("text/csv")) {
+        console.log(`Found CSV network response for ${clubId}: ${item.url}`);
+        return { type: "csv", payload: item.text, sourceUrl: item.url };
+      }
+
+      const parsed = JSON.parse(item.text);
+      const normalized = normalizeChronoMembersFromJson(parsed, clubId);
+
+      if (normalized?.length) {
+        console.log(`Found JSON/XHR member data for ${clubId}: ${item.url}`);
+        return { type: "members", payload: normalized, sourceUrl: item.url };
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+async function tryExtractFromPageState(page, clubId) {
+  const result = await page.evaluate(() => {
+    function isObject(value) {
+      return value && typeof value === "object";
+    }
+
+    function collectCandidates() {
+      const found = [];
+      const seen = new WeakSet();
+
+      function walk(value, path) {
+        if (!isObject(value)) return;
+        if (seen.has(value)) return;
+        seen.add(value);
+
+        try {
+          if (Array.isArray(value)) {
+            if (
+              value.length &&
+              value.some(
+                (item) =>
+                  isObject(item) &&
+                  (
+                    "viewer_id" in item ||
+                    "trainer_name" in item ||
+                    "daily_fans" in item ||
+                    "name" in item ||
+                    "data" in item
+                  )
+              )
+            ) {
+              found.push({ path, value });
+            }
+
+            for (let i = 0; i < value.length; i++) {
+              walk(value[i], `${path}[${i}]`);
+            }
+            return;
+          }
+
+          if (
+            ("members" in value && Array.isArray(value.members)) ||
+            ("trainers" in value && Array.isArray(value.trainers)) ||
+            ("series" in value && Array.isArray(value.series)) ||
+            ("datasets" in value && Array.isArray(value.datasets))
+          ) {
+            found.push({ path, value });
+          }
+
+          for (const key of Object.keys(value)) {
+            walk(value[key], `${path}.${key}`);
+          }
+        } catch {}
+      }
+
+      for (const key of Object.keys(window)) {
+        try {
+          walk(window[key], `window.${key}`);
+        } catch {}
+      }
+
+      return found.slice(0, 50);
+    }
+
+    return collectCandidates();
+  });
+
+  console.log(`Found ${result.length} page-state candidate object(s) for ${clubId}`);
+  for (const item of result.slice(0, 10)) {
+    console.log(`Page-state candidate on ${clubId}: ${item.path}`);
+  }
+
+  for (const item of result) {
+    const normalized = normalizeChronoMembersFromJson(item.value, clubId);
+    if (normalized?.length) {
+      console.log(`Using page-state object ${item.path} for ${clubId}`);
+      return { type: "members", payload: normalized, sourcePath: item.path };
+    }
+  }
+
+  return null;
+}
+
+async function downloadChronogenesisCsv(page, clubId) {
+  const exportLocator = page
+    .locator('div.save-button.expanded[title="Export as .csv"]')
+    .first();
+
+  await exportLocator.waitFor({ state: "visible", timeout: 15000 });
+  await exportLocator.scrollIntoViewIfNeeded().catch(() => {});
+  await exportLocator.hover({ timeout: 3000 }).catch(() => {});
+
+  const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+
+  await exportLocator.click({ timeout: 5000, force: true });
+  console.log(`Clicked export icon for ${clubId}`);
+
+  const download = await downloadPromise;
+  const tempPath = await download.path();
+
+  if (!tempPath) {
+    throw new Error(`Download path missing for ${clubId}`);
+  }
+
+  const csvText = await fs.readFile(tempPath, "utf8");
+  console.log(`Downloaded CSV for ${clubId}, length=${csvText.length}`);
+  return csvText;
 }
 
 function parseChronogenesisCsv(csvText, clubId) {
@@ -216,6 +410,7 @@ function parseChronogenesisCsv(csvText, clubId) {
 
     return {
       viewer_id: viewerId ? Number(viewerId) : null,
+      trainer_name: null,
       daily_fans: dailyFans,
     };
   });
@@ -282,13 +477,13 @@ function inferCircleMeta(referenceJson, club, memberCount) {
   };
 }
 
-function buildChronogenesisJson(club, csvMembers, referenceJson) {
+function buildChronogenesisJson(club, sourceMembers, referenceJson) {
   const refLookup = buildReferenceLookup(referenceJson);
   const now = new Date();
 
   let matched = 0;
 
-  const members = csvMembers.map((member) => {
+  const members = sourceMembers.map((member) => {
     const key = normalizeViewerId(member.viewer_id);
     const ref = refLookup.get(key);
 
@@ -298,10 +493,10 @@ function buildChronogenesisJson(club, csvMembers, referenceJson) {
       id: ref?.id ?? null,
       circle_id: Number(club.id),
       viewer_id: member.viewer_id ?? ref?.viewer_id ?? null,
-      trainer_name: ref?.trainer_name ?? null,
+      trainer_name: ref?.trainer_name ?? member.trainer_name ?? null,
       year: ref?.year ?? now.getUTCFullYear(),
       month: ref?.month ?? now.getUTCMonth() + 1,
-      daily_fans: member.daily_fans,
+      daily_fans: Array.isArray(member.daily_fans) ? member.daily_fans : [],
       isActive: ref?.isActive ?? true,
     };
   });
@@ -327,16 +522,65 @@ async function saveChronogenesisJson(club, payload) {
   );
 }
 
+async function getChronogenesisMembers(browser, club) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    locale: "en-US",
+    timezoneId: "America/New_York",
+  });
+
+  const page = await context.newPage();
+
+  try {
+    await addCookiesIfPresent(context);
+
+    const networkPromise = tryCaptureNetworkData(page, club.id);
+
+    await page.goto(club.pageUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    await page.waitForTimeout(10000);
+    await dismissBlockingUi(page);
+    await logInteractiveElements(page, club.id);
+
+    const fromNetwork = await networkPromise;
+    if (fromNetwork?.type === "members" && fromNetwork.payload?.length) {
+      console.log(`Using network JSON data for ${club.id}`);
+      return fromNetwork.payload;
+    }
+    if (fromNetwork?.type === "csv" && fromNetwork.payload) {
+      console.log(`Using network CSV data for ${club.id}`);
+      return parseChronogenesisCsv(fromNetwork.payload, club.id);
+    }
+
+    const fromPageState = await tryExtractFromPageState(page, club.id);
+    if (fromPageState?.type === "members" && fromPageState.payload?.length) {
+      console.log(`Using page-state data for ${club.id}`);
+      return fromPageState.payload;
+    }
+
+    console.log(`Falling back to export-click CSV for ${club.id}`);
+    const csvText = await downloadChronogenesisCsv(page, club.id);
+    return parseChronogenesisCsv(csvText, club.id);
+  } finally {
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+  }
+}
+
 async function processClub(browser, club) {
   if (!club?.id || !club?.pageUrl) {
     throw new Error(`Missing id or pageUrl for club config entry: ${JSON.stringify(club)}`);
   }
 
-  const csvText = await downloadChronogenesisCsv(browser, club);
-  const csvMembers = parseChronogenesisCsv(csvText, club.id);
-  console.log(`Parsed ${csvMembers.length} Chronogenesis rows for ${club.id}`);
+  const sourceMembers = await getChronogenesisMembers(browser, club);
+  console.log(`Prepared ${sourceMembers.length} Chronogenesis rows for ${club.id}`);
   const referenceJson = await loadUmaReference(club.id);
-  const output = buildChronogenesisJson(club, csvMembers, referenceJson);
+  const output = buildChronogenesisJson(club, sourceMembers, referenceJson);
   await saveChronogenesisJson(club, output);
 }
 
