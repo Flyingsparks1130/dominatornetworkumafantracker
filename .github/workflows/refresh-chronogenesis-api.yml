@@ -41,7 +41,15 @@ jobs:
           HEADFUL: "0"
         run: node scripts/update-chronogenesis.mjs
 
+      - name: Upload ChronoGenesis debug files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronogenesis-debug
+          path: data/chronogenesis/
+
       - name: Commit updated ChronoGenesis JSON files
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -49,4 +57,5 @@ jobs:
           git diff --staged --quiet || git commit -m "Refresh ChronoGenesis JSON"
 
       - name: Push changes
+        if: success()
         run: git push
