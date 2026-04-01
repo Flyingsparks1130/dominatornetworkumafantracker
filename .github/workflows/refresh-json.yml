@@ -2,8 +2,14 @@ name: Refresh circle JSON
 
 on:
   schedule:
-    - cron: "30 4 * * *"
-    - cron: "30 5 * * *"
+    - cron: "0 6 * * *"
+      timezone: "America/New_York"
+    - cron: "0 7 * * *"
+      timezone: "America/New_York"
+    - cron: "0 13 * * *"
+      timezone: "America/New_York"
+    - cron: "0 14 * * *"
+      timezone: "America/New_York"
   workflow_dispatch:
 
 permissions:
