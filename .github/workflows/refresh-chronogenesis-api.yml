@@ -39,7 +39,7 @@ jobs:
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
           HEADFUL: "0"
-        run: node scripts/update-chronogenesis-api.mjs
+        run: node scripts/update-chronogenesis.mjs
 
       - name: Commit updated ChronoGenesis JSON files
         run: |
