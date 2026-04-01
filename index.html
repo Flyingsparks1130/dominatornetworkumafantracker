@@ -87,6 +87,15 @@
       "A":  { bg: "#34d39922", border: "#34d399", text: "#34d399", bar: "#059669" },
       "B+": { bg: "#60a5fa22", border: "#60a5fa", text: "#60a5fa", bar: "#2563eb" },
     };
+    const TIER_RANK = { "S": 0, "A+": 1, "A": 2, "B+": 3 };
+    const HEALTH_GRADES = [
+      { min: 0.85, grade: "A+", color: "#34d399", bg: "#34d39922" },
+      { min: 0.70, grade: "A",  color: "#34d399", bg: "#34d39922" },
+      { min: 0.55, grade: "B",  color: "#60a5fa", bg: "#60a5fa22" },
+      { min: 0.40, grade: "C",  color: "#fbbf24", bg: "#fbbf2422" },
+      { min: 0.20, grade: "D",  color: "#f97316", bg: "#f9731622" },
+      { min: 0,    grade: "F",  color: "#f87171", bg: "#f8717122" },
+    ];
 
     const STATUS_META = {
       "on-track": { label: "On Track", icon: "✅", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
@@ -111,6 +120,23 @@
     };
     const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
+
+    function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
+
+    function computeHealthGrade(pctOnTrack, projectedRatio, nonStagnantRatio) {
+      const score = 0.40 * pctOnTrack + 0.35 * Math.min(1, projectedRatio) + 0.25 * nonStagnantRatio;
+      const g = HEALTH_GRADES.find((h) => score >= h.min) || HEALTH_GRADES[HEALTH_GRADES.length - 1];
+      return { ...g, score: Math.round(score * 100) };
+    }
+
+    function getStagnantDays(dailyGainSeries, todayIdx) {
+      let count = 0;
+      for (let i = todayIdx; i >= 0; i--) {
+        if ((dailyGainSeries[i] ?? 0) <= 0) count++;
+        else break;
+      }
+      return count;
+    }
 
     function isSameCalendarDay(a, b) {
       return (
@@ -484,7 +510,24 @@
       );
     }
 
-    function Sparkline({ data = [], width = 90, height = 26 }) {
+    function HealthBadge({ grade }) {
+      const g = HEALTH_GRADES.find((h) => h.grade === grade) || HEALTH_GRADES[HEALTH_GRADES.length - 1];
+      return (<span style={{ background: g.bg, border: `1px solid ${g.color}66`, color: g.color, borderRadius: 6, padding: "2px 10px", fontSize: 13, fontWeight: 900, letterSpacing: "0.04em" }}>{grade}</span>);
+    }
+
+    function StagnantBadge({ days }) {
+      if (days < 2) return null;
+      const color = days >= 5 ? "#f87171" : days >= 3 ? "#f97316" : "#fbbf24";
+      return (<span style={{ background: color + "22", border: `1px solid ${color}44`, color, borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 700, whiteSpace: "nowrap" }}>⏸ {days}d idle</span>);
+    }
+
+    function DaysToTargetBadge({ days, daysLeft }) {
+      if (days === Infinity || days == null) return (<span style={{ color: "#f87171", fontSize: 10, fontWeight: 700 }}>∞</span>);
+      const color = days > daysLeft ? "#f87171" : days > daysLeft * 0.8 ? "#fbbf24" : "#34d399";
+      return (<span style={{ color, fontWeight: 700 }}>{days}d</span>);
+    }
+
+    function Sparkline({ data = [], width = 90, height = 26, color = "#7c3aed" }) {
       const vals = data.filter((v) => v > 0);
       if (vals.length < 2) return <span style={{ color: "#4b5563", fontSize: 10 }}>—</span>;
 
@@ -502,8 +545,8 @@
 
       return (
         <svg width={width} height={height}>
-          <polyline points={pts} fill="none" stroke="#7c3aed" strokeWidth={1.5} strokeLinejoin="round" />
-          <circle cx={lx} cy={ly} r={2.5} fill="#c4b5fd" />
+          <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+          <circle cx={lx} cy={ly} r={2.5} fill={color} opacity={0.8} />
         </svg>
       );
     }
@@ -740,7 +783,54 @@
       );
     }
 
-    function CircleTracker() {
+    function NetworkPaceChart({ clubs = [], dim, today }) {
+      const [hoverIdx, setHoverIdx] = useState(null);
+      const lines = clubs.filter((c) => c.clubPctSeries && c.clubPctSeries.length > 0);
+      if (!lines.length) return (<div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>No club data available for the network pace chart.</div>);
+      const W = 980, H = 320, pad = { top: 24, right: 28, bottom: 42, left: 55 };
+      const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
+      const targetSeries = Array.from({ length: dim }, (_, i) => ((i + 1) / dim) * 100);
+      const maxV = Math.max(120, ...lines.flatMap((l) => l.clubPctSeries));
+      const xI = (i) => pad.left + (dim <= 1 ? 0 : (i / (dim - 1)) * innerW);
+      const yV = (v) => pad.top + innerH - ((v || 0) / maxV) * innerH;
+      const pathFor = (s) => s.slice(0, dim).map((v, i) => `${i === 0 ? "M" : "L"} ${xI(i)} ${yV(v)}`).join(" ");
+      const gridVals = [0, 25, 50, 75, 100];
+      return (
+        <div style={{ position: "relative" }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {gridVals.map((v) => { const y = yV(v); return (<g key={v}><line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={pad.left - 8} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{v}%</text></g>); })}
+            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+            {lines.map((l) => (<path key={l.name} d={pathFor(l.clubPctSeries)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
+            {Array.from({ length: dim }, (_, i) => {
+              const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2;
+              const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2;
+              return (<rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />);
+            })}
+            {hoverIdx != null && lines.map((l) => (<circle key={l.name} cx={xI(hoverIdx)} cy={yV(l.clubPctSeries[hoverIdx] ?? 0)} r="4" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
+            {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? (<text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text>) : null)}
+          </svg>
+          {hoverIdx != null && (
+            <div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 260, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}>
+              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {hoverIdx + 1} · Target: {Math.round(targetSeries[hoverIdx])}%</div>
+              {[...lines].sort((a, b) => (b.clubPctSeries[hoverIdx] ?? 0) - (a.clubPctSeries[hoverIdx] ?? 0)).map((l) => {
+                const pct = l.clubPctSeries[hoverIdx] ?? 0;
+                return (<div key={l.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0 }} />{l.clubName} <TierBadge tier={l.tier} /></div>
+                  <div style={{ color: pct >= targetSeries[hoverIdx] ? "#34d399" : "#f87171", fontWeight: 700 }}>{pct.toFixed(1)}%</div>
+                </div>);
+              })}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />Target pace (100%)</span>
+            {lines.map((l) => (<span key={l.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: l.clubColor, borderRadius: 99, display: "inline-block" }} />{l.clubName}</span>))}
+          </div>
+        </div>
+      );
+    }
+
+        function CircleTracker() {
       const now = new Date();
       const dataDate = new Date(now);
       dataDate.setDate(dataDate.getDate() - 1);
@@ -770,6 +860,9 @@
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
       const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
+      const [homeTab, setHomeTab] = useState("directory");
+      const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(false);
+      const [weeklyCopied, setWeeklyCopied] = useState(false);
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
 
@@ -907,14 +1000,15 @@
         const cumulativeSeries = buildCumulativeSeries(member.dailyFans, dim);
         const dailyGainSeries = buildDailyGainSeries(cumulativeSeries);
         const plan = getPlanMetrics(member.monthlyGain ?? 0, monthlyTarget, today, dim, monthWeeks);
+        const rolling3DayAvg = getTrailingAverage(dailyGainSeries, today - 1, 3);
+        const fansNeededForPlan = Math.max(0, monthlyTarget - (member.monthlyGain ?? 0));
+        const stagnantDays = getStagnantDays(dailyGainSeries, today - 1);
+        const daysToTarget = rolling3DayAvg > 0 ? Math.ceil(fansNeededForPlan / rolling3DayAvg) : Infinity;
 
         return {
           ...member,
-          cumulativeSeries,
-          dailyGainSeries,
-          rolling3DayAvg: getTrailingAverage(dailyGainSeries, today - 1, 3),
-          fansNeededForPlan: Math.max(0, monthlyTarget - (member.monthlyGain ?? 0)),
-          plan,
+          cumulativeSeries, dailyGainSeries, rolling3DayAvg, fansNeededForPlan,
+          plan, stagnantDays, daysToTarget,
         };
       }
 
@@ -964,13 +1058,24 @@
           { "on-track": 0, "behind": 0, "critical": 0 }
         );
 
+        const totalM = decorated.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
+        const totalP = decorated.reduce((sum, member) => sum + (member.projected ?? 0), 0);
+        const clubTarget = decorated.length * entry.target;
+        const nonStagnant = decorated.filter((m) => m.stagnantDays < 3).length;
+        const pctOnTrack = decorated.length > 0 ? clubStatusCounts["on-track"] / decorated.length : 0;
+        const projectedRatio = clubTarget > 0 ? totalP / clubTarget : 0;
+        const nonStagnantRatio = decorated.length > 0 ? nonStagnant / decorated.length : 0;
+        const health = computeHealthGrade(pctOnTrack, projectedRatio, nonStagnantRatio);
+        const clubCumSeries = Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.cumulativeSeries[d] ?? 0), 0));
+        const clubPctSeries = clubTarget > 0 ? clubCumSeries.map((v) => (v / clubTarget) * 100) : [];
+
         return {
           ...entry,
           clubName: cdata?.clubName || entry.name,
           activeMembers: decorated.length,
           totalFans: decorated.reduce((sum, member) => sum + (member.fans || 0), 0),
-          totalMonthly: decorated.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0),
-          totalProjected: decorated.reduce((sum, member) => sum + (member.projected ?? 0), 0),
+          totalMonthly: totalM,
+          totalProjected: totalP,
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata),
           lastFetch: cdata?.lastFetch || null,
@@ -979,6 +1084,7 @@
           jsonMeta: getJsonLoadMeta(entry, cdata, now),
           statusCounts: clubStatusCounts,
           topFiveMembers: [...decorated].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 5),
+          health, clubPctSeries, clubColor: getClubColor(CLUBS.indexOf(entry)),
         };
       });
 
@@ -1061,6 +1167,16 @@
             return criticalSort.direction === "asc" ? av - bv : bv - av;
           })
         : criticalBaseMembers;
+
+      const transferCandidates = (() => {
+        const demotionCandidates = networkMembers
+          .filter((m) => (TIER_RANK[m.clubTier] ?? 99) <= 1 && (m.plan.statusKey === "critical" || (m.plan.statusKey === "behind" && m.stagnantDays >= 3)))
+          .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0)).slice(0, 15);
+        const promotionCandidates = networkMembers
+          .filter((m) => (TIER_RANK[m.clubTier] ?? 99) >= 2 && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2)
+          .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 15);
+        return { demotionCandidates, promotionCandidates };
+      })();
 
       function toggleCriticalSort(key) {
         setCriticalSort((prev) => {
@@ -1201,6 +1317,49 @@
         }
 
         return message;
+      }
+
+      function buildWeeklyComparisonDiscord() {
+        const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const previousWeek = monthWeeks.find((w) => w.number === (currentWeek?.number || 1) - 1) || null;
+        if (!previousWeek || !currentWeek) return "Not enough weeks to compare yet.";
+        const getWeekGain = (member, week) => {
+          const cs = member.cumulativeSeries || [];
+          const endVal = cs[Math.min(week.endDay - 1, cs.length - 1)] ?? 0;
+          const startVal = week.startDay > 1 ? (cs[week.startDay - 2] ?? 0) : 0;
+          return endVal - startVal;
+        };
+        const comparisons = decoratedMembers.map((m) => {
+          const prevGain = getWeekGain(m, previousWeek);
+          const currGain = getWeekGain(m, currentWeek);
+          return { name: m.name, prevGain, currGain, diff: currGain - prevGain };
+        }).sort((a, b) => b.diff - a.diff);
+        const improved = comparisons.filter((c) => c.diff > 0);
+        const declined = comparisons.filter((c) => c.diff < 0);
+        const lines = [
+          `\u{1f4ca} **[${club.tier}] ${club.name} \u2014 Weekly Comparison** | ${ds}`,
+          `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, "",
+        ];
+        if (improved.length > 0) {
+          lines.push(`\u{1f4c8} **Improved** (${improved.length}):`);
+          improved.slice(0, 10).forEach((c) => lines.push(`  \u2191 **${c.name}** \u2014 W${previousWeek.number}: ${fmt(c.prevGain)} \u2192 W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
+          if (improved.length > 10) lines.push(`  \u2026 and ${improved.length - 10} more`);
+          lines.push("");
+        }
+        if (declined.length > 0) {
+          lines.push(`\u{1f4c9} **Declined** (${declined.length}):`);
+          declined.slice(0, 10).forEach((c) => lines.push(`  \u2193 **${c.name}** \u2014 W${previousWeek.number}: ${fmt(c.prevGain)} \u2192 W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
+          if (declined.length > 10) lines.push(`  \u2026 and ${declined.length - 10} more`);
+        }
+        lines.push("", `> \u{1f916} *Dominator Network Tracker \u00b7 ${club.officer}*`);
+        let msg = lines.join("\n");
+        if (msg.length > 3900) msg = msg.slice(0, 3897) + "\u2026";
+        return msg;
+      }
+
+      async function copyWeeklyDiscord() {
+        await navigator.clipboard.writeText(buildWeeklyComparisonDiscord());
+        setWeeklyCopied(true); setTimeout(() => setWeeklyCopied(false), 2200);
       }
 
       async function copyReminderDiscord() {
@@ -1441,6 +1600,9 @@
               </button>
               {view === "club" && (
                 <>
+                  <button style={S.btn(false, weeklyCopied ? "#059669" : "#60a5fa")} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length}>
+                    {weeklyCopied ? "\u2713 Weekly Copied!" : "\u{1f4ca} Weekly Comparison"}
+                  </button>
                   <button style={S.btn(false, reminderCopied ? "#059669" : "#f59e0b")} onClick={copyReminderDiscord} disabled={!decoratedMembers.length}>
                     {reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}
                   </button>
@@ -1516,6 +1678,10 @@
 
           {view === "home" && (
             <>
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                <button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>\u{1f4cb} Directory</button>
+                <button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>\u{1f310} Network Analysis</button>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
                   { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
@@ -1535,6 +1701,7 @@
                 ))}
               </div>
 
+              {homeTab === "directory" && (<>
               <div style={S.card}>
                 <div style={S.h2}>Club Directory</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
@@ -1551,9 +1718,10 @@
                               <div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div>
                             </div>
                           </div>
-                          <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>
-                            Open
-                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {entry.hasData && <HealthBadge grade={entry.health.grade} />}
+                            <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open</button>
+                          </div>
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
@@ -1711,12 +1879,13 @@
                         <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("rolling3DayAvg")}>3-Day Avg {criticalSortLabel("rolling3DayAvg")}</th>
                         <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("projected")}>Projected Fans {criticalSortLabel("projected")}</th>
                         <th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("fansNeeded")}>Needed for Month-End Plan {criticalSortLabel("fansNeeded")}</th>
+                        <th style={S.th}>Idle</th>
                       </tr>
                     </thead>
                     <tbody>
                       {criticalNetworkMembers.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
+                          <td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
                             No members are currently in critical status across the selected clubs.
                           </td>
                         </tr>
@@ -1734,6 +1903,7 @@
                             <td style={{ ...S.td, color: criticalAvgColor(member.rolling3DayAvg ?? 0), fontWeight: 700 }}>{fmtSigned(member.rolling3DayAvg)}</td>
                             <td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(member.projected ?? 0)}</td>
                             <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmt(member.fansNeededForPlan)}</td>
+                            <td style={S.td}><StagnantBadge days={member.stagnantDays} /></td>
                           </tr>
                         ))
                       )}
@@ -1741,6 +1911,59 @@
                   </table>
                 </div>
               </div>
+              </>)}
+
+              {homeTab === "network" && (<>
+                <div style={S.card}>
+                  <div style={S.h2}>Club Health Scores</div>
+                  <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                    {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
+                      <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><span style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</span></div>
+                          <HealthBadge grade={entry.health.grade} />
+                        </div>
+                        <div style={{ marginBottom: 8 }}><ProgressBar pct={entry.health.score} color={entry.health.color} height={6} /></div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 11 }}>
+                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>On Track</div><div style={{ color: "#34d399", fontWeight: 700 }}>{entry.statusCounts["on-track"]}/{entry.activeMembers}</div></div>
+                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Projected</div><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(entry.totalProjected)}</div></div>
+                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Score</div><div style={{ color: entry.health.color, fontWeight: 700 }}>{entry.health.score}%</div></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={S.card}>
+                  <div style={S.h2}>Network Pace Chart \u2014 Club Progress vs Target (%)</div>
+                  <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Each club\u2019s aggregate monthly gain as % of their total target. Dashed line = ideal linear pace to 100%.</div>
+                  <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} />
+                </div>
+
+                <div style={S.card}>
+                  <div style={S.h2}>Member Transfer Helper</div>
+                  <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
+                    <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}>
+                      <div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>\u2b07 Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>
+                      {transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
+                        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>
+                          {transferCandidates.demotionCandidates.map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}
+                        </tbody></table></div>
+                      )}
+                    </div>
+                    <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}>
+                      <div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>\u2b06 Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>
+                      {transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
+                        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>
+                          {transferCandidates.promotionCandidates.map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}
+                        </tbody></table></div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>)}
             </>
           )}
 
@@ -1864,6 +2087,7 @@
                                     <span style={{ color: "#4b5563", fontSize: 11, fontWeight: 700, minWidth: 20 }}>#{index + 1}</span>
                                     <span style={{ fontWeight: 700, color: "#e2e0f0", fontSize: 13 }}>{member.name}</span>
                                     <StatusBadge statusKey={member.plan.statusKey} />
+                                    <StagnantBadge days={member.stagnantDays} />
                                   </div>
 
                                   <div style={{ display: "flex", gap: 14, fontSize: 11, flexWrap: "wrap" }}>
@@ -1895,7 +2119,7 @@
                                     <div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
                                   </div>
                                   <div style={{ justifySelf: "end" }}>
-                                    <Sparkline data={member.dailyFans || []} />
+                                    <Sparkline data={member.dailyFans || []} color={(STATUS_META[member.plan.statusKey] || STATUS_META["behind"]).color} />
                                   </div>
                                 </div>
                               </div>
@@ -1930,6 +2154,8 @@
                                 { key: "monthlyGain", label: "Month", sortable: true },
                                 { key: "projected", label: "Projected", sortable: true },
                                 { key: "weeklyDelta", label: "Vs Weekly Plan", sortable: false },
+                                { key: "daysToTarget", label: "ETA", sortable: true },
+                                { key: "stagnantDays", label: "Idle", sortable: true },
                                 { key: "status", label: "Status", sortable: false },
                               ].map((col) => (
                                 <th key={col.key} style={S.th}>
@@ -1962,6 +2188,8 @@
                               <th style={S.th}></th>
                               <th style={S.th}></th>
                               <th style={S.th}></th>
+                              <th style={S.th}></th>
+                              <th style={S.th}></th>
                               <th style={S.th}>
                                 <select style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)}>
                                   <option value="">All Statuses</option>
@@ -1975,7 +2203,7 @@
                           <tbody>
                             {memberRows.length === 0 ? (
                               <tr>
-                                <td colSpan={8} style={{ ...S.td, color: "#6b7280", textAlign: "center", padding: "22px 8px" }}>
+                                <td colSpan={10} style={{ ...S.td, color: "#6b7280", textAlign: "center", padding: "22px 8px" }}>
                                   No members match the current filters.
                                 </td>
                               </tr>
@@ -1997,6 +2225,8 @@
                                   <td style={{ ...S.td, color: (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)), fontWeight: 700 }}>
                                     {deltaText(member.plan.delta)}
                                   </td>
+                                  <td style={S.td}><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></td>
+                                  <td style={S.td}><StagnantBadge days={member.stagnantDays} /></td>
                                   <td style={S.td}>
                                     <StatusBadge statusKey={member.plan.statusKey} />
                                   </td>
@@ -2097,8 +2327,9 @@
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 16, marginBottom: 10 }}>
-                        <div style={{ color: "#9ca3af", fontSize: 12 }}>
-                          Click a member card to hide or show that member on the graph.
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ color: "#9ca3af", fontSize: 12 }}>Click cards to toggle visibility.</div>
+                          <button style={S.btn(false)} onClick={() => setPaceCardsCollapsed((p) => !p)}>{paceCardsCollapsed ? "\u25bc Expand Cards" : "\u25b2 Collapse Cards"}</button>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button style={S.btn(false)} onClick={showAllPaceMembers}>Show All</button>
@@ -2109,6 +2340,21 @@
                         </div>
                       </div>
 
+                      {paceCardsCollapsed ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {sortedByMonthly.map((member, index) => {
+                            const isHidden = Boolean(paceHiddenMembers[member.name]);
+                            const lineColor = allPaceSeriesList.find((s) => s.name === member.name)?.color || getLineColor(index);
+                            const sm = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
+                            return (<button key={`chip-${member.name}`} onClick={() => togglePaceMember(member.name)} style={{ background: isHidden ? "#0a0912" : "#0f0d1a", border: `1px solid ${isHidden ? "#1e1b35" : sm.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", opacity: isHidden ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: 999, background: lineColor, flexShrink: 0 }} />
+                              <span style={{ color: "#e2e0f0", fontWeight: 700 }}>{member.name}</span>
+                              <span style={{ color: sm.color, fontSize: 10 }}>{fmtSigned(member.monthlyGain ?? 0)}</span>
+                              {member.stagnantDays >= 2 && <span style={{ color: "#f97316", fontSize: 9 }}>\u23f8{member.stagnantDays}d</span>}
+                            </button>);
+                          })}
+                        </div>
+                      ) : (
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
                         {sortedByMonthly.map((member, index) => {
                           const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
@@ -2136,7 +2382,7 @@
                                     <span style={{ width: 10, height: 10, borderRadius: 999, background: lineColor, display: "inline-block", flexShrink: 0 }} />
                                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</span>
                                   </div>
-                                  <div style={{ color: "#6b7280", fontSize: 11, marginTop: 3 }}>{isHidden ? "Hidden from graph" : "Showing on graph"}</div>
+                                  <div style={{ color: "#6b7280", fontSize: 11, marginTop: 3, display: "flex", alignItems: "center", gap: 6 }}>{isHidden ? "Hidden" : "Showing"} <StagnantBadge days={member.stagnantDays} /></div>
                                 </div>
                                 <StatusBadge statusKey={member.plan.statusKey} />
                               </div>
@@ -2151,8 +2397,8 @@
                                   <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}>{fmtSigned(member.monthlyGain ?? 0)}</div>
                                 </div>
                                 <div>
-                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Indicator</div>
-                                  <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}>{statusMeta.icon} {statusMeta.label}</div>
+                                  <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>ETA to Target</div>
+                                  <div style={{ color: statusMeta.color, fontWeight: 700, fontSize: 14 }}><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></div>
                                 </div>
                                 <div>
                                   <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
@@ -2163,6 +2409,7 @@
                           );
                         })}
                       </div>
+                      )}
                     </div>
                   )}
 
