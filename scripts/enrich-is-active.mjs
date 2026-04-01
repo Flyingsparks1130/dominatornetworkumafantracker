@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const CONFIG_PATH = path.join(process.cwd(), "scripts", "clubs.config.json");
 const DATA_DIR = path.join(process.cwd(), "data");
+const DEBUG_DIR = path.join(process.cwd(), "scripts", "debug");
 
 function normalizeName(value) {
   return String(value || "")
@@ -65,6 +66,45 @@ async function dismissBlockingUi(page) {
   } catch {}
 }
 
+async function saveDebugSnapshot(page, clubId, label) {
+  try {
+    await fs.mkdir(DEBUG_DIR, { recursive: true });
+    const slug = label.replace(/\s+/g, "-");
+    const imgPath = path.join(DEBUG_DIR, `${clubId}-${slug}.png`);
+    const htmlPath = path.join(DEBUG_DIR, `${clubId}-${slug}.html`);
+    await page.screenshot({ path: imgPath, fullPage: true });
+    await fs.writeFile(htmlPath, await page.content(), "utf8");
+    console.log(`  📸 Debug snapshot: scripts/debug/${clubId}-${slug}.{png,html}`);
+  } catch (e) {
+    console.warn("  ⚠️  Could not save debug snapshot:", e.message);
+  }
+}
+
+async function waitForMenu(page) {
+  // Try to wait for any common dropdown/menu container to appear
+  const menuSelectors = [
+    '[role="menu"]',
+    '[role="listbox"]',
+    ".mat-menu-content",
+    ".mat-mdc-menu-content",
+    ".cdk-overlay-container [role=\"menu\"]",
+    ".dropdown-menu",
+    ".export-menu",
+  ];
+
+  for (const sel of menuSelectors) {
+    try {
+      await page.waitForSelector(sel, { timeout: 4000, state: "visible" });
+      console.log(`  Menu detected via: ${sel}`);
+      return sel;
+    } catch {}
+  }
+
+  // No known menu found — give a small extra grace period and continue
+  await page.waitForTimeout(1500);
+  return null;
+}
+
 async function downloadPlaywrightJson(browser, club) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -85,18 +125,31 @@ async function downloadPlaywrightJson(browser, club) {
     }).first();
 
     if (!(await exportBtn.count())) {
+      await saveDebugSnapshot(page, club.id, "no-export-btn");
       throw new Error(`Export button not found for ${club.id}`);
     }
 
     await exportBtn.click({ force: true });
-    await page.waitForTimeout(1500);
+
+    // Wait for the dropdown menu to actually render
+    const menuSel = await waitForMenu(page);
+
+    if (!menuSel) {
+      await saveDebugSnapshot(page, club.id, "no-menu");
+      console.warn(`  ⚠️  No menu container detected after export click for ${club.id}`);
+    }
+
+    // Build candidates scoped to the detected menu container when possible
+    const scope = menuSel ? page.locator(menuSel).first() : page;
 
     const jsonMenuCandidates = [
+      scope.getByRole("menuitem", { name: /json/i }).first(),
+      scope.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
+      scope.locator("button").filter({ hasText: "JSON" }).first(),
+      scope.locator("a").filter({ hasText: "JSON" }).first(),
+      scope.locator("li").filter({ hasText: "JSON" }).first(),
+      // Fallback: search whole page
       page.getByText("JSON", { exact: true }).first(),
-      page.getByRole("menuitem", { name: /json/i }).first(),
-      page.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
-      page.locator("button").filter({ hasText: "JSON" }).first(),
-      page.locator("a").filter({ hasText: "JSON" }).first(),
       page.locator("text=JSON").first(),
     ];
 
@@ -132,9 +185,9 @@ async function downloadPlaywrightJson(browser, club) {
       }
     }
 
-    if (!jsonClicked) {
-      throw new Error(`JSON option not found for ${club.id}`);
-    }
+    // Nothing matched — save a snapshot so we can inspect the actual DOM
+    await saveDebugSnapshot(page, club.id, "json-not-found");
+    throw new Error(`JSON option not found for ${club.id}`);
   } finally {
     await page.close();
     await context.close();
