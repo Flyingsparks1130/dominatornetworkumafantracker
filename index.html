@@ -148,10 +148,9 @@
       );
     }
 
-    const GAME_TIME_ZONE = "Asia/Tokyo";
-    const GAME_RESET_HOUR_JST = 1;
+    const GAME_RESET_LOCAL_HOUR = 11;
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
-    const EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDate";
+    const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedCycleKey";
 
     function pad2(n) {
       return String(n).padStart(2, "0");
@@ -176,37 +175,20 @@
       return formatDateKey(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
     }
 
-    function getTimeZoneParts(date, timeZone = GAME_TIME_ZONE) {
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      }).formatToParts(date);
-
-      const out = {};
-      for (const part of parts) {
-        if (part.type !== "literal") out[part.type] = part.value;
+    function getLocalCutoffDateKey(date = new Date(), cutoffHour = GAME_RESET_LOCAL_HOUR) {
+      const local = new Date(date);
+      if (local.getHours() < cutoffHour) {
+        local.setDate(local.getDate() - 1);
       }
+      return formatLocalDateKey(local);
+    }
 
-      return {
-        year: Number(out.year),
-        month: Number(out.month),
-        day: Number(out.day),
-        hour: Number(out.hour),
-        minute: Number(out.minute),
-        second: Number(out.second),
-      };
+    function getScheduledGameDayKey(now = new Date()) {
+      return getLocalCutoffDateKey(now, GAME_RESET_LOCAL_HOUR);
     }
 
     function getFallbackGameDayKey(now = new Date()) {
-      const fallback = new Date(now);
-      fallback.setDate(fallback.getDate() - 1);
-      return formatLocalDateKey(fallback);
+      return shiftDateKey(getScheduledGameDayKey(now), -1);
     }
 
     function dateKeyToLocalDate(key) {
@@ -220,54 +202,53 @@
       const parsed = new Date(timestamp);
       if (Number.isNaN(parsed.getTime())) return null;
 
-      const parts = getTimeZoneParts(parsed, GAME_TIME_ZONE);
-      let key = formatDateKey(parts.year, parts.month, parts.day);
-
-      if (parts.hour < GAME_RESET_HOUR_JST) {
-        key = shiftDateKey(key, -1);
-      }
-
-      return key;
+      return getLocalCutoffDateKey(parsed, GAME_RESET_LOCAL_HOUR);
     }
 
     function getGameDayKeyFromResult(result) {
       return getGameDayKeyFromTimestamp(result?.sourceUpdatedAt || null);
     }
 
-    function getTodayLocalDateKey(now = new Date()) {
-      return formatLocalDateKey(now);
+    function getCurrentUnlockCycleKey(now = new Date()) {
+      return getScheduledGameDayKey(now);
     }
 
-    function safeReadStoredUnlockLocalDateKey() {
+    function safeReadStoredUnlockCycleKey() {
       try {
-        const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY);
+        const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY);
         return isDateKey(stored) ? stored : null;
       } catch (e) {
         return null;
       }
     }
 
-    function safeWriteStoredUnlockLocalDateKey(key) {
+    function safeWriteStoredUnlockCycleKey(key) {
       try {
         if (isDateKey(key)) {
-          localStorage.setItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY, key);
+          localStorage.setItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY, key);
         }
       } catch (e) {}
     }
 
-    function safeClearStoredUnlockLocalDateKey() {
+    function safeClearStoredUnlockCycleKey() {
       try {
-        localStorage.removeItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY);
+        localStorage.removeItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY);
       } catch (e) {}
     }
 
     function getInitialEffectiveGameDayKey(now = new Date()) {
+      const scheduledKey = getScheduledGameDayKey(now);
       const fallbackKey = getFallbackGameDayKey(now);
       const storedKey = safeReadStoredGameDayKey();
-      const unlockLocalDateKey = safeReadStoredUnlockLocalDateKey();
-      const todayLocalDateKey = getTodayLocalDateKey(now);
+      const unlockCycleKey = safeReadStoredUnlockCycleKey();
+      const currentCycleKey = getCurrentUnlockCycleKey(now);
 
-      if (storedKey && unlockLocalDateKey === todayLocalDateKey && storedKey >= fallbackKey) {
+      if (
+        storedKey &&
+        unlockCycleKey === currentCycleKey &&
+        storedKey >= fallbackKey &&
+        storedKey <= scheduledKey
+      ) {
         return storedKey;
       }
 
@@ -275,6 +256,7 @@
     }
 
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
+      const scheduledKey = getScheduledGameDayKey(now);
       const fallbackKey = getFallbackGameDayKey(now);
       const baseKey = currentKey && currentKey >= fallbackKey ? currentKey : fallbackKey;
       const candidateKey = getGameDayKeyFromResult(result);
@@ -283,7 +265,8 @@
         return baseKey;
       }
 
-      return candidateKey > baseKey ? candidateKey : baseKey;
+      const boundedCandidateKey = candidateKey > scheduledKey ? scheduledKey : candidateKey;
+      return boundedCandidateKey > baseKey ? boundedCandidateKey : baseKey;
     }
 
     function safeReadStoredGameDayKey() {
@@ -1175,14 +1158,14 @@
       useEffect(() => {
         const currentNow = new Date();
         const fallbackKey = getFallbackGameDayKey(currentNow);
-        const todayLocalDateKey = getTodayLocalDateKey(currentNow);
+        const currentCycleKey = getCurrentUnlockCycleKey(currentNow);
 
         safeWriteStoredGameDayKey(effectiveGameDayKey);
 
         if (effectiveGameDayKey > fallbackKey) {
-          safeWriteStoredUnlockLocalDateKey(todayLocalDateKey);
+          safeWriteStoredUnlockCycleKey(currentCycleKey);
         } else {
-          safeClearStoredUnlockLocalDateKey();
+          safeClearStoredUnlockCycleKey();
         }
       }, [effectiveGameDayKey]);
 
