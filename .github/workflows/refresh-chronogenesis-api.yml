@@ -1,0 +1,64 @@
+name: Refresh ChronoGenesis API JSON
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+      timezone: "America/New_York"
+    - cron: "0 7 * * *"
+      timezone: "America/New_York"
+    - cron: "0 13 * * *"
+      timezone: "America/New_York"
+    - cron: "0 14 * * *"
+      timezone: "America/New_York"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-chronogenesis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Initialize package.json if missing
+        run: |
+          if [ ! -f package.json ]; then
+            npm init -y
+          fi
+
+      - name: Install dependencies
+        run: |
+          npm install playwright playwright-extra puppeteer-extra-plugin-stealth
+          npx playwright install --with-deps chromium
+
+      - name: Refresh base JSON files from UMA API
+        run: node scripts/update-json.mjs
+
+      - name: Enrich base JSON files with isActive
+        env:
+          DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
+        run: node scripts/enrich-is-active.mjs
+
+      - name: Refresh ChronoGenesis JSON files from internal API
+        env:
+          DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
+          HEADFUL: "0"
+        run: node scripts/update-chronogenesis-api.mjs
+
+      - name: Commit updated JSON files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/*.json data/chronogenesis/*.json
+          git diff --staged --quiet || git commit -m "Refresh ChronoGenesis API JSON"
+
+      - name: Push changes
+        run: git push
