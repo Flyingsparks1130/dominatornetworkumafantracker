@@ -1337,23 +1337,23 @@
         const improved = comparisons.filter((c) => c.diff > 0);
         const declined = comparisons.filter((c) => c.diff < 0);
         const lines = [
-          `\u{1f4ca} **[${club.tier}] ${club.name} \u2014 Weekly Comparison** | ${ds}`,
+          `📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`,
           `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, "",
         ];
         if (improved.length > 0) {
-          lines.push(`\u{1f4c8} **Improved** (${improved.length}):`);
-          improved.slice(0, 10).forEach((c) => lines.push(`  \u2191 **${c.name}** \u2014 W${previousWeek.number}: ${fmt(c.prevGain)} \u2192 W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
-          if (improved.length > 10) lines.push(`  \u2026 and ${improved.length - 10} more`);
+          lines.push(`📈 **Improved** (${improved.length}):`);
+          improved.slice(0, 10).forEach((c) => lines.push(`  ↑ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
+          if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`);
           lines.push("");
         }
         if (declined.length > 0) {
-          lines.push(`\u{1f4c9} **Declined** (${declined.length}):`);
-          declined.slice(0, 10).forEach((c) => lines.push(`  \u2193 **${c.name}** \u2014 W${previousWeek.number}: ${fmt(c.prevGain)} \u2192 W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
-          if (declined.length > 10) lines.push(`  \u2026 and ${declined.length - 10} more`);
+          lines.push(`📉 **Declined** (${declined.length}):`);
+          declined.slice(0, 10).forEach((c) => lines.push(`  ↓ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`));
+          if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`);
         }
-        lines.push("", `> \u{1f916} *Dominator Network Tracker \u00b7 ${club.officer}*`);
+        lines.push("", `> 🤖 *Dominator Network Tracker · ${club.officer}*`);
         let msg = lines.join("\n");
-        if (msg.length > 3900) msg = msg.slice(0, 3897) + "\u2026";
+        if (msg.length > 3900) msg = msg.slice(0, 3897) + "…";
         return msg;
       }
 
@@ -1446,7 +1446,7 @@
         setPaceHiddenMembers(next);
       }
 
-      const SORTABLE_MEMBER_COLUMNS = ["fans", "dailyGain", "monthlyGain", "projected"];
+      const SORTABLE_MEMBER_COLUMNS = ["fans", "dailyGain", "monthlyGain", "projected", "daysToTarget", "stagnantDays"];
 
       function updateMemberFilter(key, value) {
         setMemberFilters((prev) => ({ ...prev, [key]: value }));
@@ -1601,7 +1601,7 @@
               {view === "club" && (
                 <>
                   <button style={S.btn(false, weeklyCopied ? "#059669" : "#60a5fa")} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length}>
-                    {weeklyCopied ? "\u2713 Weekly Copied!" : "\u{1f4ca} Weekly Comparison"}
+                    {weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}
                   </button>
                   <button style={S.btn(false, reminderCopied ? "#059669" : "#f59e0b")} onClick={copyReminderDiscord} disabled={!decoratedMembers.length}>
                     {reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}
@@ -1936,8 +1936,8 @@
                 </div>
 
                 <div style={S.card}>
-                  <div style={S.h2}>Network Pace Chart \u2014 Club Progress vs Target (%)</div>
-                  <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Each club\u2019s aggregate monthly gain as % of their total target. Dashed line = ideal linear pace to 100%.</div>
+                  <div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div>
+                  <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal linear pace to 100%.</div>
                   <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} />
                 </div>
 
@@ -1946,7 +1946,7 @@
                   <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
                     <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}>
-                      <div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>\u2b07 Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>
+                      <div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>
                       {transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
                         <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>
                           {transferCandidates.demotionCandidates.map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}
@@ -1954,7 +1954,7 @@
                       )}
                     </div>
                     <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}>
-                      <div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>\u2b06 Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>
+                      <div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>
                       {transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
                         <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>
                           {transferCandidates.promotionCandidates.map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}
@@ -2094,6 +2094,7 @@
                                     <span style={{ color: "#6b7280" }}>Today: <b style={{ color: gainColor(member.dailyGain) }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</b></span>
                                     <span style={{ color: "#6b7280" }}>Month: <b style={{ color: gainColor(member.monthlyGain) }}>{member.monthlyGain != null ? fmtSigned(member.monthlyGain) : "—"}</b></span>
                                     <span style={{ color: "#6b7280" }}>Projected: <b style={{ color: "#c4b5fd" }}>{member.projected != null ? fmt(member.projected) : "—"}</b></span>
+                                    <span style={{ color: "#6b7280" }}>ETA: <b><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></b></span>
                                   </div>
                                 </div>
 
@@ -2329,7 +2330,7 @@
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 16, marginBottom: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ color: "#9ca3af", fontSize: 12 }}>Click cards to toggle visibility.</div>
-                          <button style={S.btn(false)} onClick={() => setPaceCardsCollapsed((p) => !p)}>{paceCardsCollapsed ? "\u25bc Expand Cards" : "\u25b2 Collapse Cards"}</button>
+                          <button style={S.btn(false)} onClick={() => setPaceCardsCollapsed((p) => !p)}>{paceCardsCollapsed ? "▼ Expand Cards" : "▲ Collapse Cards"}</button>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button style={S.btn(false)} onClick={showAllPaceMembers}>Show All</button>
@@ -2350,7 +2351,7 @@
                               <span style={{ width: 8, height: 8, borderRadius: 999, background: lineColor, flexShrink: 0 }} />
                               <span style={{ color: "#e2e0f0", fontWeight: 700 }}>{member.name}</span>
                               <span style={{ color: sm.color, fontSize: 10 }}>{fmtSigned(member.monthlyGain ?? 0)}</span>
-                              {member.stagnantDays >= 2 && <span style={{ color: "#f97316", fontSize: 9 }}>\u23f8{member.stagnantDays}d</span>}
+                              {member.stagnantDays >= 2 && <span style={{ color: "#f97316", fontSize: 9 }}>⏸{member.stagnantDays}d</span>}
                             </button>);
                           })}
                         </div>
