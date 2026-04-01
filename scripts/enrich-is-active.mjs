@@ -106,9 +106,11 @@ async function downloadExportJson(browser, club) {
     // ── Wait for any menu item containing "JSON" to appear ───────────────────
     // Use hasText:/JSON/ not /^JSON$/ — the menu item includes an icon glyph
     // in its text content so an exact match will never fire.
+    // Inner text is something like "data_object\nJSON" — match the word JSON
+    // preceded by a newline or start of string to avoid false matches on "Excel (XLSX)"
     const jsonItem = page
       .locator("button, a, li, span, div")
-      .filter({ hasText: /JSON/ })
+      .filter({ hasText: /(?:^|\n)JSON(?:\s|$)/m })
       .first();
 
     try {
