@@ -162,48 +162,120 @@ function buildChronogenesisJson(club, apiPayload) {
   };
 }
 
-async function captureClubProfileFromPage(page, club) {
-  const apiResponsePromise = page.waitForResponse(
-    async (response) => {
-      const url = response.url();
-      return (
-        url.includes("api.chronogenesis.net/club_profile") &&
-        url.includes(`circle_id=${club.id}`) &&
-        response.status() === 200
-      );
-    },
-    { timeout: 30000 }
-  );
-
-  await page.goto(club.pageUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
-
-  await page.waitForTimeout(4000);
-  await dismissBlockingUi(page);
-
-  const response = await apiResponsePromise;
-  const text = await response.text();
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`club_profile ${club.id} returned invalid JSON: ${error.message}`);
-  }
-
-  if (!Array.isArray(parsed.club)) {
-    throw new Error(`club_profile ${club.id} did not include a club array`);
-  }
-
-  return parsed;
-}
-
 async function saveChronogenesisJson(club, payload) {
   const outPath = path.join(CHRONO_DATA_DIR, `${club.id}.json`);
   await fs.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
   console.log(`✅ CHRONO SAVED: ${club.id} members ${payload.meta?.total_members ?? 0}`);
+}
+
+async function saveDebug(page, clubId, label, seenResponses = []) {
+  await fs.mkdir(CHRONO_DATA_DIR, { recursive: true });
+
+  const pngPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.png`);
+  const htmlPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.html`);
+  const txtPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.txt`);
+  const jsonPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}-responses.json`);
+
+  await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
+  await fs.writeFile(htmlPath, await page.content(), "utf8").catch(() => {});
+
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  await fs.writeFile(txtPath, bodyText, "utf8").catch(() => {});
+
+  await fs
+    .writeFile(jsonPath, JSON.stringify(seenResponses, null, 2), "utf8")
+    .catch(() => {});
+
+  console.log(`Saved debug files for ${clubId}: ${label}`);
+  console.log(`  - ${pngPath}`);
+  console.log(`  - ${htmlPath}`);
+  console.log(`  - ${txtPath}`);
+  console.log(`  - ${jsonPath}`);
+}
+
+async function captureClubProfileFromPage(page, club) {
+  const seenResponses = [];
+
+  const responseListener = async (response) => {
+    try {
+      const url = response.url();
+      const status = response.status();
+      const type = response.request().resourceType();
+      const method = response.request().method();
+      const headers = response.headers();
+
+      if (url.includes("chronogenesis.net") || url.includes("api.chronogenesis.net")) {
+        seenResponses.push({
+          url,
+          status,
+          type,
+          method,
+          contentType: headers["content-type"] || "",
+        });
+      }
+    } catch {}
+  };
+
+  page.on("response", responseListener);
+
+  try {
+    await page.goto(club.pageUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    await page.waitForTimeout(8000);
+    await dismissBlockingUi(page);
+    await page.waitForTimeout(3000);
+
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    console.log(`Body preview for ${club.id}:`);
+    console.log(bodyText.slice(0, 1500));
+
+    console.log(`Responses seen for ${club.id}:`);
+    for (const item of seenResponses.slice(0, 100)) {
+      console.log(`  [${item.status}] ${item.method} ${item.type} ${item.url}`);
+    }
+
+    const matching = seenResponses.filter(
+      (r) =>
+        r.url.includes("api.chronogenesis.net/club_profile") &&
+        r.url.includes(`circle_id=${club.id}`) &&
+        r.status === 200
+    );
+
+    if (!matching.length) {
+      await saveDebug(page, club.id, "no-api-response", seenResponses);
+      throw new Error(`No club_profile API response observed for ${club.id}`);
+    }
+
+    const response = await page.waitForResponse(
+      (r) =>
+        r.url().includes("api.chronogenesis.net/club_profile") &&
+        r.url().includes(`circle_id=${club.id}`) &&
+        r.status() === 200,
+      { timeout: 5000 }
+    );
+
+    const text = await response.text();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      await saveDebug(page, club.id, "bad-json", seenResponses);
+      throw new Error(`club_profile ${club.id} returned invalid JSON: ${error.message}`);
+    }
+
+    if (!Array.isArray(parsed.club)) {
+      await saveDebug(page, club.id, "bad-api-payload", seenResponses);
+      throw new Error(`club_profile ${club.id} did not include a club array`);
+    }
+
+    return parsed;
+  } finally {
+    page.off("response", responseListener);
+  }
 }
 
 async function main() {
@@ -219,10 +291,8 @@ async function main() {
   const browser = await chromium.launch({
     headless: process.env.HEADFUL === "1" ? false : true,
     args: [
-      "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-infobars",
       "--window-size=1440,900",
     ],
   });
@@ -235,21 +305,8 @@ async function main() {
     timezoneId: "America/New_York",
   });
 
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => false });
-    Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
-    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
-
-    window.chrome = {
-      runtime: {},
-      loadTimes: function () {},
-      csi: function () {},
-      app: { isInstalled: false },
-    };
-  });
-
-  const page = await context.newPage();
   let successCount = 0;
+  const page = await context.newPage();
 
   try {
     await addCookiesIfPresent(context);
