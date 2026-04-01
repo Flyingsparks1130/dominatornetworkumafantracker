@@ -8,29 +8,36 @@ const UMA_REFERENCE_DIR = path.join(process.cwd(), "data");
 const CHRONO_DATA_DIR = path.join(process.cwd(), "data", "chronogenesis");
 
 async function addCookiesIfPresent(context) {
-  if (!process.env.DOWNLOAD_COOKIE) return;
+  const raw = (process.env.DOWNLOAD_COOKIE || "").trim();
+  if (!raw) return;
 
-  const cookies = process.env.DOWNLOAD_COOKIE
+  const cookies = raw
     .split(";")
-    .map((c) => c.trim())
+    .map((part) => part.trim())
     .filter(Boolean)
-    .map((pair) => {
-      const [name, ...rest] = pair.split("=");
-      return {
-        name: name.trim(),
-        value: rest.join("=").trim(),
-        url: "https://chronogenesis.net",
-        path: "/",
-        secure: true,
-        httpOnly: false,
-        sameSite: "None",
-      };
-    });
+    .map((part) => {
+      const eq = part.indexOf("=");
+      if (eq <= 0) return null;
 
-  if (cookies.length) {
-    await context.addCookies(cookies);
-    console.log(`Injected ${cookies.length} cookie(s) for chronogenesis.net`);
+      const name = part.slice(0, eq).trim();
+      const value = part.slice(eq + 1).trim();
+
+      if (!name || !value) return null;
+
+      return {
+        name,
+        value,
+        url: "https://chronogenesis.net",
+      };
+    })
+    .filter(Boolean);
+
+  if (!cookies.length) {
+    throw new Error("DOWNLOAD_COOKIE did not contain any valid name=value cookies");
   }
+
+  await context.addCookies(cookies);
+  console.log(`Injected ${cookies.length} cookie(s) for chronogenesis.net`);
 }
 
 async function dismissBlockingUi(page) {
