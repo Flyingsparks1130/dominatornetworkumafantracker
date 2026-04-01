@@ -213,18 +213,26 @@ function normalizeChronoMembersFromJson(payload, clubId) {
 
 async function tryCaptureNetworkData(page, clubId) {
   const captured = [];
+  const allResponses = []; // log EVERY response for debugging
 
   page.on("response", async (response) => {
     try {
       const url = response.url();
+      const status = response.status();
       const headers = response.headers();
       const contentType = headers["content-type"] || "";
       const requestType = response.request().resourceType();
+
+      // Log every non-image/font/stylesheet response for debugging
+      if (!["image", "font", "stylesheet"].includes(requestType)) {
+        allResponses.push({ url: url.slice(0, 200), status, contentType, requestType });
+      }
 
       if (
         !(
           contentType.includes("application/json") ||
           contentType.includes("text/csv") ||
+          contentType.includes("text/plain") ||
           requestType === "xhr" ||
           requestType === "fetch"
         )
@@ -237,6 +245,8 @@ async function tryCaptureNetworkData(page, clubId) {
       captured.push({
         url,
         contentType,
+        status,
+        requestType,
         text,
       });
     } catch {}
@@ -244,7 +254,21 @@ async function tryCaptureNetworkData(page, clubId) {
 
   await page.waitForTimeout(5000);
 
-  console.log(`Captured ${captured.length} network candidate response(s) for ${clubId}`);
+  // ── Verbose debug dump ──────────────────────────────────────────────
+  console.log(`\n─── Network debug for ${clubId} ───`);
+  console.log(`Total non-asset responses: ${allResponses.length}`);
+  for (const r of allResponses) {
+    console.log(`  [${r.status}] ${r.requestType.padEnd(10)} ${r.contentType.slice(0, 40).padEnd(42)} ${r.url}`);
+  }
+
+  console.log(`\nCaptured ${captured.length} candidate response(s) for ${clubId}`);
+  for (const item of captured) {
+    const preview = item.text.slice(0, 300).replace(/\n/g, "\\n");
+    console.log(`  [${item.status}] ${item.url.slice(0, 120)}`);
+    console.log(`         type=${item.contentType}  body=${preview}`);
+  }
+  console.log(`─── End network debug ───\n`);
+  // ────────────────────────────────────────────────────────────────────
 
   for (const item of captured) {
     try {
@@ -603,6 +627,21 @@ async function getChronogenesisMembers(browser, club) {
     await page.waitForTimeout(5000);
     await dismissBlockingUi(page);
     await logInteractiveElements(page, club.id);
+
+    // ── Debug: screenshot + HTML dump ─────────────────────────────────
+    try {
+      const screenshotPath = path.join(CHRONO_DATA_DIR, `debug-${club.id}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`Debug screenshot saved: ${screenshotPath}`);
+    } catch (e) { console.log(`Screenshot failed: ${e.message}`); }
+
+    try {
+      const html = await page.content();
+      const htmlPath = path.join(CHRONO_DATA_DIR, `debug-${club.id}.html`);
+      await fs.writeFile(htmlPath, html, "utf8");
+      console.log(`Debug HTML saved: ${htmlPath} (${html.length} chars)`);
+    } catch (e) { console.log(`HTML dump failed: ${e.message}`); }
+    // ──────────────────────────────────────────────────────────────────
 
     const fromNetwork = await networkPromise;
     if (fromNetwork?.type === "members" && fromNetwork.payload?.length) {
