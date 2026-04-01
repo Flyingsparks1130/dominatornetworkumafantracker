@@ -6,6 +6,17 @@ const CONFIG_PATH = path.join(process.cwd(), "scripts", "clubs.config.json");
 const DATA_DIR = path.join(process.cwd(), "data");
 const DEBUG_DIR = path.join(process.cwd(), "scripts", "debug");
 
+// Angular Material CDK overlay — all menus render here, outside the main DOM
+const CDK_OVERLAY = ".cdk-overlay-container";
+
+// Ordered from most specific to most general — covers both legacy and MDC variants
+const MAT_MENU_CONTENT_SELECTORS = [
+  ".mat-mdc-menu-content",
+  ".mat-menu-content",
+  `${CDK_OVERLAY} [role="menu"]`,
+  `${CDK_OVERLAY} [role="listbox"]`,
+];
+
 function normalizeName(value) {
   return String(value || "")
     .normalize("NFKC")
@@ -50,7 +61,7 @@ async function dismissBlockingUi(page) {
       if (await locator.count()) {
         await locator.click({ timeout: 3000, force: true });
         await page.waitForTimeout(1000);
-        console.log("Dismissed blocking UI");
+        console.log("  Dismissed blocking UI");
         return;
       }
     } catch {}
@@ -61,7 +72,7 @@ async function dismissBlockingUi(page) {
     if (await backdrop.count()) {
       await backdrop.click({ timeout: 3000, force: true });
       await page.waitForTimeout(1000);
-      console.log("Clicked overlay backdrop");
+      console.log("  Clicked overlay backdrop");
     }
   } catch {}
 }
@@ -74,35 +85,38 @@ async function saveDebugSnapshot(page, clubId, label) {
     const htmlPath = path.join(DEBUG_DIR, `${clubId}-${slug}.html`);
     await page.screenshot({ path: imgPath, fullPage: true });
     await fs.writeFile(htmlPath, await page.content(), "utf8");
-    console.log(`  📸 Debug snapshot: scripts/debug/${clubId}-${slug}.{png,html}`);
+    console.log(`  📸 Snapshot saved: scripts/debug/${clubId}-${slug}.{png,html}`);
   } catch (e) {
     console.warn("  ⚠️  Could not save debug snapshot:", e.message);
   }
 }
 
-async function waitForMenu(page) {
-  // Try to wait for any common dropdown/menu container to appear
-  const menuSelectors = [
-    '[role="menu"]',
-    '[role="listbox"]',
-    ".mat-menu-content",
-    ".mat-mdc-menu-content",
-    ".cdk-overlay-container [role=\"menu\"]",
-    ".dropdown-menu",
-    ".export-menu",
-  ];
-
-  for (const sel of menuSelectors) {
+/**
+ * Wait for an Angular Material (CDK) menu overlay to appear.
+ * Returns the selector string of the first match, or null.
+ */
+async function waitForMatMenu(page) {
+  for (const sel of MAT_MENU_CONTENT_SELECTORS) {
     try {
-      await page.waitForSelector(sel, { timeout: 4000, state: "visible" });
-      console.log(`  Menu detected via: ${sel}`);
+      await page.waitForSelector(sel, { timeout: 5000, state: "visible" });
+      console.log(`  ✔ Mat-menu detected: ${sel}`);
       return sel;
     } catch {}
   }
-
-  // No known menu found — give a small extra grace period and continue
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1000);
   return null;
+}
+
+/**
+ * Log every visible menu item in the CDK overlay to aid debugging.
+ */
+async function logMenuItems(page) {
+  try {
+    const items = await page
+      .locator(`${CDK_OVERLAY} button, ${CDK_OVERLAY} [role="menuitem"], ${CDK_OVERLAY} a`)
+      .allInnerTexts();
+    console.log("  Menu items found:", items.map((t) => JSON.stringify(t.trim())).join(", "));
+  } catch {}
 }
 
 async function downloadPlaywrightJson(browser, club) {
@@ -120,6 +134,7 @@ async function downloadPlaywrightJson(browser, club) {
     await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
 
+    // ── Find and click the Export button ──────────────────────────────────────
     const exportBtn = page.locator("button").filter({
       hasText: "downloadExportexpand_more",
     }).first();
@@ -131,26 +146,34 @@ async function downloadPlaywrightJson(browser, club) {
 
     await exportBtn.click({ force: true });
 
-    // Wait for the dropdown menu to actually render
-    const menuSel = await waitForMenu(page);
+    // ── Wait for the Angular Material CDK menu overlay ────────────────────────
+    const menuSel = await waitForMatMenu(page);
 
     if (!menuSel) {
       await saveDebugSnapshot(page, club.id, "no-menu");
-      console.warn(`  ⚠️  No menu container detected after export click for ${club.id}`);
+      console.warn(`  ⚠️  Mat-menu not detected for ${club.id} — attempting anyway`);
     }
 
-    // Build candidates scoped to the detected menu container when possible
-    const scope = menuSel ? page.locator(menuSel).first() : page;
+    await logMenuItems(page);
+
+    // ── Locate the JSON menu item inside the CDK overlay ──────────────────────
+    // Angular Material renders mat-menu-items as <button mat-menu-item> inside
+    // .mat-mdc-menu-content / .mat-menu-content in the CDK overlay layer.
+    const overlay = page.locator(CDK_OVERLAY);
 
     const jsonMenuCandidates = [
-      scope.getByRole("menuitem", { name: /json/i }).first(),
-      scope.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
-      scope.locator("button").filter({ hasText: "JSON" }).first(),
-      scope.locator("a").filter({ hasText: "JSON" }).first(),
-      scope.locator("li").filter({ hasText: "JSON" }).first(),
-      // Fallback: search whole page
-      page.getByText("JSON", { exact: true }).first(),
-      page.locator("text=JSON").first(),
+      // MDC variant (Angular 15+)
+      overlay.locator(".mat-mdc-menu-item").filter({ hasText: "JSON" }).first(),
+      // Legacy variant
+      overlay.locator(".mat-menu-item").filter({ hasText: "JSON" }).first(),
+      // Generic role-based inside overlay
+      overlay.locator('[role="menuitem"]').filter({ hasText: "JSON" }).first(),
+      overlay.locator("button").filter({ hasText: "JSON" }).first(),
+      overlay.locator("a").filter({ hasText: "JSON" }).first(),
+      overlay.locator("li").filter({ hasText: "JSON" }).first(),
+      // Last-resort: anywhere on the page
+      page.getByRole("menuitem", { name: /^json$/i }).first(),
+      page.locator("button, a, li").filter({ hasText: /^JSON$/ }).first(),
     ];
 
     let jsonClicked = false;
@@ -160,9 +183,7 @@ async function downloadPlaywrightJson(browser, club) {
         if (await locator.count()) {
           await locator.scrollIntoViewIfNeeded();
 
-          // Listen at the context level so the event survives page navigations
-          // or new tabs opened during the download. Promise is created immediately
-          // before the click to eliminate any race window.
+          // Context-level listener so it survives new tabs / page navigation
           const downloadPromise = context.waitForEvent("download", { timeout: 60000 });
 
           await locator.click({ timeout: 5000, force: true });
@@ -179,13 +200,11 @@ async function downloadPlaywrightJson(browser, club) {
           return JSON.parse(text);
         }
       } catch (err) {
-        // Only rethrow if we already clicked — that is a real download failure.
-        // Otherwise it is just a locator miss; keep trying the next candidate.
-        if (jsonClicked) throw err;
+        if (jsonClicked) throw err; // real failure after click
+        // locator miss — try next candidate
       }
     }
 
-    // Nothing matched — save a snapshot so we can inspect the actual DOM
     await saveDebugSnapshot(page, club.id, "json-not-found");
     throw new Error(`JSON option not found for ${club.id}`);
   } finally {
