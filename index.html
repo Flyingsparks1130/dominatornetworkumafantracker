@@ -58,6 +58,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -507,8 +508,10 @@
       );
     }
 
-    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1 }) {
+    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1, pinnedIdx, setPinnedIdx, containerRef }) {
       const [hoverIdx, setHoverIdx] = useState(null);
+      const isPinned = pinnedIdx != null;
+      const effectiveIdx = isPinned ? pinnedIdx : hoverIdx;
 
       if (!targetSeries.length) {
         return (
@@ -535,28 +538,28 @@
           .join(" ");
 
       const gridValues = Array.from({ length: 5 }, (_, index) => Math.round((maxVal / 4) * index));
-      const hoverMembers = hoverIdx != null
+      const hoverMembers = effectiveIdx != null
         ? [...seriesList]
             .map((item) => ({
               ...item,
-              value: item.series?.[hoverIdx] ?? 0,
-              delta: (item.series?.[hoverIdx] ?? 0) - (targetSeries[hoverIdx] ?? 0),
+              value: item.series?.[effectiveIdx] ?? 0,
+              delta: (item.series?.[effectiveIdx] ?? 0) - (targetSeries[effectiveIdx] ?? 0),
             }))
             .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
         : [];
-      const hover = hoverIdx != null
+      const hover = effectiveIdx != null
         ? {
-            day: hoverIdx + 1,
-            target: targetSeries[hoverIdx] ?? 0,
-            x: xForIndex(hoverIdx),
-            yTarget: yForValue(targetSeries[hoverIdx] ?? 0),
+            day: effectiveIdx + 1,
+            target: targetSeries[effectiveIdx] ?? 0,
+            x: xForIndex(effectiveIdx),
+            yTarget: yForValue(targetSeries[effectiveIdx] ?? 0),
           }
         : null;
       const tooltipLeftPct = hover ? Math.max(14, Math.min(86, (hover.x / width) * 100)) : 50;
       const tooltipTranslateX = tooltipLeftPct > 78 ? "-100%" : tooltipLeftPct < 22 ? "0" : "-50%";
 
       return (
-        <div style={{ position: "relative", overflow: "visible" }}>
+        <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "#0a0912" }}>
           <div style={{ overflowX: "auto", paddingBottom: 6 }}>
             <svg
               ref={svgRef}
@@ -607,7 +610,7 @@
 
               {hover && (
                 <>
-                  <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke="#7c3aed" strokeDasharray="2 4" />
+                  <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke={isPinned ? "#a78bfa" : "#7c3aed"} strokeWidth={isPinned ? "2" : "1"} strokeDasharray="2 4" />
                   <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
                   {hoverMembers.map((item) => (
                     <circle
@@ -635,8 +638,16 @@
                       width={Math.max(10, endX - startX)}
                       height={innerH}
                       fill="transparent"
-                      onMouseEnter={() => setHoverIdx(index)}
-                      onMouseLeave={() => setHoverIdx(null)}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => { if (!isPinned) setHoverIdx(index); }}
+                      onMouseLeave={() => { if (!isPinned) setHoverIdx(null); }}
+                      onClick={() => {
+                        if (isPinned && pinnedIdx === index) {
+                          setPinnedIdx(null);
+                        } else {
+                          setPinnedIdx(index);
+                        }
+                      }}
                     />
                     {(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (
                       <text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">
@@ -657,20 +668,42 @@
                 top: 8,
                 transform: `translateX(${tooltipTranslateX})`,
                 background: "#111028",
-                border: "1px solid #2a2540",
+                border: `1px solid ${isPinned ? "#a78bfa" : "#2a2540"}`,
                 borderRadius: 10,
                 padding: "10px 12px",
                 minWidth: 320,
                 width: "max-content",
                 maxWidth: "min(92vw, 620px)",
-                boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
-                pointerEvents: "none",
+                boxShadow: isPinned ? "0 16px 40px rgba(124,58,237,0.25)" : "0 16px 40px rgba(0,0,0,0.35)",
+                pointerEvents: isPinned ? "auto" : "none",
                 zIndex: 5,
                 overflow: "visible",
               }}
             >
-              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 5 }}>
-                {getDateLabel(year, monthIndex, hover.day)}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12 }}>
+                  {getDateLabel(year, monthIndex, hover.day)}
+                </div>
+                {isPinned && (
+                  <span
+                    style={{
+                      color: "#a78bfa",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      background: "#a78bfa22",
+                      border: "1px solid #a78bfa44",
+                      borderRadius: 6,
+                      padding: "2px 7px",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setPinnedIdx(null)}
+                  >
+                    📌 Pinned — click to unpin
+                  </span>
+                )}
               </div>
               <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>Weekly plan by day: {fmt(hover.target)}</div>
               {hoverMembers.length === 0 ? (
@@ -736,7 +769,9 @@
       const [topNetworkMode, setTopNetworkMode] = useState("daily");
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
+      const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
       const paceSvgRef = useRef(null);
+      const paceContainerRef = useRef(null);
 
       const club = CLUBS[activeIdx];
       const cid = club.id;
@@ -865,6 +900,7 @@
         setPaceHiddenMembers({});
         setOverviewStatusFilter("");
         setPaceZoom(1);
+        setPacePinnedIdx(null);
       }, [cid]);
 
       function decorateMember(member, monthlyTarget) {
@@ -1101,8 +1137,12 @@
         let copiedWithImage = false;
 
         try {
-          const shouldIncludeGraph = view === "club" && tab === "pace" && paceSvgRef.current;
-          const pngBlob = shouldIncludeGraph ? await svgToPngBlob(paceSvgRef.current, 2) : null;
+          const shouldIncludeGraph = view === "club" && tab === "pace" && paceContainerRef.current;
+          let pngBlob = null;
+
+          if (shouldIncludeGraph) {
+            pngBlob = await captureContainerAsPng(paceContainerRef.current, 2);
+          }
 
           if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
             await navigator.clipboard.write([
@@ -1170,11 +1210,40 @@
         setTimeout(() => setReminderCopied(false), 2200);
       }
 
+      async function captureContainerAsPng(containerEl, scale = 2) {
+        if (!containerEl || typeof html2canvas === "undefined") return null;
+        try {
+          const canvas = await html2canvas(containerEl, {
+            backgroundColor: "#0a0912",
+            scale: scale,
+            useCORS: true,
+            logging: false,
+            removeContainer: true,
+          });
+          return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        } catch (e) {
+          console.error("html2canvas export failed:", e);
+          return null;
+        }
+      }
+
       async function exportPaceGraph() {
-        if (!paceSvgRef.current) return;
+        const container = paceContainerRef.current;
+        const svg = paceSvgRef.current;
+        if (!container && !svg) return;
+
         setPaceExporting(true);
         try {
-          const blob = await svgToPngBlob(paceSvgRef.current, 2);
+          let blob = null;
+
+          if (pacePinnedIdx != null && container) {
+            blob = await captureContainerAsPng(container, 2);
+          }
+
+          if (!blob && svg) {
+            blob = await svgToPngBlob(svg, 2);
+          }
+
           if (blob) {
             downloadBlob(blob, `${safeFilename(clubName)}-pace-chart.png`);
           }
@@ -1940,7 +2009,7 @@
                     </div>
                   )}
 
-                                    {tab === "pace" && (
+                  {tab === "pace" && (
                     <div style={S.card}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
                         <div>
@@ -1971,17 +2040,36 @@
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
-                          Zoom the graph, export it as an image, or copy Discord text plus the graph when your browser supports image clipboard writes.
+                          Click on the graph to pin a tooltip, then export to include it in the image.{" "}
+                          {pacePinnedIdx != null && (
+                            <span style={{ color: "#a78bfa", fontWeight: 700 }}>
+                              📌 Tooltip pinned — export will capture it.
+                            </span>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.max(1, +(prev - 0.25).toFixed(2)))}>− Zoom</button>
                           <button style={S.btn(false)} onClick={() => setPaceZoom(1)}>Reset</button>
                           <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.min(3, +(prev + 0.25).toFixed(2)))}>+ Zoom</button>
+                          {pacePinnedIdx != null && (
+                            <button style={S.btn(false, "#a78bfa")} onClick={() => setPacePinnedIdx(null)}>📌 Unpin Tooltip</button>
+                          )}
                           <button style={S.btn(false)} onClick={exportPaceGraph}>{paceExporting ? "⟳ Exporting…" : "🖼️ Export Graph"}</button>
                         </div>
                       </div>
 
-                      <PaceChart seriesList={paceSeriesList} targetSeries={individualTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} svgRef={paceSvgRef} zoom={paceZoom} />
+                      <PaceChart
+                        seriesList={paceSeriesList}
+                        targetSeries={individualTargetSeries}
+                        weeks={monthWeeks}
+                        year={year}
+                        monthIndex={monthIndex}
+                        svgRef={paceSvgRef}
+                        zoom={paceZoom}
+                        pinnedIdx={pacePinnedIdx}
+                        setPinnedIdx={setPacePinnedIdx}
+                        containerRef={paceContainerRef}
+                      />
 
                       <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                         {monthWeeks.map((week) => {
