@@ -1679,8 +1679,8 @@
           {view === "home" && (
             <>
               <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                <button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>\u{1f4cb} Directory</button>
-                <button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>\u{1f310} Network Analysis</button>
+                <button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button>
+                <button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
