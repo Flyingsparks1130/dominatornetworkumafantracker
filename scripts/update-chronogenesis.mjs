@@ -10,36 +10,20 @@ async function downloadChronogenesisCsv(browser, club) {
       timeout: 60000,
     });
 
-    // Give Cloudflare / app boot time.
     await page.waitForTimeout(5000);
     await dismissBlockingUi(page);
 
-    async function waitForChronogenesisClubContent(page, clubId) {
-  const candidates = [
-    page.locator('text=/Member Cumulative Fan Count/i').first(),
-    page.locator('text=/Show active members only/i').first(),
-    page.locator('text=/Rank\\s+\\d+/i').first(),
-    page.locator('[title="Export as .csv"]').first(),
-  ];
+    const exportLocator = page
+      .locator('div.save-button.expanded[title="Export as .csv"]')
+      .first();
 
-  for (const locator of candidates) {
-    try {
-      await locator.waitFor({ state: "visible", timeout: 15000 });
-      console.log(`Club content ready for ${clubId}`);
-      return;
-    } catch {}
-  }
+    await exportLocator.waitFor({ state: "visible", timeout: 15000 });
 
-  throw new Error(`Chronogenesis content did not become visible for ${clubId}`);
-}
-
-    // Wait for actual club-page content, not just the site shell.
-    // Based on your screenshot, these are good indicators the page is really loaded.
     const pageReadyCandidates = [
       page.locator('text=/Member Cumulative Fan Count/i').first(),
       page.locator('text=/Show active members only/i').first(),
-      page.locator('text=/Rank\\s+\\d+/i').first(),
-      page.locator('text=/2026-\\d\\d/i').first(),
+      exportLocator,
+      page.locator('select#month').first(),
     ];
 
     let pageReady = false;
@@ -60,33 +44,13 @@ async function downloadChronogenesisCsv(browser, club) {
       );
     }
 
-    const exportCandidates = [
-      page.locator('[title="Export as .csv"]').first(),
-      page.locator('[aria-label="Export as .csv"]').first(),
-      page.getByTitle("Export as .csv").first(),
-      page.locator('[data-title="Export as .csv"]').first(),
-      page.locator('svg[title="Export as .csv"]').first(),
-    ];
-
-    let exportLocator = null;
-
-    for (const locator of exportCandidates) {
-      try {
-        if (await locator.count()) {
-          exportLocator = locator;
-          break;
-        }
-      } catch {}
-    }
-
-    if (!exportLocator) {
+    if (!(await exportLocator.count())) {
       throw new Error(`Export button not found for ${club.id}`);
     }
 
     await exportLocator.scrollIntoViewIfNeeded().catch(() => {});
     await exportLocator.hover({ timeout: 3000 }).catch(() => {});
 
-    // Important: only start waiting for download once we know we can click.
     const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
 
     await exportLocator.click({ timeout: 5000, force: true });
