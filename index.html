@@ -148,6 +148,117 @@
       );
     }
 
+    const GAME_TIME_ZONE = "Asia/Tokyo";
+    const GAME_RESET_HOUR_JST = 1;
+    const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
+
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function formatDateKey(year, month, day) {
+      return `${year}-${pad2(month)}-${pad2(day)}`;
+    }
+
+    function formatLocalDateKey(date) {
+      return formatDateKey(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    }
+
+    function isDateKey(value) {
+      return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+    }
+
+    function shiftDateKey(key, deltaDays) {
+      const [year, month, day] = String(key).split("-").map(Number);
+      const utc = new Date(Date.UTC(year, month - 1, day));
+      utc.setUTCDate(utc.getUTCDate() + deltaDays);
+      return formatDateKey(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+    }
+
+    function getTimeZoneParts(date, timeZone = GAME_TIME_ZONE) {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date);
+
+      const out = {};
+      for (const part of parts) {
+        if (part.type !== "literal") out[part.type] = part.value;
+      }
+
+      return {
+        year: Number(out.year),
+        month: Number(out.month),
+        day: Number(out.day),
+        hour: Number(out.hour),
+        minute: Number(out.minute),
+        second: Number(out.second),
+      };
+    }
+
+    function getFallbackGameDayKey(now = new Date()) {
+      const fallback = new Date(now);
+      fallback.setDate(fallback.getDate() - 1);
+      return formatLocalDateKey(fallback);
+    }
+
+    function dateKeyToLocalDate(key) {
+      const [year, month, day] = String(key).split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function getGameDayKeyFromTimestamp(timestamp) {
+      if (!timestamp) return null;
+
+      const parsed = new Date(timestamp);
+      if (Number.isNaN(parsed.getTime())) return null;
+
+      const parts = getTimeZoneParts(parsed, GAME_TIME_ZONE);
+      let key = formatDateKey(parts.year, parts.month, parts.day);
+
+      if (parts.hour < GAME_RESET_HOUR_JST) {
+        key = shiftDateKey(key, -1);
+      }
+
+      return key;
+    }
+
+    function getGameDayKeyFromResult(result) {
+      return getGameDayKeyFromTimestamp(
+        result?.sourceUpdatedAt || result?.refreshedAt || result?.lastFetch || null
+      );
+    }
+
+    function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
+      const baseKey = currentKey || getFallbackGameDayKey(now);
+      const candidateKey = getGameDayKeyFromResult(result);
+      if (!candidateKey) return baseKey;
+      return candidateKey > baseKey ? candidateKey : baseKey;
+    }
+
+    function safeReadStoredGameDayKey() {
+      try {
+        const stored = localStorage.getItem(EFFECTIVE_DAY_STORAGE_KEY);
+        return isDateKey(stored) ? stored : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function safeWriteStoredGameDayKey(key) {
+      try {
+        if (isDateKey(key)) {
+          localStorage.setItem(EFFECTIVE_DAY_STORAGE_KEY, key);
+        }
+      } catch (e) {}
+    }
+
     function getJsonLoadMeta(entry, cdata, now) {
       if (!entry.id) {
         return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
@@ -188,7 +299,7 @@
       return `hsl(${hue}, 72%, 62%)`;
     }
 
-    function parseJSON(raw) {
+    function parseJSON(raw, dataDateOverride = null) {
       let json;
       try {
         json = typeof raw === "string" ? JSON.parse(raw.trim()) : raw;
@@ -208,11 +319,13 @@
         return { error: "No members array found. Keys in JSON: " + Object.keys(json).join(", ") };
       }
 
-      const now = new Date();
-      const dataDate = new Date(now);
-      dataDate.setDate(dataDate.getDate() - 1);
-      const today = dataDate.getDate();
-      const dim = daysInMonth(dataDate.getFullYear(), dataDate.getMonth() + 1);
+      const effectiveDataDate =
+        dataDateOverride instanceof Date && !Number.isNaN(dataDateOverride.getTime())
+          ? new Date(dataDateOverride)
+          : dateKeyToLocalDate(getFallbackGameDayKey(new Date()));
+
+      const today = effectiveDataDate.getDate();
+      const dim = daysInMonth(effectiveDataDate.getFullYear(), effectiveDataDate.getMonth() + 1);
 
       const members = membersArr.map((m) => {
         if (m.fan_count != null) {
@@ -831,18 +944,13 @@
     }
 
         function CircleTracker() {
-      const now = new Date();
-      const dataDate = new Date(now);
-      dataDate.setDate(dataDate.getDate() - 1);
-      const year = dataDate.getFullYear();
-      const monthIndex = dataDate.getMonth();
-      const today = dataDate.getDate();
-      const dim = daysInMonth(year, monthIndex + 1);
-      const daysLeft = dim - today;
-      const monthWeeks = getMonthWeeks(year, monthIndex);
-
       const [view, setView] = useState("home");
       const [activeIdx, setActiveIdx] = useState(0);
+      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => {
+        const fallbackKey = getFallbackGameDayKey(new Date());
+        const storedKey = safeReadStoredGameDayKey();
+        return storedKey && storedKey > fallbackKey ? storedKey : fallbackKey;
+      });
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
@@ -866,6 +974,15 @@
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
 
+      const now = new Date();
+      const dataDate = dateKeyToLocalDate(effectiveGameDayKey);
+      const year = dataDate.getFullYear();
+      const monthIndex = dataDate.getMonth();
+      const today = dataDate.getDate();
+      const dim = daysInMonth(year, monthIndex + 1);
+      const daysLeft = dim - today;
+      const monthWeeks = getMonthWeeks(year, monthIndex);
+
       const club = CLUBS[activeIdx];
       const cid = club.id;
       const data = cid ? (clubData[cid] || null) : null;
@@ -875,6 +992,16 @@
       const clubName = data?.clubName || club.name;
       const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
       const displayFetchLabel = data?.refreshedAt ? "Refreshed" : "Source updated";
+
+      function buildClubDataEntry(result) {
+        return {
+          members: result.members,
+          clubName: result.clubName,
+          lastFetch: result.lastFetch || null,
+          refreshedAt: result.refreshedAt || null,
+          sourceUpdatedAt: result.sourceUpdatedAt || null,
+        };
+      }
 
       async function fetchData(idOverride = null, silent = false) {
         const targetId = idOverride || cid;
@@ -896,7 +1023,21 @@
             if (!res.ok) continue;
 
             const text = await res.text();
-            const result = parseJSON(text);
+            const preview = parseJSON(text);
+
+            if (preview.error) {
+              log.push("  ↳ " + preview.error);
+              continue;
+            }
+
+            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
+
+            if (nextGameDayKey > effectiveGameDayKey) {
+              await loadAllData();
+              return;
+            }
+
+            const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey));
 
             if (result.error) {
               log.push("  ↳ " + result.error);
@@ -905,13 +1046,7 @@
 
             setClubData((prev) => ({
               ...prev,
-              [targetId]: {
-                members: result.members,
-                clubName: result.clubName,
-                lastFetch: result.lastFetch || null,
-                refreshedAt: result.refreshedAt || null,
-                sourceUpdatedAt: result.sourceUpdatedAt || null,
-              },
+              [targetId]: buildClubDataEntry(result),
             }));
 
             setDebugLog(log);
@@ -933,7 +1068,8 @@
         setLoading(true);
         setErr("");
         const allLogs = [];
-        const next = {};
+        const rawById = {};
+        let resolvedGameDayKey = effectiveGameDayKey || getFallbackGameDayKey(new Date());
 
         for (const c of CLUBS) {
           if (!c.id) continue;
@@ -948,20 +1084,15 @@
               if (!res.ok) continue;
 
               const text = await res.text();
-              const result = parseJSON(text);
+              const preview = parseJSON(text);
 
-              if (result.error) {
-                allLogs.push(`  ↳ ${c.id}: ${result.error}`);
+              if (preview.error) {
+                allLogs.push(`  ↳ ${c.id}: ${preview.error}`);
                 continue;
               }
 
-              next[c.id] = {
-                members: result.members,
-                clubName: result.clubName,
-                lastFetch: result.lastFetch || null,
-                refreshedAt: result.refreshedAt || null,
-                sourceUpdatedAt: result.sourceUpdatedAt || null,
-              };
+              rawById[c.id] = text;
+              resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date());
               loaded = true;
               break;
             } catch (e) {
@@ -974,6 +1105,24 @@
           }
         }
 
+        const resolvedDataDate = dateKeyToLocalDate(resolvedGameDayKey);
+        const next = {};
+
+        for (const [clubId, rawText] of Object.entries(rawById)) {
+          const result = parseJSON(rawText, resolvedDataDate);
+
+          if (result.error) {
+            allLogs.push(`  ↳ ${clubId}: ${result.error}`);
+            continue;
+          }
+
+          next[clubId] = buildClubDataEntry(result);
+        }
+
+        setEffectiveGameDayKey((prev) => {
+          const nextKey = resolvedGameDayKey > (prev || "") ? resolvedGameDayKey : (prev || resolvedGameDayKey);
+          return nextKey;
+        });
         setClubData(next);
         setDebugLog(allLogs);
         setLoading(false);
@@ -982,6 +1131,10 @@
       useEffect(() => {
         loadAllData();
       }, []);
+
+      useEffect(() => {
+        safeWriteStoredGameDayKey(effectiveGameDayKey);
+      }, [effectiveGameDayKey]);
 
       useEffect(() => {
         if (cid && !clubData[cid]) {
