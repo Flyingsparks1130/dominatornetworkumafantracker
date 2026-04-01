@@ -150,7 +150,7 @@
 
     const GAME_RESET_LOCAL_HOUR = 11;
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
-    const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedCycleKey";
+    const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDay";
 
     function pad2(n) {
       return String(n).padStart(2, "0");
@@ -175,20 +175,24 @@
       return formatDateKey(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
     }
 
-    function getLocalCutoffDateKey(date = new Date(), cutoffHour = GAME_RESET_LOCAL_HOUR) {
-      const local = new Date(date);
-      if (local.getHours() < cutoffHour) {
-        local.setDate(local.getDate() - 1);
-      }
-      return formatLocalDateKey(local);
+    function getLocalTodayKey(now = new Date()) {
+      return formatLocalDateKey(now);
     }
 
-    function getScheduledGameDayKey(now = new Date()) {
-      return getLocalCutoffDateKey(now, GAME_RESET_LOCAL_HOUR);
+    function getYesterdayKey(now = new Date()) {
+      return shiftDateKey(getLocalTodayKey(now), -1);
+    }
+
+    function isAfterResetHour(now = new Date()) {
+      return now.getHours() >= GAME_RESET_LOCAL_HOUR;
+    }
+
+    function getDefaultDisplayKey(now = new Date()) {
+      return getLocalTodayKey(now);
     }
 
     function getFallbackGameDayKey(now = new Date()) {
-      return shiftDateKey(getScheduledGameDayKey(now), -1);
+      return isAfterResetHour(now) ? getYesterdayKey(now) : getLocalTodayKey(now);
     }
 
     function dateKeyToLocalDate(key) {
@@ -196,21 +200,17 @@
       return new Date(year, month - 1, day);
     }
 
-    function getGameDayKeyFromTimestamp(timestamp) {
+    function getLocalDateKeyFromTimestamp(timestamp) {
       if (!timestamp) return null;
 
       const parsed = new Date(timestamp);
       if (Number.isNaN(parsed.getTime())) return null;
 
-      return getLocalCutoffDateKey(parsed, GAME_RESET_LOCAL_HOUR);
+      return formatLocalDateKey(parsed);
     }
 
     function getGameDayKeyFromResult(result) {
-      return getGameDayKeyFromTimestamp(result?.sourceUpdatedAt || null);
-    }
-
-    function getCurrentUnlockCycleKey(now = new Date()) {
-      return getScheduledGameDayKey(now);
+      return getLocalDateKeyFromTimestamp(result?.sourceUpdatedAt || null);
     }
 
     function safeReadStoredUnlockCycleKey() {
@@ -237,36 +237,48 @@
     }
 
     function getInitialEffectiveGameDayKey(now = new Date()) {
-      const scheduledKey = getScheduledGameDayKey(now);
-      const fallbackKey = getFallbackGameDayKey(now);
+      const todayKey = getLocalTodayKey(now);
+      const yesterdayKey = getYesterdayKey(now);
       const storedKey = safeReadStoredGameDayKey();
-      const unlockCycleKey = safeReadStoredUnlockCycleKey();
-      const currentCycleKey = getCurrentUnlockCycleKey(now);
+      const unlockedLocalDayKey = safeReadStoredUnlockCycleKey();
 
-      if (
-        storedKey &&
-        unlockCycleKey === currentCycleKey &&
-        storedKey >= fallbackKey &&
-        storedKey <= scheduledKey
-      ) {
+      if (unlockedLocalDayKey === todayKey) {
+        return todayKey;
+      }
+
+      if (storedKey === todayKey || storedKey === yesterdayKey) {
         return storedKey;
       }
 
-      return fallbackKey;
+      return getDefaultDisplayKey(now);
     }
 
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
-      const scheduledKey = getScheduledGameDayKey(now);
-      const fallbackKey = getFallbackGameDayKey(now);
-      const baseKey = currentKey && currentKey >= fallbackKey ? currentKey : fallbackKey;
+      const todayKey = getLocalTodayKey(now);
+      const yesterdayKey = getYesterdayKey(now);
+      const unlockedLocalDayKey = safeReadStoredUnlockCycleKey();
       const candidateKey = getGameDayKeyFromResult(result);
+      const boundedCandidateKey = candidateKey
+        ? (candidateKey > todayKey ? todayKey : candidateKey < yesterdayKey ? yesterdayKey : candidateKey)
+        : null;
 
-      if (!candidateKey || candidateKey <= fallbackKey) {
-        return baseKey;
+      if (unlockedLocalDayKey === todayKey) {
+        return todayKey;
       }
 
-      const boundedCandidateKey = candidateKey > scheduledKey ? scheduledKey : candidateKey;
-      return boundedCandidateKey > baseKey ? boundedCandidateKey : baseKey;
+      if (isAfterResetHour(now) && boundedCandidateKey === todayKey) {
+        return todayKey;
+      }
+
+      if (boundedCandidateKey === todayKey || boundedCandidateKey === yesterdayKey) {
+        return boundedCandidateKey;
+      }
+
+      if (currentKey === todayKey || currentKey === yesterdayKey) {
+        return currentKey;
+      }
+
+      return getDefaultDisplayKey(now);
     }
 
     function safeReadStoredGameDayKey() {
@@ -1055,7 +1067,7 @@
 
             const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
 
-            if (nextGameDayKey > effectiveGameDayKey) {
+            if (nextGameDayKey !== effectiveGameDayKey) {
               await loadAllData();
               return;
             }
@@ -1092,7 +1104,7 @@
         setErr("");
         const allLogs = [];
         const rawById = {};
-        let resolvedGameDayKey = effectiveGameDayKey || getFallbackGameDayKey(new Date());
+        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
 
         for (const c of CLUBS) {
           if (!c.id) continue;
@@ -1142,10 +1154,7 @@
           next[clubId] = buildClubDataEntry(result);
         }
 
-        setEffectiveGameDayKey((prev) => {
-          const nextKey = resolvedGameDayKey > (prev || "") ? resolvedGameDayKey : (prev || resolvedGameDayKey);
-          return nextKey;
-        });
+        setEffectiveGameDayKey(resolvedGameDayKey);
         setClubData(next);
         setDebugLog(allLogs);
         setLoading(false);
@@ -1157,14 +1166,13 @@
 
       useEffect(() => {
         const currentNow = new Date();
-        const fallbackKey = getFallbackGameDayKey(currentNow);
-        const currentCycleKey = getCurrentUnlockCycleKey(currentNow);
+        const todayKey = getLocalTodayKey(currentNow);
 
         safeWriteStoredGameDayKey(effectiveGameDayKey);
 
-        if (effectiveGameDayKey > fallbackKey) {
-          safeWriteStoredUnlockCycleKey(currentCycleKey);
-        } else {
+        if (effectiveGameDayKey === todayKey) {
+          safeWriteStoredUnlockCycleKey(todayKey);
+        } else if (safeReadStoredUnlockCycleKey() !== todayKey) {
           safeClearStoredUnlockCycleKey();
         }
       }, [effectiveGameDayKey]);
