@@ -101,32 +101,40 @@ async function downloadPlaywrightJson(browser, club) {
     ];
 
     let jsonClicked = false;
-    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
 
     for (const locator of jsonMenuCandidates) {
       try {
         if (await locator.count()) {
           await locator.scrollIntoViewIfNeeded();
+
+          // Listen at the context level so the event survives page navigations
+          // or new tabs opened during the download. Promise is created immediately
+          // before the click to eliminate any race window.
+          const downloadPromise = context.waitForEvent("download", { timeout: 60000 });
+
           await locator.click({ timeout: 5000, force: true });
           jsonClicked = true;
-          break;
+
+          const download = await downloadPromise;
+          const tempPath = await download.path();
+
+          if (!tempPath) {
+            throw new Error(`Download path missing for ${club.id}`);
+          }
+
+          const text = await fs.readFile(tempPath, "utf8");
+          return JSON.parse(text);
         }
-      } catch {}
+      } catch (err) {
+        // Only rethrow if we already clicked — that is a real download failure.
+        // Otherwise it is just a locator miss; keep trying the next candidate.
+        if (jsonClicked) throw err;
+      }
     }
 
     if (!jsonClicked) {
       throw new Error(`JSON option not found for ${club.id}`);
     }
-
-    const download = await downloadPromise;
-    const tempPath = await download.path();
-
-    if (!tempPath) {
-      throw new Error(`Download path missing for ${club.id}`);
-    }
-
-    const text = await fs.readFile(tempPath, "utf8");
-    return JSON.parse(text);
   } finally {
     await page.close();
     await context.close();
