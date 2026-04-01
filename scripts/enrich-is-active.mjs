@@ -37,49 +37,109 @@ async function addCookiesIfPresent(context) {
 }
 
 async function dismissBlockingUi(page) {
-  const dismissCandidates = [
-    page.getByText("Dismiss", { exact: true }).first(),
+  const candidates = [
+    page.getByRole("button", { name: /accept all/i }).first(),
+    page.getByRole("button", { name: /reject all/i }).first(),
     page.getByRole("button", { name: /dismiss/i }).first(),
     page.getByRole("button", { name: /close/i }).first(),
-    page.locator("button").filter({ hasText: "Dismiss" }).first(),
+    page.getByText("Dismiss", { exact: true }).first(),
+    page.getByText("close", { exact: true }).first(),
+    page.locator("button").filter({ hasText: /accept all/i }).first(),
+    page.locator("button").filter({ hasText: /reject all/i }).first(),
+    page.locator("button").filter({ hasText: /dismiss/i }).first(),
     page.locator("button").filter({ hasText: /close/i }).first(),
   ];
 
-  for (const locator of dismissCandidates) {
+  for (let pass = 0; pass < 5; pass++) {
+    let clicked = false;
+
+    for (const locator of candidates) {
+      try {
+        if (await locator.count()) {
+          const visible = await locator.isVisible({ timeout: 500 }).catch(() => false);
+          if (visible) {
+            await locator.click({ timeout: 2000, force: true });
+            await page.waitForTimeout(800);
+            clicked = true;
+          }
+        }
+      } catch {}
+    }
+
     try {
-      if (await locator.count()) {
-        await locator.click({ timeout: 3000, force: true });
-        await page.waitForTimeout(1000);
-        console.log("  Dismissed blocking UI");
-        return;
+      const backdrop = page.locator(".cdk-overlay-backdrop:visible").first();
+      if (await backdrop.count()) {
+        await backdrop.click({ timeout: 2000, force: true });
+        await page.waitForTimeout(500);
+        clicked = true;
       }
     } catch {}
-  }
 
-  const backdrop = page.locator(".cdk-overlay-backdrop").first();
-  try {
-    if (await backdrop.count()) {
-      await backdrop.click({ timeout: 3000, force: true });
-      await page.waitForTimeout(1000);
-      console.log("  Clicked overlay backdrop");
-    }
-  } catch {}
+    if (!clicked) break;
+  }
 }
 
 async function saveDebugSnapshot(page, clubId, label) {
   try {
     await fs.mkdir(DEBUG_DIR, { recursive: true });
     const slug = label.replace(/\s+/g, "-");
-    await page.screenshot({ path: path.join(DEBUG_DIR, `${clubId}-${slug}.png`), fullPage: true });
-    await fs.writeFile(path.join(DEBUG_DIR, `${clubId}-${slug}.html`), await page.content(), "utf8");
+    await page.screenshot({
+      path: path.join(DEBUG_DIR, `${clubId}-${slug}.png`),
+      fullPage: true,
+    });
+    await fs.writeFile(
+      path.join(DEBUG_DIR, `${clubId}-${slug}.html`),
+      await page.content(),
+      "utf8"
+    );
     console.log(`  📸 Snapshot: scripts/debug/${clubId}-${slug}.{png,html}`);
   } catch (e) {
     console.warn("  ⚠️  Could not save debug snapshot:", e.message);
   }
 }
 
+async function clickExportButton(page) {
+  const candidates = [
+    page.getByRole("button", { name: /export/i }).first(),
+    page.locator("button").filter({ hasText: /export/i }).first(),
+    page.locator('[aria-label*="Export" i]').first(),
+    page.locator('[mattooltip*="Export" i]').first(),
+  ];
+
+  for (const locator of candidates) {
+    try {
+      if (await locator.count()) {
+        await locator.scrollIntoViewIfNeeded().catch(() => {});
+        await locator.click({ timeout: 5000, force: true });
+        await page.waitForTimeout(1000);
+        return true;
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
+function buildJsonMenuLocator(page) {
+  return page
+    .locator(`
+      [role="menuitem"],
+      [role="option"],
+      button,
+      a,
+      li,
+      span,
+      div,
+      [mat-menu-item],
+      .mat-mdc-menu-item,
+      .mdc-list-item
+    `)
+    .filter({ hasText: /\bjson\b/i })
+    .first();
+}
+
 async function downloadExportJson(browser, club) {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
 
   try {
@@ -93,39 +153,34 @@ async function downloadExportJson(browser, club) {
     await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
 
-    // ── Click Export button ───────────────────────────────────────────────────
-    const exportBtn = page.locator("button").filter({ hasText: /export/i }).first();
-
-    if (!(await exportBtn.count())) {
+    const clickedExport = await clickExportButton(page);
+    if (!clickedExport) {
       await saveDebugSnapshot(page, club.id, "no-export-btn");
       throw new Error(`Export button not found for ${club.id}`);
     }
 
-    await exportBtn.click({ force: true });
-
-    // ── Wait for any menu item containing "JSON" to appear ───────────────────
-    // Use hasText:/JSON/ not /^JSON$/ — the menu item includes an icon glyph
-    // in its text content so an exact match will never fire.
-    // Inner text is something like "data_object\nJSON" — match the word JSON
-    // preceded by a newline or start of string to avoid false matches on "Excel (XLSX)"
-    const jsonItem = page
-      .locator("button, a, li, span, div")
-      .filter({ hasText: /(?:^|\n)JSON(?:\s|$)/m })
-      .first();
+    const jsonItem = buildJsonMenuLocator(page);
 
     try {
       await jsonItem.waitFor({ state: "visible", timeout: 8000 });
     } catch {
-      // Log every visible text node to aid diagnosis
-      const allText = await page.locator("button, a, li").allInnerTexts();
-      console.log("  Visible clickables:", allText.map((t) => JSON.stringify(t.trim())).join(", "));
+      const allText = await page
+        .locator(
+          "button, a, li, [role='menuitem'], [role='option'], [mat-menu-item], .mat-mdc-menu-item, .mdc-list-item"
+        )
+        .allInnerTexts();
+
+      console.log(
+        "  Visible clickables:",
+        allText.map((t) => JSON.stringify(t.trim())).join(", ")
+      );
+
       await saveDebugSnapshot(page, club.id, "json-not-visible");
       throw new Error(`JSON option not visible for ${club.id}`);
     }
 
-    // Context-level listener survives new tabs / page navigation
-    const downloadPromise = context.waitForEvent("download", { timeout: 60000 });
-    await jsonItem.click({ force: true });
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+    await jsonItem.click({ timeout: 5000, force: true });
 
     const download = await downloadPromise;
     const tempPath = await download.path();
@@ -161,7 +216,6 @@ async function enrichClubJson(browser, club) {
     throw new Error(`Export JSON for ${club.id} has no members array`);
   }
 
-  // Build lookup from export: normalized name → isActive (source truth)
   const isActiveByName = new Map();
   for (const member of exportJson.members) {
     const key = normalizeName(member.name);
@@ -192,7 +246,9 @@ async function enrichClubJson(browser, club) {
 
   await fs.writeFile(apiPath, JSON.stringify(apiJson, null, 2), "utf8");
 
-  console.log(`✅ ENRICHED: ${club.id} matched ${matched}/${apiJson.members.length}, inactive ${inactive}`);
+  console.log(
+    `✅ ENRICHED: ${club.id} matched ${matched}/${apiJson.members.length}, inactive ${inactive}`
+  );
 }
 
 async function main() {
