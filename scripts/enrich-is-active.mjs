@@ -50,7 +50,7 @@ async function dismissBlockingUi(page) {
       if (await locator.count()) {
         await locator.click({ timeout: 3000, force: true });
         await page.waitForTimeout(1000);
-        console.log("  Dismissed blocking UI");
+        console.log("Dismissed blocking UI");
         return;
       }
     } catch {}
@@ -61,7 +61,7 @@ async function dismissBlockingUi(page) {
     if (await backdrop.count()) {
       await backdrop.click({ timeout: 3000, force: true });
       await page.waitForTimeout(1000);
-      console.log("  Clicked overlay backdrop");
+      console.log("Clicked overlay backdrop");
     }
   } catch {}
 }
@@ -70,17 +70,15 @@ async function saveDebugSnapshot(page, clubId, label) {
   try {
     await fs.mkdir(DEBUG_DIR, { recursive: true });
     const slug = label.replace(/\s+/g, "-");
-    const imgPath = path.join(DEBUG_DIR, `${clubId}-${slug}.png`);
-    const htmlPath = path.join(DEBUG_DIR, `${clubId}-${slug}.html`);
-    await page.screenshot({ path: imgPath, fullPage: true });
-    await fs.writeFile(htmlPath, await page.content(), "utf8");
+    await page.screenshot({ path: path.join(DEBUG_DIR, `${clubId}-${slug}.png`), fullPage: true });
+    await fs.writeFile(path.join(DEBUG_DIR, `${clubId}-${slug}.html`), await page.content(), "utf8");
     console.log(`  📸 Snapshot: scripts/debug/${clubId}-${slug}.{png,html}`);
   } catch (e) {
     console.warn("  ⚠️  Could not save debug snapshot:", e.message);
   }
 }
 
-async function downloadPlaywrightJson(browser, club) {
+async function downloadExportJson(browser, club) {
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -95,13 +93,9 @@ async function downloadPlaywrightJson(browser, club) {
     await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
 
-    // ── Click the Export button ───────────────────────────────────────────────
-    // The button contains Material icon text nodes "download", "Export",
-    // "expand_more". Match loosely on the visible label "Export".
-    const exportBtn = page
-      .locator("button")
-      .filter({ hasText: /export/i })
-      .first();
+    // ── Click Export button ───────────────────────────────────────────────────
+    // Button contains Material icon text nodes so match loosely on "Export"
+    const exportBtn = page.locator("button").filter({ hasText: /export/i }).first();
 
     if (!(await exportBtn.count())) {
       await saveDebugSnapshot(page, club.id, "no-export-btn");
@@ -110,22 +104,22 @@ async function downloadPlaywrightJson(browser, club) {
 
     await exportBtn.click({ force: true });
 
-    // ── Wait for the JSON option to become visible ────────────────────────────
-    // The dropdown is a simple overlay panel (not a mat-menu) with three plain
-    // items: "Excel (XLSX)", "CSV", "JSON". We just wait for "JSON" to appear.
-    const jsonItem = page.locator("button, a, li, span, div").filter({ hasText: /^JSON$/ }).first();
+    // ── Wait for JSON item to appear then click it ────────────────────────────
+    // The dropdown is a plain overlay panel with three items: Excel (XLSX), CSV, JSON
+    const jsonItem = page
+      .locator("button, a, li, span, div")
+      .filter({ hasText: /^JSON$/ })
+      .first();
 
     try {
       await jsonItem.waitFor({ state: "visible", timeout: 8000 });
     } catch {
       await saveDebugSnapshot(page, club.id, "json-not-visible");
-      throw new Error(`JSON option not found for ${club.id}`);
+      throw new Error(`JSON option not visible for ${club.id}`);
     }
 
-    // ── Click JSON and capture the download ──────────────────────────────────
-    // Context-level listener survives new tabs or page navigations.
+    // Context-level listener so it survives new tabs / page navigation
     const downloadPromise = context.waitForEvent("download", { timeout: 60000 });
-
     await jsonItem.click({ force: true });
 
     const download = await downloadPromise;
@@ -156,18 +150,19 @@ async function enrichClubJson(browser, club) {
     throw new Error(`API JSON for ${club.id} has no members array`);
   }
 
-  const pwJson = await downloadPlaywrightJson(browser, club);
+  const exportJson = await downloadExportJson(browser, club);
 
-  if (!Array.isArray(pwJson.members)) {
-    throw new Error(`Playwright JSON for ${club.id} has no members array`);
+  if (!Array.isArray(exportJson.members)) {
+    throw new Error(`Export JSON for ${club.id} has no members array`);
   }
 
+  // Build lookup from the export: name → isActive
+  // isActive: false means the member is inactive
   const isActiveByName = new Map();
-
-  for (const member of pwJson.members) {
+  for (const member of exportJson.members) {
     const key = normalizeName(member.name);
     if (!key) continue;
-    isActiveByName.set(key, member.isActive !== false);
+    isActiveByName.set(key, member.isActive);
   }
 
   let matched = 0;
@@ -181,7 +176,7 @@ async function enrichClubJson(browser, club) {
 
     const isActive = isActiveByName.get(key);
     matched += 1;
-    if (isActive === false) inactive += 1;
+    if (!isActive) inactive += 1;
 
     return {
       ...member,
