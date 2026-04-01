@@ -7,39 +7,7 @@ chromium.use(StealthPlugin());
 
 const CONFIG_PATH = path.join(process.cwd(), "scripts", "chronogenesis.clubs.config.json");
 const CHRONO_DATA_DIR = path.join(process.cwd(), "data", "chronogenesis");
-
 const SITE_ORIGIN = "https://chronogenesis.net";
-const API_ORIGIN = "https://api.chronogenesis.net";
-const DEFAULT_TIMEOUT_MS = 60_000;
-
-function normalizeViewerId(value) {
-  return String(value ?? "").replace(/\D+/g, "").trim();
-}
-
-function decodeBase64Url(value) {
-  const normalized = String(value || "")
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-    .padEnd(Math.ceil(String(value || "").length / 4) * 4, "=");
-
-  return Buffer.from(normalized, "base64").toString("utf8");
-}
-
-function decodeJwtPayload(token) {
-  const parts = String(token || "").split(".");
-  if (parts.length < 2) return null;
-
-  try {
-    return JSON.parse(decodeBase64Url(parts[1]));
-  } catch {
-    return null;
-  }
-}
-
-function deriveCgCarrotFromKurono(token) {
-  const payload = decodeJwtPayload(token);
-  return payload?.js_fp || null;
-}
 
 async function addCookiesIfPresent(context) {
   const raw = String(process.env.DOWNLOAD_COOKIE || "").trim();
@@ -55,7 +23,6 @@ async function addCookiesIfPresent(context) {
 
       const name = part.slice(0, eq).trim();
       const value = part.slice(eq + 1).trim();
-
       if (!name || !value) return null;
 
       return {
@@ -66,12 +33,10 @@ async function addCookiesIfPresent(context) {
     })
     .filter(Boolean);
 
-  if (!cookies.length) {
-    throw new Error("DOWNLOAD_COOKIE did not contain any valid name=value cookies");
+  if (cookies.length) {
+    await context.addCookies(cookies);
+    console.log(`Injected ${cookies.length} cookie(s) for chronogenesis.net`);
   }
-
-  await context.addCookies(cookies);
-  console.log(`Injected ${cookies.length} cookie(s) for chronogenesis.net`);
 }
 
 async function dismissBlockingUi(page) {
@@ -117,114 +82,8 @@ async function dismissBlockingUi(page) {
   }
 }
 
-async function waitForKuronoCookie(context, timeoutMs = 30_000) {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const cookies = await context.cookies(SITE_ORIGIN, API_ORIGIN);
-      const cookie = cookies.find((entry) => entry.name === "kurono" && entry.value);
-      if (cookie) return cookie;
-    } catch {}
-
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-
-  return null;
-}
-
-async function bootstrapSession(page, context, bootstrapUrl) {
-  await page.goto(bootstrapUrl || SITE_ORIGIN, {
-    waitUntil: "domcontentloaded",
-    timeout: DEFAULT_TIMEOUT_MS,
-  });
-
-  await page.waitForTimeout(4000);
-  await dismissBlockingUi(page);
-
-  const kuronoCookie = await waitForKuronoCookie(context, 30_000);
-  if (!kuronoCookie?.value) {
-    throw new Error("Could not find a valid kurono cookie after loading ChronoGenesis");
-  }
-
-  const cgCarrot = deriveCgCarrotFromKurono(kuronoCookie.value);
-  if (!cgCarrot) {
-    throw new Error("Could not derive cg-carrot from the kurono cookie payload");
-  }
-
-  console.log(`Bootstrapped ChronoGenesis session via ${bootstrapUrl || SITE_ORIGIN}`);
-  return { cgCarrot, kurono: kuronoCookie.value };
-}
-
-async function fetchClubProfile(page, circleId, cgCarrot) {
-  const result = await page.evaluate(
-    async ({ circleId, cgCarrot }) => {
-      try {
-        const response = await fetch(
-          `https://api.chronogenesis.net/club_profile?circle_id=${encodeURIComponent(circleId)}`,
-          {
-            method: "GET",
-            credentials: "include",
-            headers: {
-              accept: "*/*",
-              "cg-carrot": cgCarrot,
-            },
-          }
-        );
-
-        const text = await response.text();
-        return {
-          ok: response.ok,
-          status: response.status,
-          text,
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          status: 0,
-          text: String(error?.message || error),
-        };
-      }
-    },
-    { circleId: String(circleId), cgCarrot }
-  );
-
-  if (!result.ok) {
-    throw new Error(`club_profile ${circleId} failed (${result.status}): ${result.text.slice(0, 250)}`);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(result.text);
-  } catch (error) {
-    throw new Error(`club_profile ${circleId} returned invalid JSON: ${error.message}`);
-  }
-
-  if (!Array.isArray(parsed.club)) {
-    throw new Error(`club_profile ${circleId} did not include a club array`);
-  }
-
-  return parsed;
-}
-
-async function fetchClubProfileWithRefresh(client, club) {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      return await fetchClubProfile(client.page, club.id, client.cgCarrot);
-    } catch (error) {
-      if (attempt === 2) throw error;
-
-      console.warn(`Retrying ${club.id} after refreshing session: ${error.message}`);
-      const refreshed = await bootstrapSession(
-        client.page,
-        client.context,
-        club.pageUrl || SITE_ORIGIN
-      );
-      client.cgCarrot = refreshed.cgCarrot;
-    }
-  }
-
-  throw new Error(`Unreachable fetch retry state for ${club.id}`);
+function normalizeViewerId(value) {
+  return String(value ?? "").replace(/\D+/g, "").trim();
 }
 
 function buildCirclePayload(club, apiPayload) {
@@ -282,13 +141,12 @@ function buildMembers(apiPayload) {
 }
 
 function buildChronogenesisJson(club, apiPayload) {
-  const now = new Date();
   const members = buildMembers(apiPayload);
 
   return {
     source: "chronogenesis_api",
     endpoint: "club_profile",
-    refreshed_at: now.toISOString(),
+    refreshed_at: new Date().toISOString(),
     circle: buildCirclePayload(club, apiPayload),
     club_daily_history: Array.isArray(apiPayload.club_daily_history)
       ? apiPayload.club_daily_history
@@ -299,25 +157,53 @@ function buildChronogenesisJson(club, apiPayload) {
     members,
     meta: {
       total_members: members.length,
-      note: "Separate ChronoGenesis-only export. No UMA reference merge.",
+      note: "Captured from ChronoGenesis page network response. No UMA merge.",
     },
   };
+}
+
+async function captureClubProfileFromPage(page, club) {
+  const apiResponsePromise = page.waitForResponse(
+    async (response) => {
+      const url = response.url();
+      return (
+        url.includes("api.chronogenesis.net/club_profile") &&
+        url.includes(`circle_id=${club.id}`) &&
+        response.status() === 200
+      );
+    },
+    { timeout: 30000 }
+  );
+
+  await page.goto(club.pageUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(4000);
+  await dismissBlockingUi(page);
+
+  const response = await apiResponsePromise;
+  const text = await response.text();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`club_profile ${club.id} returned invalid JSON: ${error.message}`);
+  }
+
+  if (!Array.isArray(parsed.club)) {
+    throw new Error(`club_profile ${club.id} did not include a club array`);
+  }
+
+  return parsed;
 }
 
 async function saveChronogenesisJson(club, payload) {
   const outPath = path.join(CHRONO_DATA_DIR, `${club.id}.json`);
   await fs.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
   console.log(`✅ CHRONO SAVED: ${club.id} members ${payload.meta?.total_members ?? 0}`);
-}
-
-async function processClub(client, club) {
-  if (!club?.id || !club?.pageUrl) {
-    throw new Error(`Missing id or pageUrl for club config entry: ${JSON.stringify(club)}`);
-  }
-
-  const apiPayload = await fetchClubProfileWithRefresh(client, club);
-  const output = buildChronogenesisJson(club, apiPayload);
-  await saveChronogenesisJson(club, output);
 }
 
 async function main() {
@@ -330,10 +216,8 @@ async function main() {
 
   await fs.mkdir(CHRONO_DATA_DIR, { recursive: true });
 
-  const headless = process.env.HEADFUL === "1" ? false : true;
-
   const browser = await chromium.launch({
-    headless,
+    headless: process.env.HEADFUL === "1" ? false : true,
     args: [
       "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
@@ -354,9 +238,7 @@ async function main() {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => false });
     Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
-    Object.defineProperty(navigator, "plugins", {
-      get: () => [1, 2, 3, 4, 5],
-    });
+    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
 
     window.chrome = {
       runtime: {},
@@ -364,31 +246,21 @@ async function main() {
       csi: function () {},
       app: { isInstalled: false },
     };
-
-    const originalQuery = window.navigator.permissions?.query;
-    if (originalQuery) {
-      window.navigator.permissions.query = (parameters) =>
-        parameters.name === "notifications"
-          ? Promise.resolve({ state: Notification.permission })
-          : originalQuery(parameters);
-    }
   });
 
-  let successCount = 0;
   const page = await context.newPage();
+  let successCount = 0;
 
   try {
     await addCookiesIfPresent(context);
-
-    const bootstrapClub = clubs.find((club) => club?.pageUrl) || { pageUrl: SITE_ORIGIN };
-    const session = await bootstrapSession(page, context, bootstrapClub.pageUrl);
-    const client = { context, page, cgCarrot: session.cgCarrot };
 
     for (const club of clubs) {
       console.log(`\n=== Chronogenesis API ${club.name || "Unknown"} (${club.id}) ===`);
 
       try {
-        await processClub(client, club);
+        const apiPayload = await captureClubProfileFromPage(page, club);
+        const output = buildChronogenesisJson(club, apiPayload);
+        await saveChronogenesisJson(club, output);
         successCount += 1;
       } catch (error) {
         console.error(`❌ CHRONO FAILED: ${club.id}`);
@@ -402,7 +274,7 @@ async function main() {
   }
 
   if (successCount === 0) {
-    throw new Error("Chronogenesis API refresh finished with 0 successful clubs");
+    throw new Error("Chronogenesis refresh finished with 0 successful clubs");
   }
 }
 
