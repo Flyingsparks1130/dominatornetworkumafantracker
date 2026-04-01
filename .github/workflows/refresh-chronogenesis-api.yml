@@ -1,4 +1,4 @@
-name: Refresh ChronoGenesis API JSON
+name: Refresh ChronoGenesis JSON
 
 on:
   schedule:
@@ -35,26 +35,18 @@ jobs:
           npm install playwright playwright-extra puppeteer-extra-plugin-stealth
           npx playwright install --with-deps chromium
 
-      - name: Refresh base JSON files from UMA API
-        run: node scripts/update-json.mjs
-
-      - name: Enrich base JSON files with isActive
-        env:
-          DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
-        run: node scripts/enrich-is-active.mjs
-
-      - name: Refresh ChronoGenesis JSON files from internal API
+      - name: Refresh ChronoGenesis JSON files
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
           HEADFUL: "0"
         run: node scripts/update-chronogenesis-api.mjs
 
-      - name: Commit updated JSON files
+      - name: Commit updated ChronoGenesis JSON files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/*.json data/chronogenesis/*.json
-          git diff --staged --quiet || git commit -m "Refresh ChronoGenesis API JSON"
+          git add data/chronogenesis/*.json
+          git diff --staged --quiet || git commit -m "Refresh ChronoGenesis JSON"
 
       - name: Push changes
         run: git push
