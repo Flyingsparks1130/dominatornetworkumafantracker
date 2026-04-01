@@ -2,8 +2,8 @@ name: Refresh circle JSON
 
 on:
   schedule:
-    - cron: "0 5 * * *"
-    - cron: "0 6 * * *"
+    - cron: "30 4 * * *"
+    - cron: "30 5 * * *"
   workflow_dispatch:
 
 permissions:
