@@ -50,7 +50,7 @@ async function dismissBlockingUi(page) {
       if (await locator.count()) {
         await locator.click({ timeout: 3000, force: true });
         await page.waitForTimeout(1000);
-        console.log("Dismissed blocking UI");
+        console.log("  Dismissed blocking UI");
         return;
       }
     } catch {}
@@ -61,7 +61,7 @@ async function dismissBlockingUi(page) {
     if (await backdrop.count()) {
       await backdrop.click({ timeout: 3000, force: true });
       await page.waitForTimeout(1000);
-      console.log("Clicked overlay backdrop");
+      console.log("  Clicked overlay backdrop");
     }
   } catch {}
 }
@@ -94,7 +94,6 @@ async function downloadExportJson(browser, club) {
     await dismissBlockingUi(page);
 
     // ── Click Export button ───────────────────────────────────────────────────
-    // Button contains Material icon text nodes so match loosely on "Export"
     const exportBtn = page.locator("button").filter({ hasText: /export/i }).first();
 
     if (!(await exportBtn.count())) {
@@ -104,21 +103,25 @@ async function downloadExportJson(browser, club) {
 
     await exportBtn.click({ force: true });
 
-    // ── Wait for JSON item to appear then click it ────────────────────────────
-    // The dropdown is a plain overlay panel with three items: Excel (XLSX), CSV, JSON
+    // ── Wait for any menu item containing "JSON" to appear ───────────────────
+    // Use hasText:/JSON/ not /^JSON$/ — the menu item includes an icon glyph
+    // in its text content so an exact match will never fire.
     const jsonItem = page
       .locator("button, a, li, span, div")
-      .filter({ hasText: /^JSON$/ })
+      .filter({ hasText: /JSON/ })
       .first();
 
     try {
       await jsonItem.waitFor({ state: "visible", timeout: 8000 });
     } catch {
+      // Log every visible text node to aid diagnosis
+      const allText = await page.locator("button, a, li").allInnerTexts();
+      console.log("  Visible clickables:", allText.map((t) => JSON.stringify(t.trim())).join(", "));
       await saveDebugSnapshot(page, club.id, "json-not-visible");
       throw new Error(`JSON option not visible for ${club.id}`);
     }
 
-    // Context-level listener so it survives new tabs / page navigation
+    // Context-level listener survives new tabs / page navigation
     const downloadPromise = context.waitForEvent("download", { timeout: 60000 });
     await jsonItem.click({ force: true });
 
@@ -156,8 +159,7 @@ async function enrichClubJson(browser, club) {
     throw new Error(`Export JSON for ${club.id} has no members array`);
   }
 
-  // Build lookup from the export: name → isActive
-  // isActive: false means the member is inactive
+  // Build lookup from export: normalized name → isActive (source truth)
   const isActiveByName = new Map();
   for (const member of exportJson.members) {
     const key = normalizeName(member.name);
@@ -183,6 +185,8 @@ async function enrichClubJson(browser, club) {
       isActive,
     };
   });
+
+  apiJson.refreshed_at = new Date().toISOString();
 
   await fs.writeFile(apiPath, JSON.stringify(apiJson, null, 2), "utf8");
 
