@@ -168,33 +168,36 @@ async function saveChronogenesisJson(club, payload) {
   console.log(`✅ CHRONO SAVED: ${club.id} members ${payload.meta?.total_members ?? 0}`);
 }
 
-async function saveDebug(page, clubId, label, seenResponses = []) {
+async function saveDebug(page, clubId, label, seenResponses = [], apiFailure = null) {
   await fs.mkdir(CHRONO_DATA_DIR, { recursive: true });
 
-  const pngPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.png`);
-  const htmlPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.html`);
-  const txtPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}.txt`);
-  const jsonPath = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}-responses.json`);
+  const base = path.join(CHRONO_DATA_DIR, `debug-${clubId}-${label}`);
 
-  await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
-  await fs.writeFile(htmlPath, await page.content(), "utf8").catch(() => {});
+  await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
+  await fs.writeFile(`${base}.html`, await page.content(), "utf8").catch(() => {});
 
   const bodyText = await page.locator("body").innerText().catch(() => "");
-  await fs.writeFile(txtPath, bodyText, "utf8").catch(() => {});
+  await fs.writeFile(`${base}.txt`, bodyText, "utf8").catch(() => {});
 
-  await fs
-    .writeFile(jsonPath, JSON.stringify(seenResponses, null, 2), "utf8")
-    .catch(() => {});
+  await fs.writeFile(`${base}-responses.json`, JSON.stringify(seenResponses, null, 2), "utf8").catch(() => {});
+
+  if (apiFailure) {
+    await fs.writeFile(`${base}-api-failure.json`, JSON.stringify(apiFailure, null, 2), "utf8").catch(() => {});
+  }
 
   console.log(`Saved debug files for ${clubId}: ${label}`);
-  console.log(`  - ${pngPath}`);
-  console.log(`  - ${htmlPath}`);
-  console.log(`  - ${txtPath}`);
-  console.log(`  - ${jsonPath}`);
+  console.log(`  - ${base}.png`);
+  console.log(`  - ${base}.html`);
+  console.log(`  - ${base}.txt`);
+  console.log(`  - ${base}-responses.json`);
+  if (apiFailure) {
+    console.log(`  - ${base}-api-failure.json`);
+  }
 }
 
 async function captureClubProfileFromPage(page, club) {
   const seenResponses = [];
+  let apiFailure = null;
 
   const responseListener = async (response) => {
     try {
@@ -205,13 +208,25 @@ async function captureClubProfileFromPage(page, club) {
       const headers = response.headers();
 
       if (url.includes("chronogenesis.net") || url.includes("api.chronogenesis.net")) {
-        seenResponses.push({
+        const item = {
           url,
           status,
           type,
           method,
           contentType: headers["content-type"] || "",
-        });
+        };
+        seenResponses.push(item);
+
+        if (
+          url.includes("api.chronogenesis.net/club_profile") &&
+          url.includes(`circle_id=${club.id}`)
+        ) {
+          const text = await response.text().catch(() => "");
+          apiFailure = {
+            ...item,
+            body: text,
+          };
+        }
       }
     } catch {}
   };
@@ -237,15 +252,22 @@ async function captureClubProfileFromPage(page, club) {
       console.log(`  [${item.status}] ${item.method} ${item.type} ${item.url}`);
     }
 
-    const matching = seenResponses.filter(
+    const successful = seenResponses.find(
       (r) =>
         r.url.includes("api.chronogenesis.net/club_profile") &&
         r.url.includes(`circle_id=${club.id}`) &&
         r.status === 200
     );
 
-    if (!matching.length) {
-      await saveDebug(page, club.id, "no-api-response", seenResponses);
+    if (!successful) {
+      await saveDebug(page, club.id, "api-non-200", seenResponses, apiFailure);
+
+      if (apiFailure) {
+        throw new Error(
+          `club_profile ${club.id} failed with status ${apiFailure.status}: ${String(apiFailure.body || "").slice(0, 300)}`
+        );
+      }
+
       throw new Error(`No club_profile API response observed for ${club.id}`);
     }
 
@@ -263,12 +285,20 @@ async function captureClubProfileFromPage(page, club) {
     try {
       parsed = JSON.parse(text);
     } catch (error) {
-      await saveDebug(page, club.id, "bad-json", seenResponses);
+      await saveDebug(page, club.id, "bad-json", seenResponses, {
+        url: response.url(),
+        status: response.status(),
+        body: text,
+      });
       throw new Error(`club_profile ${club.id} returned invalid JSON: ${error.message}`);
     }
 
     if (!Array.isArray(parsed.club)) {
-      await saveDebug(page, club.id, "bad-api-payload", seenResponses);
+      await saveDebug(page, club.id, "bad-api-payload", seenResponses, {
+        url: response.url(),
+        status: response.status(),
+        body: text,
+      });
       throw new Error(`club_profile ${club.id} did not include a club array`);
     }
 
