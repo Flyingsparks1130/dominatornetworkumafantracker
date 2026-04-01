@@ -151,6 +151,7 @@
     const GAME_TIME_ZONE = "Asia/Tokyo";
     const GAME_RESET_HOUR_JST = 1;
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
+    const EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDate";
 
     function pad2(n) {
       return String(n).padStart(2, "0");
@@ -230,15 +231,58 @@
     }
 
     function getGameDayKeyFromResult(result) {
-      return getGameDayKeyFromTimestamp(
-        result?.sourceUpdatedAt || result?.refreshedAt || result?.lastFetch || null
-      );
+      return getGameDayKeyFromTimestamp(result?.sourceUpdatedAt || null);
+    }
+
+    function getTodayLocalDateKey(now = new Date()) {
+      return formatLocalDateKey(now);
+    }
+
+    function safeReadStoredUnlockLocalDateKey() {
+      try {
+        const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY);
+        return isDateKey(stored) ? stored : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function safeWriteStoredUnlockLocalDateKey(key) {
+      try {
+        if (isDateKey(key)) {
+          localStorage.setItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY, key);
+        }
+      } catch (e) {}
+    }
+
+    function safeClearStoredUnlockLocalDateKey() {
+      try {
+        localStorage.removeItem(EFFECTIVE_DAY_UNLOCK_DATE_STORAGE_KEY);
+      } catch (e) {}
+    }
+
+    function getInitialEffectiveGameDayKey(now = new Date()) {
+      const fallbackKey = getFallbackGameDayKey(now);
+      const storedKey = safeReadStoredGameDayKey();
+      const unlockLocalDateKey = safeReadStoredUnlockLocalDateKey();
+      const todayLocalDateKey = getTodayLocalDateKey(now);
+
+      if (storedKey && unlockLocalDateKey === todayLocalDateKey && storedKey >= fallbackKey) {
+        return storedKey;
+      }
+
+      return fallbackKey;
     }
 
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
-      const baseKey = currentKey || getFallbackGameDayKey(now);
+      const fallbackKey = getFallbackGameDayKey(now);
+      const baseKey = currentKey && currentKey >= fallbackKey ? currentKey : fallbackKey;
       const candidateKey = getGameDayKeyFromResult(result);
-      if (!candidateKey) return baseKey;
+
+      if (!candidateKey || candidateKey <= fallbackKey) {
+        return baseKey;
+      }
+
       return candidateKey > baseKey ? candidateKey : baseKey;
     }
 
@@ -946,11 +990,7 @@
         function CircleTracker() {
       const [view, setView] = useState("home");
       const [activeIdx, setActiveIdx] = useState(0);
-      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => {
-        const fallbackKey = getFallbackGameDayKey(new Date());
-        const storedKey = safeReadStoredGameDayKey();
-        return storedKey && storedKey > fallbackKey ? storedKey : fallbackKey;
-      });
+      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
@@ -1133,7 +1173,17 @@
       }, []);
 
       useEffect(() => {
+        const currentNow = new Date();
+        const fallbackKey = getFallbackGameDayKey(currentNow);
+        const todayLocalDateKey = getTodayLocalDateKey(currentNow);
+
         safeWriteStoredGameDayKey(effectiveGameDayKey);
+
+        if (effectiveGameDayKey > fallbackKey) {
+          safeWriteStoredUnlockLocalDateKey(todayLocalDateKey);
+        } else {
+          safeClearStoredUnlockLocalDateKey();
+        }
       }, [effectiveGameDayKey]);
 
       useEffect(() => {
