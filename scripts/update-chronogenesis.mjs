@@ -7,11 +7,6 @@ const CONFIG_PATH = path.join(process.cwd(), "scripts", "chronogenesis.clubs.con
 const UMA_REFERENCE_DIR = path.join(process.cwd(), "data");
 const CHRONO_DATA_DIR = path.join(process.cwd(), "data", "chronogenesis");
 
-const SELECTORS = {
-  exportButtonText: "download",
-  csvOptionText: "csv",
-};
-
 async function addCookiesIfPresent(context) {
   if (!process.env.DOWNLOAD_COOKIE) return;
 
@@ -67,6 +62,19 @@ async function logInteractiveElements(page, clubId) {
   } catch {}
 
   try {
+    const titled = await page.locator('[title], [aria-label]').evaluateAll((els) =>
+      els.map((el) => ({
+        tag: el.tagName,
+        text: (el.innerText || el.textContent || "").trim(),
+        title: el.getAttribute("title"),
+        aria: el.getAttribute("aria-label"),
+        className: el.className || "",
+      }))
+    );
+    console.log(`Title/aria elements on ${clubId}:`, titled);
+  } catch {}
+
+  try {
     const roleButtons = await page.locator('[role="button"]').evaluateAll((els) =>
       els.map((el) => ({
         text: (el.innerText || el.textContent || "").trim(),
@@ -79,34 +87,65 @@ async function logInteractiveElements(page, clubId) {
   } catch {}
 
   try {
-    const clickable = await page.locator("div, span, i").evaluateAll((els) =>
-      els
-        .map((el) => ({
-          text: (el.innerText || el.textContent || "").trim(),
-          aria: el.getAttribute("aria-label"),
-          title: el.getAttribute("title"),
-          className: el.className || "",
-          onclick: !!el.getAttribute("onclick"),
-        }))
-        .filter((el) =>
-          el.text ||
-          el.aria ||
-          el.title ||
-          /download|export|csv|menu|icon|btn|button/i.test(el.className || "")
-        )
-        .slice(0, 200)
-    );
-    console.log(`Clickable-ish elements on ${clubId}:`, clickable);
+    const bodyText = await page.locator("body").innerText();
+    console.log(`Body text preview on ${clubId}:`, bodyText.slice(0, 2000));
   } catch {}
 
   try {
-    const pageText = await page.locator("body").innerText();
-    console.log(`Body text preview on ${clubId}:`, pageText.slice(0, 2000));
+    const frames = page.frames().map((f) => f.url());
+    console.log(`Frames on ${clubId}:`, frames);
   } catch {}
 }
 
 function normalizeViewerId(value) {
   return String(value ?? "").replace(/\D+/g, "").trim();
+}
+
+async function clickChronoExport(page, clubId) {
+  const exactCandidates = [
+    page.locator('[title="Export as .csv"]').first(),
+    page.locator('[aria-label="Export as .csv"]').first(),
+    page.getByTitle("Export as .csv").first(),
+    page.locator('svg[title="Export as .csv"]').first(),
+    page.locator('[data-title="Export as .csv"]').first(),
+  ];
+
+  for (const locator of exactCandidates) {
+    try {
+      if (await locator.count()) {
+        await locator.scrollIntoViewIfNeeded();
+        await locator.hover({ timeout: 3000 }).catch(() => {});
+        await locator.click({ timeout: 5000, force: true });
+        console.log(`Clicked export icon for ${clubId}`);
+        return true;
+      }
+    } catch {}
+  }
+
+  try {
+    const maybeExportables = page.locator('[title], [aria-label]');
+    const count = await maybeExportables.count();
+
+    for (let i = 0; i < count; i++) {
+      const item = maybeExportables.nth(i);
+
+      try {
+        const title = await item.getAttribute("title");
+        const aria = await item.getAttribute("aria-label");
+        const haystack = `${title || ""} ${aria || ""}`.toLowerCase();
+
+        if (haystack.includes("export") || haystack.includes("csv")) {
+          await item.scrollIntoViewIfNeeded();
+          await item.hover({ timeout: 3000 }).catch(() => {});
+          await item.click({ timeout: 5000, force: true });
+          console.log(`Clicked export tooltip target for ${clubId}: ${title || aria}`);
+          return true;
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return false;
 }
 
 async function downloadChronogenesisCsv(browser, club) {
@@ -121,61 +160,15 @@ async function downloadChronogenesisCsv(browser, club) {
       timeout: 60000,
     });
 
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(5000);
     await dismissBlockingUi(page);
     await logInteractiveElements(page, club.id);
 
-    const exportCandidates = [
-      page.getByRole("button", { name: new RegExp(SELECTORS.exportButtonText, "i") }).first(),
-      page.locator("button").filter({ hasText: new RegExp(SELECTORS.exportButtonText, "i") }).first(),
-      page.getByText(new RegExp(SELECTORS.exportButtonText, "i")).first(),
-    ];
-
-    let exportClicked = false;
-    for (const locator of exportCandidates) {
-      try {
-        if (await locator.count()) {
-          await locator.click({ timeout: 5000, force: true });
-          exportClicked = true;
-          console.log(`Clicked export for ${club.id}`);
-          break;
-        }
-      } catch {}
-    }
+    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
+    const exportClicked = await clickChronoExport(page, club.id);
 
     if (!exportClicked) {
       throw new Error(`Export button not found for ${club.id}`);
-    }
-
-    await page.waitForTimeout(1000);
-    await logButtons(page, `${club.id} (after export click)`);
-
-    const csvCandidates = [
-      page.getByText(/^csv$/i).first(),
-      page.getByRole("menuitem", { name: /csv/i }).first(),
-      page.locator('[role="menuitem"]').filter({ hasText: /csv/i }).first(),
-      page.locator("button").filter({ hasText: /csv/i }).first(),
-      page.locator("a").filter({ hasText: /csv/i }).first(),
-      page.locator("text=CSV").first(),
-    ];
-
-    let csvClicked = false;
-    const downloadPromise = page.waitForEvent("download", { timeout: 60000 });
-
-    for (const locator of csvCandidates) {
-      try {
-        if (await locator.count()) {
-          await locator.scrollIntoViewIfNeeded();
-          await locator.click({ timeout: 5000, force: true });
-          csvClicked = true;
-          console.log(`Clicked CSV for ${club.id}`);
-          break;
-        }
-      } catch {}
-    }
-
-    if (!csvClicked) {
-      throw new Error(`CSV option not found for ${club.id}`);
     }
 
     const download = await downloadPromise;
