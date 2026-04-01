@@ -55,7 +55,7 @@ async function dismissBlockingUi(page) {
   }
 }
 
-async function logButtons(page, clubId) {
+async function logInteractiveElements(page, clubId) {
   try {
     const buttons = await page.locator("button").allTextContents();
     console.log(`Buttons on ${clubId}:`, buttons);
@@ -64,6 +64,44 @@ async function logButtons(page, clubId) {
   try {
     const links = await page.locator("a").allTextContents();
     console.log(`Links on ${clubId}:`, links.filter(Boolean).slice(0, 50));
+  } catch {}
+
+  try {
+    const roleButtons = await page.locator('[role="button"]').evaluateAll((els) =>
+      els.map((el) => ({
+        text: (el.innerText || el.textContent || "").trim(),
+        aria: el.getAttribute("aria-label"),
+        title: el.getAttribute("title"),
+        className: el.className || "",
+      }))
+    );
+    console.log(`Role buttons on ${clubId}:`, roleButtons);
+  } catch {}
+
+  try {
+    const clickable = await page.locator("div, span, i").evaluateAll((els) =>
+      els
+        .map((el) => ({
+          text: (el.innerText || el.textContent || "").trim(),
+          aria: el.getAttribute("aria-label"),
+          title: el.getAttribute("title"),
+          className: el.className || "",
+          onclick: !!el.getAttribute("onclick"),
+        }))
+        .filter((el) =>
+          el.text ||
+          el.aria ||
+          el.title ||
+          /download|export|csv|menu|icon|btn|button/i.test(el.className || "")
+        )
+        .slice(0, 200)
+    );
+    console.log(`Clickable-ish elements on ${clubId}:`, clickable);
+  } catch {}
+
+  try {
+    const pageText = await page.locator("body").innerText();
+    console.log(`Body text preview on ${clubId}:`, pageText.slice(0, 2000));
   } catch {}
 }
 
@@ -85,7 +123,7 @@ async function downloadChronogenesisCsv(browser, club) {
 
     await page.waitForTimeout(4000);
     await dismissBlockingUi(page);
-    await logButtons(page, club.id);
+    await logInteractiveElements(page, club.id);
 
     const exportCandidates = [
       page.getByRole("button", { name: new RegExp(SELECTORS.exportButtonText, "i") }).first(),
