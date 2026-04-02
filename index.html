@@ -97,10 +97,12 @@
       { min: 0,    grade: "F",  color: "#f87171", bg: "#f8717122" },
     ];
 
+    const DAY1_STATUS_KEY = "na-day1";
     const STATUS_META = {
       "on-track": { label: "On Track", icon: "✅", color: "#34d399", bg: "#34d39922", border: "#34d39966" },
       "behind":   { label: "Behind", icon: "⚠️", color: "#fbbf24", bg: "#fbbf2422", border: "#fbbf2466" },
       "critical": { label: "Critical", icon: "❗", color: "#f87171", bg: "#f8717122", border: "#f8717166" },
+      "na-day1":  { label: "N/A - Day 1", icon: "⚪", color: "#9ca3af", bg: "#9ca3af22", border: "#9ca3af66" },
     };
 
     const fmt = (n) => {
@@ -1018,6 +1020,9 @@
       const dim = daysInMonth(year, monthIndex + 1);
       const hasComparisonData = today > 1;
       const noComparisonLabel = `No comparison data yet (Day ${today})`;
+      const getDisplayStatusKey = (statusKey) => (hasComparisonData ? statusKey : DAY1_STATUS_KEY);
+      const getDisplayStatusMeta = (statusKey) => STATUS_META[getDisplayStatusKey(statusKey)] || STATUS_META[DAY1_STATUS_KEY];
+      const displayPlanDeltaText = (delta) => (hasComparisonData ? deltaText(delta) : "—");
       const daysLeft = dim - today;
       const monthWeeks = getMonthWeeks(year, monthIndex);
 
@@ -1196,6 +1201,13 @@
         setPaceZoom(1);
         setPacePinnedIdx(null);
       }, [cid]);
+
+      useEffect(() => {
+        if (!hasComparisonData) {
+          setOverviewStatusFilter("");
+          setMemberFilters((prev) => (prev.status ? { ...prev, status: "" } : prev));
+        }
+      }, [hasComparisonData, cid]);
 
       function decorateMember(member, monthlyTarget) {
         const cumulativeSeries = buildCumulativeSeries(member.dailyFans, dim);
@@ -1383,6 +1395,10 @@
       const remainingCriticalCount = Math.max(0, criticalNetworkMembers.length - visibleCriticalMembers.length);
 
       const transferCandidates = (() => {
+        if (!hasComparisonData) {
+          return { demotionCandidates: [], promotionCandidates: [] };
+        }
+
         const demotionCandidates = networkMembers
           .filter((m) => (TIER_RANK[m.clubTier] ?? 99) <= 1 && (m.plan.statusKey === "critical" || (m.plan.statusKey === "behind" && m.stagnantDays >= 3)))
           .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0)).slice(0, 15);
@@ -1706,7 +1722,7 @@
       const memberRows = (() => {
         const filtered = decoratedMembers.filter((member) =>
           matchesSelectFilter(member.name, memberFilters.name) &&
-          matchesSelectFilter(member.plan.statusKey, memberFilters.status)
+          matchesSelectFilter(getDisplayStatusKey(member.plan.statusKey), memberFilters.status)
         );
 
         const sorted = memberSort.key && memberSort.direction !== "off"
@@ -1899,9 +1915,9 @@
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
                 {[
                   { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
-                  { label: "Network Monthly +", value: fmt(networkMonthlyTotal), sub: "Across loaded clubs", col: "#c4b5fd" },
+                  { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
                   { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
-                  { label: "Active Members", value: networkMemberCount, sub: `${clubsMissingData} clubs missing JSON`, col: clubsMissingData ? "#fbbf24" : "#34d399" },
+                  { label: "Active Members", value: hasComparisonData ? networkMemberCount : "—", sub: hasComparisonData ? `${clubsMissingData} clubs missing JSON` : noComparisonLabel, col: hasComparisonData ? (clubsMissingData ? "#fbbf24" : "#34d399") : "#9ca3af" },
                   { label: `${STATUS_META["on-track"].icon} On Track`, value: hasComparisonData ? networkStatusCounts["on-track"] : "—", sub: hasComparisonData ? "Members at or above plan" : noComparisonLabel, col: STATUS_META["on-track"].color },
                   { label: `${STATUS_META["behind"].icon} Behind`, value: hasComparisonData ? networkStatusCounts["behind"] : "—", sub: hasComparisonData ? "Members below plan" : noComparisonLabel, col: STATUS_META["behind"].color },
                   { label: `${STATUS_META["critical"].icon} Critical`, value: hasComparisonData ? networkStatusCounts["critical"] : "—", sub: hasComparisonData ? "Members under 25% of plan" : noComparisonLabel, col: STATUS_META["critical"].color },
@@ -1945,11 +1961,13 @@
                           </div>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div>
-                            <div style={{ color: "#e2e0f0", fontWeight: 800 }}>{entry.activeMembers}/{MAX_MEMBERS}</div>
+                            <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? `${entry.activeMembers}/${MAX_MEMBERS}` : "—"}</div>
+                            {!hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}
                           </div>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
-                            <div style={{ color: "#e2e0f0", fontWeight: 700 }}>{entry.hasData ? fmt(entry.totalMonthly) : "—"}</div>
+                            <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
+                            {entry.hasData && !hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}
                           </div>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div>
@@ -2041,10 +2059,12 @@
                             <TierBadge tier={entry.tier} />
                             <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div>
                           </div>
-                          <div style={{ color: "#6b7280", fontSize: 10 }}>{entry.activeMembers} active</div>
+                          <div style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</div>
                         </div>
                         {!entry.hasData ? (
                           <div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No JSON loaded for this club yet.</div>
+                        ) : !hasComparisonData ? (
+                          <div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>{noComparisonLabel}</div>
                         ) : entry.topFiveMembers.length === 0 ? (
                           <div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No active members available.</div>
                         ) : (
@@ -2163,22 +2183,28 @@
                 <div style={S.card}>
                   <div style={S.h2}>Club Health Scores</div>
                   <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                    {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
-                      <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><span style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</span></div>
-                          <HealthBadge grade={entry.health.grade} />
+                  {!hasComparisonData ? (
+                    <div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>
+                      {noComparisonLabel}
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                      {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
+                        <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><span style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</span></div>
+                            <HealthBadge grade={entry.health.grade} />
+                          </div>
+                          <div style={{ marginBottom: 8 }}><ProgressBar pct={entry.health.score} color={entry.health.color} height={6} /></div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 11 }}>
+                            <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>On Track</div><div style={{ color: "#34d399", fontWeight: 700 }}>{entry.statusCounts["on-track"]}/{entry.activeMembers}</div></div>
+                            <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Projected</div><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(entry.totalProjected)}</div></div>
+                            <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Score</div><div style={{ color: entry.health.color, fontWeight: 700 }}>{entry.health.score}%</div></div>
+                          </div>
                         </div>
-                        <div style={{ marginBottom: 8 }}><ProgressBar pct={entry.health.score} color={entry.health.color} height={6} /></div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 11 }}>
-                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>On Track</div><div style={{ color: "#34d399", fontWeight: 700 }}>{entry.statusCounts["on-track"]}/{entry.activeMembers}</div></div>
-                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Projected</div><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(entry.totalProjected)}</div></div>
-                          <div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Score</div><div style={{ color: entry.health.color, fontWeight: 700 }}>{entry.health.score}%</div></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div style={S.card}>
@@ -2193,7 +2219,7 @@
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
                     <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}>
                       <div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>
-                      {transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
+                      {!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
                         <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>
                           {transferCandidates.demotionCandidates.map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}
                         </tbody></table></div>
@@ -2201,7 +2227,7 @@
                     </div>
                     <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}>
                       <div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>
-                      {transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
+                      {!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (
                         <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>
                           {transferCandidates.promotionCandidates.map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}
                         </tbody></table></div>
@@ -2274,12 +2300,12 @@
                     <>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
-                          { label: "Active Members", value: `${decoratedMembers.length}/${MAX_MEMBERS}`, sub: "Inactive excluded", col: "#e2e0f0" },
-                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: hasComparisonData ? statusCounts["on-track"] : "—", sub: hasComparisonData ? "At or above weekly pace" : noComparisonLabel, col: "#34d399", filterKey: "on-track" },
-                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: hasComparisonData ? statusCounts["behind"] : "—", sub: hasComparisonData ? "Below pace but above 25%" : noComparisonLabel, col: "#fbbf24", filterKey: "behind" },
-                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: hasComparisonData ? statusCounts["critical"] : "—", sub: hasComparisonData ? "Under 25% of weekly pace" : noComparisonLabel, col: "#f87171", filterKey: "critical" },
-                          { label: "Club Monthly +", value: fmt(totalMonthly), sub: "All active members", col: gainColor(totalMonthly) },
-                          { label: "Club Vs Weekly Plan", value: fmtSigned(clubWeeklyDelta), sub: `Target by today: ${fmt(clubExpectedToDate)}`, col: gainColor(clubWeeklyDelta) },
+                          { label: "Active Members", value: hasComparisonData ? `${decoratedMembers.length}/${MAX_MEMBERS}` : "—", sub: hasComparisonData ? "Inactive excluded" : noComparisonLabel, col: hasComparisonData ? "#e2e0f0" : "#9ca3af" },
+                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: hasComparisonData ? statusCounts["on-track"] : "—", sub: hasComparisonData ? "At or above weekly pace" : noComparisonLabel, col: "#34d399", filterKey: hasComparisonData ? "on-track" : null },
+                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: hasComparisonData ? statusCounts["behind"] : "—", sub: hasComparisonData ? "Below pace but above 25%" : noComparisonLabel, col: "#fbbf24", filterKey: hasComparisonData ? "behind" : null },
+                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: hasComparisonData ? statusCounts["critical"] : "—", sub: hasComparisonData ? "Under 25% of weekly pace" : noComparisonLabel, col: "#f87171", filterKey: hasComparisonData ? "critical" : null },
+                          { label: "Club Monthly +", value: hasComparisonData ? fmt(totalMonthly) : "—", sub: hasComparisonData ? "All active members" : noComparisonLabel, col: hasComparisonData ? gainColor(totalMonthly) : "#9ca3af" },
+                          { label: "Club Vs Weekly Plan", value: hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", sub: hasComparisonData ? `Target by today: ${fmt(clubExpectedToDate)}` : noComparisonLabel, col: hasComparisonData ? gainColor(clubWeeklyDelta) : "#9ca3af" },
                         ].map((card) => {
                           const isFilterCard = Boolean(card.filterKey);
                           const isActive = overviewStatusFilter === card.filterKey;
@@ -2314,6 +2340,9 @@
                             Filtering overview to {STATUS_META[overviewStatusFilter]?.icon} {STATUS_META[overviewStatusFilter]?.label}. Click the same summary card again to clear.
                           </div>
                         )}
+                        {!hasComparisonData && (
+                          <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 10 }}>{noComparisonLabel}</div>
+                        )}
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {overviewMembers.length === 0 && (
                             <div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>
@@ -2323,7 +2352,7 @@
                           {overviewMembers.map((member, index) => {
                             const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0;
                             const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0));
-                            const statusMeta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"];
+                            const statusMeta = getDisplayStatusMeta(member.plan.statusKey);
                             const progressColor = statusMeta.color;
 
                             return (
@@ -2332,7 +2361,7 @@
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <span style={{ color: "#4b5563", fontSize: 11, fontWeight: 700, minWidth: 20 }}>#{index + 1}</span>
                                     <span style={{ fontWeight: 700, color: "#e2e0f0", fontSize: 13 }}>{member.name}</span>
-                                    <StatusBadge statusKey={member.plan.statusKey} />
+                                    <StatusBadge statusKey={getDisplayStatusKey(member.plan.statusKey)} />
                                     <StagnantBadge days={member.stagnantDays} />
                                   </div>
 
@@ -2363,10 +2392,10 @@
                                   </div>
                                   <div>
                                     <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div>
-                                    <div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{deltaText(member.plan.delta)}</div>
+                                    <div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{displayPlanDeltaText(member.plan.delta)}</div>
                                   </div>
                                   <div style={{ justifySelf: "end" }}>
-                                    <Sparkline data={member.dailyFans || []} color={(STATUS_META[member.plan.statusKey] || STATUS_META["behind"]).color} />
+                                    <Sparkline data={member.dailyFans || []} color={statusMeta.color} />
                                   </div>
                                 </div>
                               </div>
@@ -2440,9 +2469,15 @@
                               <th style={S.th}>
                                 <select style={S.input} value={memberFilters.status} onChange={(e) => updateMemberFilter("status", e.target.value)}>
                                   <option value="">All Statuses</option>
-                                  <option value="on-track">On Track</option>
-                                  <option value="behind">Behind</option>
-                                  <option value="critical">Critical</option>
+                                  {hasComparisonData ? (
+                                    <>
+                                      <option value="on-track">On Track</option>
+                                      <option value="behind">Behind</option>
+                                      <option value="critical">Critical</option>
+                                    </>
+                                  ) : (
+                                    <option value={DAY1_STATUS_KEY}>N/A - Day 1</option>
+                                  )}
                                 </select>
                               </th>
                             </tr>
@@ -2469,13 +2504,13 @@
                                   <td style={{ ...S.td, color: "#c4b5fd" }}>
                                     {member.projected != null ? fmt(member.projected) : "—"}
                                   </td>
-                                  <td style={{ ...S.td, color: (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)), fontWeight: 700 }}>
-                                    {deltaText(member.plan.delta)}
+                                  <td style={{ ...S.td, color: hasComparisonData ? (STATUS_META[member.plan.statusKey]?.color || gainColor(member.plan.delta)) : "#9ca3af", fontWeight: 700 }}>
+                                    {displayPlanDeltaText(member.plan.delta)}
                                   </td>
                                   <td style={S.td}><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></td>
                                   <td style={S.td}><StagnantBadge days={member.stagnantDays} /></td>
                                   <td style={S.td}>
-                                    <StatusBadge statusKey={member.plan.statusKey} />
+                                    <StatusBadge statusKey={getDisplayStatusKey(member.plan.statusKey)} />
                                   </td>
                                 </tr>
                               ))
@@ -2503,9 +2538,9 @@
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
                           { label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" },
-                          { label: "Per-Member Target by Today", value: fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0), sub: `${fmt(club.target)} monthly quota`, col: "#c4b5fd" },
+                          { label: "Per-Member Target by Today", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
                           { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" },
-                          { label: `Visible on Graph`, value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical`, col: "#e2e0f0" },
+                          { label: `Visible on Graph`, value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" },
                         ].map((card) => (
                           <div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div>
@@ -2631,7 +2666,7 @@
                                   </div>
                                   <div style={{ color: "#6b7280", fontSize: 11, marginTop: 3, display: "flex", alignItems: "center", gap: 6 }}>{isHidden ? "Hidden" : "Showing"} <StagnantBadge days={member.stagnantDays} /></div>
                                 </div>
-                                <StatusBadge statusKey={member.plan.statusKey} />
+                                <StatusBadge statusKey={getDisplayStatusKey(member.plan.statusKey)} />
                               </div>
 
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
