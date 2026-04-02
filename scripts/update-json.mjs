@@ -23,24 +23,34 @@ async function fetchClubJson(club) {
     method: "GET",
     headers: {
       accept: "application/json",
+      "user-agent": "Mozilla/5.0",
     },
   });
 
-  if (!res.ok) {
-    throw new Error(`API request failed for ${club.id}: ${res.status} ${res.statusText}`);
-  }
-
   const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(
+      `API request failed for ${club.id}: ${res.status} ${res.statusText}\n` +
+      `Body preview: ${text.slice(0, 500)}`
+    );
+  }
 
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new Error(`Invalid JSON from API for ${club.id}: ${err.message}`);
+    throw new Error(
+      `Invalid JSON from API for ${club.id}: ${err.message}\n` +
+      `Body preview: ${text.slice(0, 500)}`
+    );
   }
 
   if (!isValidCirclePayload(parsed)) {
-    throw new Error(`Unexpected API payload shape for ${club.id}`);
+    throw new Error(
+      `Unexpected API payload shape for ${club.id}\n` +
+      `Top-level keys: ${Object.keys(parsed || {}).join(", ")}`
+    );
   }
 
   return parsed;
@@ -61,6 +71,8 @@ async function saveClubJson(club, payload) {
 }
 
 async function main() {
+  console.log("RUNNING FILE:", import.meta.url);
+
   const raw = await fs.readFile(CONFIG_PATH, "utf8");
   const clubs = JSON.parse(raw);
 
