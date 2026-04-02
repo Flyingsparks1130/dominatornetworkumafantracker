@@ -1002,6 +1002,7 @@
       const [topNetworkMode, setTopNetworkMode] = useState("daily");
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
+      const [criticalVisibleCount, setCriticalVisibleCount] = useState(10);
       const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
       const [homeTab, setHomeTab] = useState("directory");
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(false);
@@ -1015,6 +1016,8 @@
       const monthIndex = dataDate.getMonth();
       const today = dataDate.getDate();
       const dim = daysInMonth(year, monthIndex + 1);
+      const hasComparisonData = today > 1;
+      const noComparisonLabel = `No comparison data yet (Day ${today})`;
       const daysLeft = dim - today;
       const monthWeeks = getMonthWeeks(year, monthIndex);
 
@@ -1184,6 +1187,10 @@
       }, [activeIdx]);
 
       useEffect(() => {
+        setCriticalVisibleCount(10);
+      }, [criticalClubFilter, criticalSort]);
+
+      useEffect(() => {
         setPaceHiddenMembers({});
         setOverviewStatusFilter("");
         setPaceZoom(1);
@@ -1215,13 +1222,15 @@
       const clubExpectedToDate = Math.round((clubMonthlyTarget / Math.max(dim, 1)) * today);
       const clubWeeklyDelta = totalMonthly - clubExpectedToDate;
 
-      const statusCounts = decoratedMembers.reduce(
-        (acc, member) => {
-          acc[member.plan.statusKey] += 1;
-          return acc;
-        },
-        { "on-track": 0, "behind": 0, "critical": 0 }
-      );
+      const statusCounts = hasComparisonData
+        ? decoratedMembers.reduce(
+            (acc, member) => {
+              acc[member.plan.statusKey] += 1;
+              return acc;
+            },
+            { "on-track": 0, "behind": 0, "critical": 0 }
+          )
+        : { "on-track": 0, "behind": 0, "critical": 0 };
 
       const membersOnTrack = statusCounts["on-track"];
       const sortedByMonthly = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
@@ -1304,40 +1313,48 @@
           return (a.name || "").localeCompare(b.name || "");
         });
 
-      const topNetworkUsers = [...networkMembers]
-        .sort((a, b) => {
-          if (topNetworkMode === "monthly") {
-            const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
-            if (monthDiff !== 0) return monthDiff;
-            const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY);
-            if (dayDiff !== 0) return dayDiff;
-          } else {
-            const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY);
-            if (dayDiff !== 0) return dayDiff;
-            const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
-            if (monthDiff !== 0) return monthDiff;
-          }
-          return (a.name || "").localeCompare(b.name || "");
-        })
-        .slice(0, 10);
+      const topNetworkUsers = hasComparisonData
+        ? [...networkMembers]
+            .sort((a, b) => {
+              if (topNetworkMode === "monthly") {
+                const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
+                if (monthDiff !== 0) return monthDiff;
+                const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY);
+                if (dayDiff !== 0) return dayDiff;
+              } else {
+                const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY);
+                if (dayDiff !== 0) return dayDiff;
+                const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY);
+                if (monthDiff !== 0) return monthDiff;
+              }
+              return (a.name || "").localeCompare(b.name || "");
+            })
+            .slice(0, 10)
+        : [];
       const loadedClubCount = networkClubs.filter((entry) => entry.hasData).length;
       const networkMonthlyTotal = networkMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
       const networkFanTotal = networkMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
       const networkMemberCount = networkMembers.length;
       const clubsMissingData = networkClubs.filter((entry) => entry.id && !entry.hasData).length;
-      const networkStatusCounts = networkMembers.reduce(
-        (acc, member) => {
-          acc[member.plan.statusKey] += 1;
-          return acc;
-        },
-        { "on-track": 0, "behind": 0, "critical": 0 }
-      );
-      const networkMembersAtOrAbovePlan = networkStatusCounts["on-track"];
-      const criticalClubOptions = Array.from(new Set(networkMembers.filter((member) => member.plan.statusKey === "critical").map((member) => member.clubName))).sort((a, b) => a.localeCompare(b));
+      const networkStatusCounts = hasComparisonData
+        ? networkMembers.reduce(
+            (acc, member) => {
+              acc[member.plan.statusKey] += 1;
+              return acc;
+            },
+            { "on-track": 0, "behind": 0, "critical": 0 }
+          )
+        : { "on-track": 0, "behind": 0, "critical": 0 };
+      const networkMembersAtOrAbovePlan = hasComparisonData ? networkStatusCounts["on-track"] : 0;
+      const criticalClubOptions = hasComparisonData
+        ? Array.from(new Set(networkMembers.filter((member) => member.plan.statusKey === "critical").map((member) => member.clubName))).sort((a, b) => a.localeCompare(b))
+        : [];
       const criticalAvgColor = (value) => value <= 0 ? "#f87171" : value < 200000 ? "#fbbf24" : "#34d399";
-      const criticalBaseMembers = [...networkMembers]
-        .filter((member) => member.plan.statusKey === "critical")
-        .filter((member) => criticalClubFilter === "all" || member.clubName === criticalClubFilter);
+      const criticalBaseMembers = hasComparisonData
+        ? [...networkMembers]
+            .filter((member) => member.plan.statusKey === "critical")
+            .filter((member) => criticalClubFilter === "all" || member.clubName === criticalClubFilter)
+        : [];
 
       const criticalNetworkMembers = criticalSort.key && criticalSort.direction !== "off"
         ? [...criticalBaseMembers].sort((a, b) => {
@@ -1361,6 +1378,9 @@
             return criticalSort.direction === "asc" ? av - bv : bv - av;
           })
         : criticalBaseMembers;
+
+      const visibleCriticalMembers = criticalNetworkMembers.slice(0, criticalVisibleCount);
+      const remainingCriticalCount = Math.max(0, criticalNetworkMembers.length - visibleCriticalMembers.length);
 
       const transferCandidates = (() => {
         const demotionCandidates = networkMembers
@@ -1882,10 +1902,10 @@
                   { label: "Network Monthly +", value: fmt(networkMonthlyTotal), sub: "Across loaded clubs", col: "#c4b5fd" },
                   { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
                   { label: "Active Members", value: networkMemberCount, sub: `${clubsMissingData} clubs missing JSON`, col: clubsMissingData ? "#fbbf24" : "#34d399" },
-                  { label: `${STATUS_META["on-track"].icon} On Track`, value: networkStatusCounts["on-track"], sub: "Members at or above plan", col: STATUS_META["on-track"].color },
-                  { label: `${STATUS_META["behind"].icon} Behind`, value: networkStatusCounts["behind"], sub: "Members below plan", col: STATUS_META["behind"].color },
-                  { label: `${STATUS_META["critical"].icon} Critical`, value: networkStatusCounts["critical"], sub: "Members under 25% of plan", col: STATUS_META["critical"].color },
-                  { label: "Members At/Above Plan", value: `${networkMembersAtOrAbovePlan}/${networkMemberCount}`, sub: `${loadedClubCount} clubs loaded · ${clubsMissingData} missing JSON`, col: networkMembersAtOrAbovePlan === networkMemberCount && networkMemberCount > 0 ? "#34d399" : "#c4b5fd" },
+                  { label: `${STATUS_META["on-track"].icon} On Track`, value: hasComparisonData ? networkStatusCounts["on-track"] : "—", sub: hasComparisonData ? "Members at or above plan" : noComparisonLabel, col: STATUS_META["on-track"].color },
+                  { label: `${STATUS_META["behind"].icon} Behind`, value: hasComparisonData ? networkStatusCounts["behind"] : "—", sub: hasComparisonData ? "Members below plan" : noComparisonLabel, col: STATUS_META["behind"].color },
+                  { label: `${STATUS_META["critical"].icon} Critical`, value: hasComparisonData ? networkStatusCounts["critical"] : "—", sub: hasComparisonData ? "Members under 25% of plan" : noComparisonLabel, col: STATUS_META["critical"].color },
+                  { label: "Members At/Above Plan", value: hasComparisonData ? `${networkMembersAtOrAbovePlan}/${networkMemberCount}` : "—", sub: hasComparisonData ? `${loadedClubCount} clubs loaded · ${clubsMissingData} missing JSON` : noComparisonLabel, col: hasComparisonData && networkMembersAtOrAbovePlan === networkMemberCount && networkMemberCount > 0 ? "#34d399" : "#c4b5fd" },
                 ].map((card) => (
                   <div key={card.label} style={{ ...S.card, marginBottom: 0, padding: "13px 15px", minWidth: 0 }}>
                     <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{card.label}</div>
@@ -1969,7 +1989,13 @@
                       </tr>
                     </thead>
                     <tbody>
-                      {topNetworkUsers.length === 0 ? (
+                      {!hasComparisonData ? (
+                        <tr>
+                          <td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
+                            {noComparisonLabel}
+                          </td>
+                        </tr>
+                      ) : topNetworkUsers.length === 0 ? (
                         <tr>
                           <td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
                             Load club JSON files to populate the network leaderboard.
@@ -2077,14 +2103,20 @@
                       </tr>
                     </thead>
                     <tbody>
-                      {criticalNetworkMembers.length === 0 ? (
+                      {!hasComparisonData ? (
+                        <tr>
+                          <td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
+                            {noComparisonLabel}
+                          </td>
+                        </tr>
+                      ) : criticalNetworkMembers.length === 0 ? (
                         <tr>
                           <td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>
                             No members are currently in critical status across the selected clubs.
                           </td>
                         </tr>
                       ) : (
-                        criticalNetworkMembers.map((member, index) => (
+                        visibleCriticalMembers.map((member, index) => (
                           <tr key={`critical-${member.clubName}-${member.name}-${index}`}>
                             <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td>
                             <td style={S.td}>
@@ -2104,6 +2136,26 @@
                     </tbody>
                   </table>
                 </div>
+                {hasComparisonData && remainingCriticalCount > 0 && (
+                  <div
+                    style={{
+                      position: "sticky",
+                      bottom: 0,
+                      paddingTop: 12,
+                      marginTop: -6,
+                      background: "linear-gradient(to bottom, rgba(10,9,18,0), rgba(10,9,18,0.96) 45%, rgba(10,9,18,1) 100%)",
+                      display: "flex",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <button
+                      style={S.btn(false, "#7c3aed")}
+                      onClick={() => setCriticalVisibleCount((prev) => prev + 10)}
+                    >
+                      Show {Math.min(10, remainingCriticalCount)} More
+                    </button>
+                  </div>
+                )}
               </div>
               </>)}
 
@@ -2223,9 +2275,9 @@
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                         {[
                           { label: "Active Members", value: `${decoratedMembers.length}/${MAX_MEMBERS}`, sub: "Inactive excluded", col: "#e2e0f0" },
-                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: statusCounts["on-track"], sub: "At or above weekly pace", col: "#34d399", filterKey: "on-track" },
-                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: statusCounts["behind"], sub: "Below pace but above 25%", col: "#fbbf24", filterKey: "behind" },
-                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: statusCounts["critical"], sub: "Under 25% of weekly pace", col: "#f87171", filterKey: "critical" },
+                          { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: hasComparisonData ? statusCounts["on-track"] : "—", sub: hasComparisonData ? "At or above weekly pace" : noComparisonLabel, col: "#34d399", filterKey: "on-track" },
+                          { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: hasComparisonData ? statusCounts["behind"] : "—", sub: hasComparisonData ? "Below pace but above 25%" : noComparisonLabel, col: "#fbbf24", filterKey: "behind" },
+                          { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: hasComparisonData ? statusCounts["critical"] : "—", sub: hasComparisonData ? "Under 25% of weekly pace" : noComparisonLabel, col: "#f87171", filterKey: "critical" },
                           { label: "Club Monthly +", value: fmt(totalMonthly), sub: "All active members", col: gainColor(totalMonthly) },
                           { label: "Club Vs Weekly Plan", value: fmtSigned(clubWeeklyDelta), sub: `Target by today: ${fmt(clubExpectedToDate)}`, col: gainColor(clubWeeklyDelta) },
                         ].map((card) => {
