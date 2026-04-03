@@ -17,6 +17,16 @@
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #0a0912; }
     ::-webkit-scrollbar-thumb { background: #1e1b35; border-radius: 3px; }
+    @keyframes pacePulse {
+      0% { transform: scale(1); opacity: 0.85; }
+      70% { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .pace-pulse-ring {
+      transform-origin: center;
+      animation: pacePulse 1.8s ease-out infinite;
+      pointer-events: none;
+    }
   </style>
 
   <script>
@@ -523,6 +533,38 @@
       return cumulativeSeries.map((value, index) => value - (index > 0 ? (cumulativeSeries[index - 1] ?? 0) : 0));
     }
 
+    function buildDailyGainSeriesFromDailyFans(dailyFans = [], dim) {
+      const df = Array.isArray(dailyFans) ? dailyFans : [];
+      const series = [];
+      let lastSeen = 0;
+
+      for (let i = 0; i < dim; i++) {
+        const raw = Number(df[i] ?? 0);
+
+        if (raw > 0) {
+          series.push(Math.max(0, raw - lastSeen));
+          lastSeen = raw;
+        } else {
+          series.push(0);
+        }
+      }
+
+      return series;
+    }
+
+    function buildCumulativeFromDailyGainSeries(dailySeries = [], dim = dailySeries.length) {
+      const safeDim = Math.max(0, dim || 0);
+      const result = [];
+      let running = 0;
+
+      for (let i = 0; i < safeDim; i++) {
+        running += Number(dailySeries[i] ?? 0);
+        result.push(running);
+      }
+
+      return result;
+    }
+
     function getTrailingAverage(values = [], endIndex = null, windowSize = 3) {
       if (!values.length) return 0;
       const finalIndex = Math.max(0, Math.min(values.length - 1, endIndex == null ? values.length - 1 : endIndex));
@@ -682,12 +724,21 @@
       );
     }
 
-    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1, pinnedIdx, setPinnedIdx, containerRef }) {
+    function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1, pinnedIdx, setPinnedIdx, containerRef, currentDayIdx = 0, mode = "cumulative" }) {
       const [hoverIdx, setHoverIdx] = useState(null);
       const isPinned = pinnedIdx != null;
-      const effectiveIdx = isPinned ? pinnedIdx : hoverIdx;
+      const clampedCurrentDayIdx = Math.max(0, Math.min(currentDayIdx, Math.max(0, targetSeries.length - 1)));
+      const visibleDayCount = Math.max(1, clampedCurrentDayIdx + 1);
+      const visibleTargetSeries = (targetSeries || []).slice(0, visibleDayCount);
+      const visibleSeriesList = seriesList.map((item) => ({
+        ...item,
+        series: (item.series || []).slice(0, visibleDayCount),
+      }));
+      const effectiveIdx = isPinned
+        ? Math.max(0, Math.min(pinnedIdx, visibleDayCount - 1))
+        : hoverIdx;
 
-      if (!targetSeries.length) {
+      if (!visibleTargetSeries.length) {
         return (
           <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>
             Not enough daily data to render the pace chart yet.
@@ -700,9 +751,10 @@
       const padding = { top: 24, right: 28, bottom: 42, left: 62 };
       const innerW = width - padding.left - padding.right;
       const innerH = height - padding.top - padding.bottom;
-      const dayCount = targetSeries.length;
-      const allValues = [...targetSeries, ...seriesList.flatMap((item) => item.series || [])];
+      const dayCount = visibleTargetSeries.length;
+      const allValues = [...visibleTargetSeries, ...visibleSeriesList.flatMap((item) => item.series || [])];
       const maxVal = Math.max(...allValues, 1);
+      const currentX = padding.left + (dayCount <= 1 ? 0 : ((dayCount - 1) / (dayCount - 1)) * innerW);
 
       const xForIndex = (index) => padding.left + (dayCount <= 1 ? 0 : (index / (dayCount - 1)) * innerW);
       const yForValue = (value) => padding.top + innerH - ((value || 0) / maxVal) * innerH;
@@ -713,24 +765,26 @@
 
       const gridValues = Array.from({ length: 5 }, (_, index) => Math.round((maxVal / 4) * index));
       const hoverMembers = effectiveIdx != null
-        ? [...seriesList]
+        ? [...visibleSeriesList]
             .map((item) => ({
               ...item,
               value: item.series?.[effectiveIdx] ?? 0,
-              delta: (item.series?.[effectiveIdx] ?? 0) - (targetSeries[effectiveIdx] ?? 0),
+              delta: (item.series?.[effectiveIdx] ?? 0) - (visibleTargetSeries[effectiveIdx] ?? 0),
             }))
             .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
         : [];
       const hover = effectiveIdx != null
         ? {
             day: effectiveIdx + 1,
-            target: targetSeries[effectiveIdx] ?? 0,
+            target: visibleTargetSeries[effectiveIdx] ?? 0,
             x: xForIndex(effectiveIdx),
-            yTarget: yForValue(targetSeries[effectiveIdx] ?? 0),
+            yTarget: yForValue(visibleTargetSeries[effectiveIdx] ?? 0),
           }
         : null;
       const tooltipLeftPct = hover ? Math.max(14, Math.min(86, (hover.x / width) * 100)) : 50;
       const tooltipTranslateX = tooltipLeftPct > 78 ? "-100%" : tooltipLeftPct < 22 ? "0" : "-50%";
+      const modeLabel = mode === "daily" ? "Daily gain" : "Cumulative gain";
+      const targetLabel = mode === "daily" ? "Daily plan guideline" : "Cumulative plan guideline";
 
       return (
         <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "#0a0912" }}>
@@ -757,21 +811,24 @@
                 );
               })}
 
-              {weeks.map((week) => {
-                const x = xForIndex(week.endDay - 1);
-                return (
-                  <g key={week.number}>
-                    <line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" />
-                    <text x={x - 4} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">
-                      W{week.number}
-                    </text>
-                  </g>
-                );
-              })}
+              {weeks
+                .filter((week) => week.startDay <= visibleDayCount)
+                .map((week) => {
+                  const boundaryDay = Math.min(week.endDay, visibleDayCount);
+                  const x = xForIndex(boundaryDay - 1);
+                  return (
+                    <g key={week.number}>
+                      <line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" />
+                      <text x={Math.max(padding.left + 12, x - 4)} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">
+                        W{week.number}
+                      </text>
+                    </g>
+                  );
+                })}
 
-              <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+              <path d={pathFor(visibleTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
 
-              {seriesList.map((item) => (
+              {visibleSeriesList.map((item) => (
                 <path
                   key={item.name}
                   d={pathFor(item.series)}
@@ -781,6 +838,21 @@
                   opacity="0.9"
                 />
               ))}
+
+              <g>
+                <circle className="pace-pulse-ring" cx={currentX} cy={yForValue(visibleTargetSeries[dayCount - 1] ?? 0)} r="4.5" fill="#c4b5fd" opacity="0.45" />
+                <circle cx={currentX} cy={yForValue(visibleTargetSeries[dayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" />
+              </g>
+
+              {visibleSeriesList.map((item) => {
+                const currentValue = item.series?.[dayCount - 1] ?? 0;
+                return (
+                  <g key={`${item.name}-current-dot`}>
+                    <circle className="pace-pulse-ring" cx={currentX} cy={yForValue(currentValue)} r="4.25" fill={item.color} opacity="0.42" />
+                    <circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" />
+                  </g>
+                );
+              })}
 
               {hover && (
                 <>
@@ -879,7 +951,7 @@
                   </span>
                 )}
               </div>
-              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>Weekly plan by day: {fmt(hover.target)}</div>
+              <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>{targetLabel}: {fmt(hover.target)}</div>
               {hoverMembers.length === 0 ? (
                 <div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>
               ) : (
@@ -901,9 +973,9 @@
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />
-              Weekly plan guideline
+              {targetLabel}
             </span>
-            {seriesList.map((item) => (
+            {visibleSeriesList.map((item) => (
               <span key={item.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 14, height: 3, background: item.color, borderRadius: 99, display: "inline-block" }} />
                 {item.name}
@@ -954,7 +1026,7 @@
             </div>
           )}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />Target pace (100%)</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />Daily target pace (100%)</span>
             {lines.map((l) => (<span key={l.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: l.clubColor, borderRadius: 99, display: "inline-block" }} />{l.clubName}</span>))}
           </div>
         </div>
@@ -977,6 +1049,7 @@
       const [overviewStatusFilter, setOverviewStatusFilter] = useState("");
       const [paceHiddenMembers, setPaceHiddenMembers] = useState({});
       const [paceZoom, setPaceZoom] = useState(1);
+      const [paceChartMode, setPaceChartMode] = useState("cumulative");
       const [paceExporting, setPaceExporting] = useState(false);
       const [topNetworkMode, setTopNetworkMode] = useState("daily");
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
@@ -1189,7 +1262,7 @@
 
       function decorateMember(member, monthlyTarget) {
         const cumulativeSeries = buildCumulativeSeries(member.dailyFans, dim);
-        const dailyGainSeries = buildDailyGainSeries(cumulativeSeries);
+        const dailyGainSeries = buildDailyGainSeriesFromDailyFans(member.dailyFans, dim);
         const plan = getPlanMetrics(member.monthlyGain ?? 0, monthlyTarget, today, dim, monthWeeks);
         const rolling3DayAvg = getTrailingAverage(dailyGainSeries, today - 1, 3);
         const fansNeededForPlan = Math.max(0, monthlyTarget - (member.monthlyGain ?? 0));
@@ -1228,16 +1301,23 @@
         ? sortedByMonthly.filter((member) => member.plan.statusKey === overviewStatusFilter)
         : sortedByMonthly;
 
-      const individualTargetSeries = Array.from({ length: dim }, (_, idx) =>
-        Math.round((club.target / Math.max(dim, 1)) * (idx + 1))
-      );
+      const perMemberDailyTarget = Math.round(club.target / Math.max(dim, 1));
+      const individualDailyTargetSeries = Array.from({ length: dim }, () => perMemberDailyTarget);
+      const individualCumulativeTargetSeries = Array.from({ length: dim }, (_, index) => perMemberDailyTarget * (index + 1));
       const allPaceSeriesList = decoratedMembers.map((member, index) => ({
         name: member.name,
         statusKey: member.plan.statusKey,
         color: getLineColor(index),
-        series: member.cumulativeSeries,
+        dailySeries: member.dailyGainSeries,
+        cumulativeSeries: buildCumulativeFromDailyGainSeries(member.dailyGainSeries, dim),
+        series: paceChartMode === "daily"
+          ? member.dailyGainSeries
+          : buildCumulativeFromDailyGainSeries(member.dailyGainSeries, dim),
       }));
       const paceSeriesList = allPaceSeriesList.filter((item) => !paceHiddenMembers[item.name]);
+      const selectedPaceTargetSeries = paceChartMode === "daily"
+        ? individualDailyTargetSeries
+        : individualCumulativeTargetSeries;
 
       const networkClubs = CLUBS.map((entry) => {
         const cdata = entry.id ? clubData[entry.id] : null;
@@ -1798,7 +1878,7 @@
                 <span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span>
               </div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>
-                Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
+                Data through {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
               </div>
             </div>
 
@@ -2505,7 +2585,7 @@
                         <div>
                           <div style={S.h2}>Member Pace</div>
                           <div style={{ color: "#6b7280", fontSize: 12 }}>
-                            Weeks start on Sunday and end on Saturday, shortened only at the 1st and last day of the month. Inactive members are fully excluded.
+                            Toggle between cumulative progress and daily gain. The chart only draws through the displayed data day, and inactive members are fully excluded.
                           </div>
                         </div>
                         <div style={{ color: "#9ca3af", fontSize: 12 }}>
@@ -2538,6 +2618,8 @@
                           )}
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button style={S.btn(paceChartMode === "cumulative", "#7c3aed")} onClick={() => setPaceChartMode("cumulative")}>Cumulative</button>
+                          <button style={S.btn(paceChartMode === "daily", "#2563eb")} onClick={() => setPaceChartMode("daily")}>Daily Gain</button>
                           <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.max(1, +(prev - 0.25).toFixed(2)))}>− Zoom</button>
                           <button style={S.btn(false)} onClick={() => setPaceZoom(1)}>Reset</button>
                           <button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.min(3, +(prev + 0.25).toFixed(2)))}>+ Zoom</button>
@@ -2550,7 +2632,7 @@
 
                       <PaceChart
                         seriesList={paceSeriesList}
-                        targetSeries={individualTargetSeries}
+                        targetSeries={selectedPaceTargetSeries}
                         weeks={monthWeeks}
                         year={year}
                         monthIndex={monthIndex}
@@ -2559,28 +2641,46 @@
                         pinnedIdx={pacePinnedIdx}
                         setPinnedIdx={setPacePinnedIdx}
                         containerRef={paceContainerRef}
+                        currentDayIdx={Math.max(0, today - 1)}
+                        mode={paceChartMode}
                       />
 
                       <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                         {monthWeeks.map((week) => {
-                          const checkpointTarget = Math.round((club.target / Math.max(dim, 1)) * week.endDay);
-                          const currentValues = allPaceSeriesList
-                            .map((item) => item.series?.[Math.max(0, week.endDay - 1)] ?? 0)
-                            .sort((a, b) => b - a);
-                          const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : 0;
-                          const medianDelta = medianValue - checkpointTarget;
+                          const isFutureWeek = week.startDay > today;
+                          const measuredEndDay = Math.min(week.endDay, today);
+                          const elapsedDayCount = Math.max(0, measuredEndDay - week.startDay + 1);
+                          const fullWeekTarget = Math.round((club.target / Math.max(dim, 1)) * week.dayCount);
+                          const elapsedWeekTarget = Math.round((club.target / Math.max(dim, 1)) * elapsedDayCount);
+                          const checkpointTarget = week.endDay <= today ? fullWeekTarget : elapsedWeekTarget;
+                          const currentValues = isFutureWeek
+                            ? []
+                            : allPaceSeriesList
+                                .map((item) => (item.dailySeries || []).slice(Math.max(0, week.startDay - 1), Math.max(0, measuredEndDay)).reduce((sum, value) => sum + (value || 0), 0))
+                                .sort((a, b) => b - a);
+                          const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : null;
+                          const medianDelta = medianValue == null ? null : medianValue - checkpointTarget;
                           const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length;
 
                           return (
                             <div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}>
                               <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div>
                               <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member target: <b style={{ color: "#c4b5fd" }}>{fmt(checkpointTarget)}</b></div>
-                              <div style={{ color: "#6b7280", fontSize: 11 }}>
-                                Median member actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}
-                                <span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span>
+                              <div style={{ color: "#6b7280", fontSize: 11 }}>Per-member weekly target: <b style={{ color: "#c4b5fd" }}>{fmt(week.endDay <= today ? fullWeekTarget : checkpointTarget)}</b></div>
+                              {isFutureWeek ? (
+                                <div style={{ color: "#6b7280", fontSize: 11 }}>
+                                  Median member weekly actual: <b style={{ color: "#9ca3af" }}>—</b>
+                                  <span style={{ color: "#6b7280", fontWeight: 700 }}> (Not available yet)</span>
+                                </div>
+                              ) : (
+                                <div style={{ color: "#6b7280", fontSize: 11 }}>
+                                  Median member weekly actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}
+                                  <span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span>
+                                </div>
+                              )}
+                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>
+                                {isFutureWeek ? "Not started yet" : `${onPaceAtCheckpoint}/${allPaceSeriesList.length} on pace for the week`}
                               </div>
-                              <div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{onPaceAtCheckpoint}/{allPaceSeriesList.length} on pace at checkpoint</div>
                             </div>
                           );
                         })}
