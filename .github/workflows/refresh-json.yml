@@ -42,7 +42,7 @@ jobs:
       - name: Refresh JSON files from Playwright export
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
-        run: node scripts/refresh-json.mjs
+        run: node scripts/update-json.mjs
 
       - name: Commit updated JSON files
         run: |
