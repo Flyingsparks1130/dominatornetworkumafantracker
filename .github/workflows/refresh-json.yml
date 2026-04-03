@@ -2,13 +2,13 @@ name: Refresh circle JSON
 
 on:
   schedule:
+    - cron: "0 5 * * *"
+      timezone: "America/New_York"
     - cron: "0 6 * * *"
       timezone: "America/New_York"
-    - cron: "0 7 * * *"
+    - cron: "0 12 * * *"
       timezone: "America/New_York"
     - cron: "0 13 * * *"
-      timezone: "America/New_York"
-    - cron: "0 14 * * *"
       timezone: "America/New_York"
   workflow_dispatch:
 
@@ -39,13 +39,10 @@ jobs:
           npm install playwright
           npx playwright install --with-deps chromium
 
-      - name: Refresh JSON files from API
-        run: node scripts/update-json.mjs
-
-      - name: Enrich JSON files with isActive
+      - name: Refresh JSON files from Playwright export
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
-        run: node scripts/enrich-is-active.mjs
+        run: node scripts/refresh-json.mjs
 
       - name: Commit updated JSON files
         run: |
