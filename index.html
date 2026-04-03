@@ -1273,6 +1273,13 @@
 
       function decorateMember(member, monthlyTarget) {
         const cumulativeSeries = buildCumulativeSeries(member.dailyFans, dim);
+        const displayedDayIdx = Math.max(0, Math.min(dim - 1, today - 1));
+        const monthlyGainValue = Math.max(0, Number(member.monthlyGain ?? 0));
+
+        if (monthlyGainValue > 0 && (cumulativeSeries[displayedDayIdx] ?? 0) < monthlyGainValue) {
+          cumulativeSeries[displayedDayIdx] = monthlyGainValue;
+        }
+
         const dailyGainSeries = buildDailyGainSeries(cumulativeSeries);
         const plan = getPlanMetrics(member.monthlyGain ?? 0, monthlyTarget, today, dim, monthWeeks);
         const rolling3DayAvg = getTrailingAverage(dailyGainSeries, today - 1, 3);
