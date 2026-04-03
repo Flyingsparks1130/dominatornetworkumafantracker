@@ -783,16 +783,17 @@
       const isPinned = pinnedIdx != null;
       const clampedCurrentDayIdx = Math.max(0, Math.min(currentDayIdx, Math.max(0, targetSeries.length - 1)));
       const visibleDayCount = Math.max(1, clampedCurrentDayIdx + 1);
-      const visibleTargetSeries = (targetSeries || []).slice(0, visibleDayCount);
-      const visibleSeriesList = seriesList.map((item) => ({
+      const fullTargetSeries = targetSeries || [];
+      const visibleTargetSeries = fullTargetSeries.slice(0, visibleDayCount);
+      const drawnSeriesList = seriesList.map((item) => ({
         ...item,
         series: (item.series || []).slice(0, visibleDayCount),
       }));
       const effectiveIdx = isPinned
-        ? Math.max(0, Math.min(pinnedIdx, visibleDayCount - 1))
+        ? Math.max(0, Math.min(pinnedIdx, Math.max(0, fullTargetSeries.length - 1)))
         : hoverIdx;
 
-      if (!visibleTargetSeries.length) {
+      if (!fullTargetSeries.length) {
         return (
           <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>
             Not enough daily data to render the pace chart yet.
@@ -805,10 +806,10 @@
       const padding = { top: 24, right: 28, bottom: 42, left: 62 };
       const innerW = width - padding.left - padding.right;
       const innerH = height - padding.top - padding.bottom;
-      const dayCount = visibleTargetSeries.length;
-      const allValues = [...visibleTargetSeries, ...visibleSeriesList.flatMap((item) => item.series || [])];
+      const dayCount = fullTargetSeries.length;
+      const allValues = [...fullTargetSeries, ...drawnSeriesList.flatMap((item) => item.series || [])];
       const maxVal = Math.max(...allValues, 1);
-      const currentX = padding.left + (dayCount <= 1 ? 0 : ((dayCount - 1) / (dayCount - 1)) * innerW);
+      const currentX = padding.left + (dayCount <= 1 ? 0 : ((visibleDayCount - 1) / (dayCount - 1)) * innerW);
 
       const xForIndex = (index) => padding.left + (dayCount <= 1 ? 0 : (index / (dayCount - 1)) * innerW);
       const yForValue = (value) => padding.top + innerH - ((value || 0) / maxVal) * innerH;
@@ -819,20 +820,24 @@
 
       const gridValues = Array.from({ length: 5 }, (_, index) => Math.round((maxVal / 4) * index));
       const hoverMembers = effectiveIdx != null
-        ? [...visibleSeriesList]
-            .map((item) => ({
-              ...item,
-              value: item.series?.[effectiveIdx] ?? 0,
-              delta: (item.series?.[effectiveIdx] ?? 0) - (visibleTargetSeries[effectiveIdx] ?? 0),
-            }))
-            .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+        ? [...drawnSeriesList]
+            .map((item) => {
+              const value = effectiveIdx < visibleDayCount ? (item.series?.[effectiveIdx] ?? null) : null;
+              const target = fullTargetSeries[effectiveIdx] ?? 0;
+              return {
+                ...item,
+                value,
+                delta: value == null ? null : value - target,
+              };
+            })
+            .sort((a, b) => (b.value ?? Number.NEGATIVE_INFINITY) - (a.value ?? Number.NEGATIVE_INFINITY))
         : [];
       const hover = effectiveIdx != null
         ? {
             day: effectiveIdx + 1,
-            target: visibleTargetSeries[effectiveIdx] ?? 0,
+            target: fullTargetSeries[effectiveIdx] ?? 0,
             x: xForIndex(effectiveIdx),
-            yTarget: yForValue(visibleTargetSeries[effectiveIdx] ?? 0),
+            yTarget: yForValue(fullTargetSeries[effectiveIdx] ?? 0),
           }
         : null;
       const tooltipLeftPct = hover ? Math.max(14, Math.min(86, (hover.x / width) * 100)) : 50;
@@ -866,9 +871,9 @@
               })}
 
               {weeks
-                .filter((week) => week.startDay <= visibleDayCount)
+                .filter((week) => week.startDay <= dayCount)
                 .map((week) => {
-                  const boundaryDay = Math.min(week.endDay, visibleDayCount);
+                  const boundaryDay = Math.min(week.endDay, dayCount);
                   const x = xForIndex(boundaryDay - 1);
                   return (
                     <g key={week.number}>
@@ -880,9 +885,9 @@
                   );
                 })}
 
-              <path d={pathFor(visibleTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+              <path d={pathFor(fullTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
 
-              {visibleSeriesList.map((item) => (
+              {drawnSeriesList.map((item) => (
                 <path
                   key={item.name}
                   d={pathFor(item.series)}
@@ -894,11 +899,11 @@
               ))}
 
               <g>
-                <circle cx={currentX} cy={yForValue(visibleTargetSeries[dayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" />
+                <circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" />
               </g>
 
-              {visibleSeriesList.map((item) => {
-                const currentValue = item.series?.[dayCount - 1] ?? 0;
+              {drawnSeriesList.map((item) => {
+                const currentValue = item.series?.[visibleDayCount - 1] ?? 0;
                 return (
                   <g key={`${item.name}-current-dot`}>
                     <circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" />
@@ -910,7 +915,7 @@
                 <>
                   <line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke={isPinned ? "#a78bfa" : "#7c3aed"} strokeWidth={isPinned ? "2" : "1"} strokeDasharray="2 4" />
                   <circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />
-                  {hoverMembers.map((item) => (
+                  {hoverMembers.filter((item) => item.value != null).map((item) => (
                     <circle
                       key={item.name}
                       cx={hover.x}
@@ -1027,7 +1032,7 @@
               <span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />
               {targetLabel}
             </span>
-            {visibleSeriesList.map((item) => (
+            {drawnSeriesList.map((item) => (
               <span key={item.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 14, height: 3, background: item.color, borderRadius: 99, display: "inline-block" }} />
                 {item.name}
@@ -1051,6 +1056,10 @@
           series: (mode === "daily" ? club.clubDailyPctSeries : club.clubPctSeries || []).slice(0, visibleDayCount),
         }))
         .filter((club) => club.series && club.series.length > 0);
+      const allLineSeries = clubs.map((club) => ({
+        ...club,
+        series: mode === "daily" ? club.clubDailyPctSeries : club.clubPctSeries || [],
+      }));
 
       if (!lines.length) {
         return (<div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>No club data available for the network pace chart.</div>);
@@ -1058,10 +1067,10 @@
 
       const W = 980, H = 320, pad = { top: 24, right: 28, bottom: 42, left: 55 };
       const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
-      const allValues = [...visibleTargetSeries, ...lines.flatMap((l) => l.series || [])];
+      const allValues = [...targetSeries, ...lines.flatMap((l) => l.series || [])];
       const baseMax = mode === "daily" ? Math.max((100 / Math.max(dim, 1)) * 2, 1) : 120;
       const maxV = Math.max(baseMax, ...allValues);
-      const xI = (i) => pad.left + (visibleDayCount <= 1 ? 0 : (i / (visibleDayCount - 1)) * innerW);
+      const xI = (i) => pad.left + (dim <= 1 ? 0 : (i / (dim - 1)) * innerW);
       const yV = (v) => pad.top + innerH - ((v || 0) / maxV) * innerH;
       const pathFor = (s) => s.map((v, i) => `${i === 0 ? "M" : "L"} ${xI(i)} ${yV(v)}`).join(" ");
       const gridVals = mode === "daily"
@@ -1082,29 +1091,29 @@
                 </g>
               );
             })}
-            <path d={pathFor(visibleTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
+            <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
             {lines.map((l) => (<path key={l.name} d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
-            <circle cx={currentX} cy={yV(visibleTargetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" />
+            <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" />
             {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
             {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
-            {Array.from({ length: visibleDayCount }, (_, i) => {
+            {Array.from({ length: dim }, (_, i) => {
               const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2;
-              const ex = i === visibleDayCount - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2;
+              const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2;
               return (<rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />);
             })}
-            {hoverIdx != null && lines.map((l) => (<circle key={l.name} cx={xI(hoverIdx)} cy={yV(l.series[hoverIdx] ?? 0)} r="4" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
-            {Array.from({ length: visibleDayCount }, (_, i) => (i === 0 || i === visibleDayCount - 1 || ((i + 1) % 5 === 0)) ? (<text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text>) : null)}
+            {hoverIdx != null && lines.filter((l) => hoverIdx < visibleDayCount).map((l) => (<circle key={l.name} cx={xI(hoverIdx)} cy={yV(l.series[hoverIdx] ?? 0)} r="4" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
+            {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? (<text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text>) : null)}
           </svg>
           {hoverIdx != null && (
             <div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 260, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}>
-              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {hoverIdx + 1} · {targetLabel}: {mode === "daily" ? `${(visibleTargetSeries[hoverIdx] ?? 0).toFixed(2)}%` : `${Math.round(visibleTargetSeries[hoverIdx] ?? 0)}%`}</div>
-              {[...lines].sort((a, b) => (b.series[hoverIdx] ?? 0) - (a.series[hoverIdx] ?? 0)).map((l) => {
-                const pct = l.series[hoverIdx] ?? 0;
-                const target = visibleTargetSeries[hoverIdx] ?? 0;
+              <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {hoverIdx + 1} · {targetLabel}: {mode === "daily" ? `${(targetSeries[hoverIdx] ?? 0).toFixed(2)}%` : `${Math.round(targetSeries[hoverIdx] ?? 0)}%`}</div>
+              {[...allLineSeries].sort((a, b) => ((hoverIdx < visibleDayCount ? (b.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY) - (hoverIdx < visibleDayCount ? (a.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY))).map((l) => {
+                const pct = hoverIdx < visibleDayCount ? (l.series?.[hoverIdx] ?? null) : null;
+                const target = targetSeries[hoverIdx] ?? 0;
                 return (
                   <div key={l.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0 }} />{l.clubName} <TierBadge tier={l.tier} /></div>
-                    <div style={{ color: pct >= target ? "#34d399" : "#f87171", fontWeight: 700 }}>{mode === "daily" ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`}</div>
+                    <div style={{ color: pct == null ? "#6b7280" : pct >= target ? "#34d399" : "#f87171", fontWeight: 700 }}>{pct == null ? "—" : (mode === "daily" ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`)}</div>
                   </div>
                 );
               })}
@@ -1974,7 +1983,7 @@
                 <span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span>
               </div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>
-                Data through {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
+                Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left
               </div>
             </div>
 
