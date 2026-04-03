@@ -413,28 +413,16 @@
     function buildCumulativeSeries(dailyFans, dim) {
       const df = Array.isArray(dailyFans) ? dailyFans : [];
       const series = [];
-      let baseline = null;
       let lastSeen = 0;
 
       for (let i = 0; i < dim; i++) {
         const raw = Number(df[i] ?? 0);
 
-        if (baseline == null) {
-          if (raw > 0) {
-            baseline = raw;
-            lastSeen = raw;
-            series.push(0);
-          } else {
-            series.push(0);
-          }
-          continue;
-        }
-
         if (raw > 0) {
           lastSeen = raw;
         }
 
-        series.push(Math.max(0, lastSeen - baseline));
+        series.push(Math.max(0, lastSeen));
       }
 
       return series;
