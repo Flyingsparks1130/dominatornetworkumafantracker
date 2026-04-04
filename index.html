@@ -62,7 +62,7 @@
       { tier: "D+", min: 10001,  max: 100000, icon: "utx_ico_circle_rank_02" },
       { tier: "D",  min: 100001, max: null,   icon: "utx_ico_circle_rank_01" },
     ];
-    const RANK_ICON_PATH = "assets/rank_icons/";
+    const RANK_ICON_PATH = "data/rank_icons/";
 
     const TIER_COLORS = {
       "SS": { bg: "#ef444422", border: "#ef4444", text: "#f87171", bar: "#dc2626" },
@@ -997,7 +997,6 @@
                             <div><div style={{ fontWeight: 800, color: "#e2e0f0", fontSize: 15 }}>{entry.clubName}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div></div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {entry.hasData && <HealthBadge grade={entry.health.grade} />}
                             {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" />}
                             <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open</button>
                           </div>
