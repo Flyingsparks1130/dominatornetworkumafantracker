@@ -1,5 +1,4 @@
 name: Refresh circle JSON
-
 on:
   schedule:
     - cron: "0 5 * * *"
@@ -11,38 +10,57 @@ on:
     - cron: "0 13 * * *"
       timezone: "America/New_York"
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   refresh:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Initialize package.json if missing
         run: |
           if [ ! -f package.json ]; then
             npm init -y
           fi
-
       - name: Install dependencies
         run: |
           npm install playwright
           npx playwright install --with-deps chromium
-
       - name: Refresh JSON files from Playwright export
+        id: refresh
         env:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
         run: node scripts/update-json.mjs
+
+      # ── Rank history tracking (only runs if refresh succeeded) ──
+      - name: Verify circle data exists
+        id: verify
+        if: steps.refresh.outcome == 'success'
+        run: |
+          # Check that at least one data JSON has yesterday_rank
+          found=0
+          for f in data/*.json; do
+            [ "$f" = "data/clubs.json" ] && continue
+            [ "$f" = "data/rank_history.json" ] && continue
+            if grep -q '"yesterday_rank"' "$f" 2>/dev/null; then
+              found=$((found + 1))
+            fi
+          done
+          echo "circles_found=$found" >> "$GITHUB_OUTPUT"
+          if [ "$found" -eq 0 ]; then
+            echo "::warning::No circle files with yesterday_rank found — skipping rank tracker"
+          else
+            echo "Found $found circle file(s) with rank data"
+          fi
+
+      - name: Update rank history
+        if: steps.verify.outcome == 'success' && steps.verify.outputs.circles_found != '0'
+        run: node scripts/track_ranks.js
 
       - name: Commit updated JSON files
         run: |
@@ -50,6 +68,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/*.json
           git diff --staged --quiet || git commit -m "Refresh circle JSON"
-
       - name: Push changes
         run: git push
