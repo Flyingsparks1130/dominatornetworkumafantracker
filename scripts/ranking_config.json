@@ -1,0 +1,71 @@
+{
+  "image_path": "assets/rank_icons/",
+  "tiers": [
+    {
+      "tier": "SS",
+      "min_rank": 1,
+      "max_rank": 10,
+      "icon": "utx_ico_circle_rank_11"
+    },
+    {
+      "tier": "S+",
+      "min_rank": 11,
+      "max_rank": 30,
+      "icon": "utx_ico_circle_rank_10"
+    },
+    {
+      "tier": "S",
+      "min_rank": 31,
+      "max_rank": 100,
+      "icon": "utx_ico_circle_rank_09"
+    },
+    {
+      "tier": "A+",
+      "min_rank": 101,
+      "max_rank": 500,
+      "icon": "utx_ico_circle_rank_08"
+    },
+    {
+      "tier": "A",
+      "min_rank": 501,
+      "max_rank": 1000,
+      "icon": "utx_ico_circle_rank_07"
+    },
+    {
+      "tier": "B+",
+      "min_rank": 1001,
+      "max_rank": 3000,
+      "icon": "utx_ico_circle_rank_06"
+    },
+    {
+      "tier": "B",
+      "min_rank": 3001,
+      "max_rank": 5000,
+      "icon": "utx_ico_circle_rank_05"
+    },
+    {
+      "tier": "C+",
+      "min_rank": 5001,
+      "max_rank": 7000,
+      "icon": "utx_ico_circle_rank_04"
+    },
+    {
+      "tier": "C",
+      "min_rank": 7001,
+      "max_rank": 10000,
+      "icon": "utx_ico_circle_rank_03"
+    },
+    {
+      "tier": "D+",
+      "min_rank": 10001,
+      "max_rank": 100000,
+      "icon": "utx_ico_circle_rank_02"
+    },
+    {
+      "tier": "D",
+      "min_rank": 100001,
+      "max_rank": null,
+      "icon": "utx_ico_circle_rank_01"
+    }
+  ]
+}
