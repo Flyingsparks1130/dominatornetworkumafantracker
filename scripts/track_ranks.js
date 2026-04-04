@@ -26,21 +26,90 @@ const DATA_DIR = path.resolve(__dirname, "..", "data");
 const CLUBS_FILE = path.join(DATA_DIR, "clubs.json");
 const OUTPUT_DIR = path.join(DATA_DIR, "club_rank_history");
 
-// ── Date helpers ───────────────────────────────────────────────────────
+// ── Date logic (exact port of HTML app) ───────────────────────────────
+
+const GAME_RESET_LOCAL_HOUR = 11;
 
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-function formatLocalDateKey(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+function formatDateKey(year, month, day) {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
-function getDateKeyFromTimestamp(timestamp) {
+function formatLocalDateKey(date) {
+  return formatDateKey(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+function isDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function shiftDateKey(key, deltaDays) {
+  const [year, month, day] = String(key).split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() + deltaDays);
+  return formatDateKey(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+}
+
+function getLocalTodayKey(now = new Date()) {
+  return formatLocalDateKey(now);
+}
+
+function isAfterResetHour(now = new Date()) {
+  return now.getHours() >= GAME_RESET_LOCAL_HOUR;
+}
+
+function shiftDateKeyWithinSameMonth(key, deltaDays) {
+  if (!isDateKey(key)) return key;
+  const shifted = shiftDateKey(key, deltaDays);
+  return shifted.slice(0, 7) === key.slice(0, 7) ? shifted : key;
+}
+
+function getPreviousDisplayKeyFromKey(key) {
+  return shiftDateKeyWithinSameMonth(key, -1);
+}
+
+function getDefaultDisplayKey(now = new Date()) {
+  return getPreviousDisplayKeyFromKey(getLocalTodayKey(now));
+}
+
+function getLocalDateKeyFromTimestamp(timestamp) {
   if (!timestamp) return null;
   const parsed = new Date(timestamp);
   if (Number.isNaN(parsed.getTime())) return null;
   return formatLocalDateKey(parsed);
+}
+
+function getGameDayKeyFromTimestamp(timestamp) {
+  const sourceKey = getLocalDateKeyFromTimestamp(timestamp);
+  return sourceKey ? getPreviousDisplayKeyFromKey(sourceKey) : null;
+}
+
+/**
+ * Server-side equivalent of resolveEffectiveGameDayKey.
+ * Derives the candidate from the timestamp, then bounds it
+ * between previousDisplayKey (today-2) and latestDisplayKey (today-1),
+ * both clamped to the same month.
+ * Skips localStorage/unlock-cycle logic (not applicable server-side).
+ */
+function resolveGameDayKey(timestamp, now = new Date()) {
+  const latestDisplayKey = getDefaultDisplayKey(now);
+  const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
+
+  const candidateKey = getGameDayKeyFromTimestamp(timestamp);
+  const boundedCandidateKey = candidateKey
+    ? (candidateKey > latestDisplayKey ? latestDisplayKey
+      : candidateKey < previousDisplayKey ? previousDisplayKey
+      : candidateKey)
+    : null;
+
+  if (boundedCandidateKey === latestDisplayKey || boundedCandidateKey === previousDisplayKey) {
+    return boundedCandidateKey;
+  }
+
+  return latestDisplayKey;
 }
 
 // ── Per-club history I/O ──────────────────────────────────────────────
@@ -131,7 +200,7 @@ function main() {
     const points = circle.monthly_point ?? null;
     const updatedAt = circle.last_updated;
 
-    const dateKey = getDateKeyFromTimestamp(updatedAt);
+    const dateKey = resolveGameDayKey(updatedAt);
     if (!dateKey) {
       console.warn(`  ⚠  ${name}: could not derive date from last_updated, skipping`);
       continue;
