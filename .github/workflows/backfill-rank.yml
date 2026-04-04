@@ -1,0 +1,47 @@
+name: Backfill rank history
+on:
+  workflow_dispatch:
+    inputs:
+      circle_id:
+        description: "Circle ID (e.g. 114037107)"
+        required: true
+        type: string
+      date:
+        description: "Date (YYYY-MM-DD, e.g. 2026-04-03)"
+        required: true
+        type: string
+      rank:
+        description: "Monthly rank"
+        required: true
+        type: string
+      points:
+        description: "Monthly points (optional)"
+        required: false
+        type: string
+permissions:
+  contents: write
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run backfill
+        run: |
+          node scripts/backfill_rank.js \
+            "${{ inputs.circle_id }}" \
+            "${{ inputs.date }}" \
+            "${{ inputs.rank }}" \
+            "${{ inputs.points }}"
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/club_rank_history/
+          git diff --staged --quiet || git commit -m "Backfill rank: ${{ inputs.circle_id }} @ ${{ inputs.date }}"
+      - name: Push changes
+        run: git push
