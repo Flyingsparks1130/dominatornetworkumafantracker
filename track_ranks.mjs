@@ -2,31 +2,32 @@
 /**
  * Dominator Rank History Tracker
  *
- * Reads club JSON files, extracts `yesterday_rank`, and appends
- * to a history file keyed by the effective game day derived from
- * the `yesterday_updated` timestamp (using the same date logic
- * as the main app).
+ * Scans data/ for circle JSON files, extracts `yesterday_rank`,
+ * and appends to a history file keyed by the effective game day
+ * derived from `yesterday_updated` (same date logic as the app).
  *
  * Usage:
- *   node track_ranks.js <club_json_path> [history_json_path]
- *   node track_ranks.js ./clubs/*.json              # process multiple files
+ *   node scripts/track_ranks.js
  *
- * History format (rank_history.json):
- * {
- *   "114037107": {                    // circle_id
- *     "name": "Dominator",
- *     "history": {
- *       "2026-04-02": { "rank": 406, "points": 53085835, "recorded_at": "2026-04-04T..." },
- *       "2026-04-01": { "rank": 312, "points": 61000000, "recorded_at": "2026-04-03T..." }
- *     }
- *   }
- * }
+ * Reads:   data/*.json  (circle data files)
+ * Writes:  data/club_rank_history/rank_history.json
+ *
+ * Exit codes:
+ *   0 = success (updates written or nothing new)
+ *   1 = no valid circle data found (signals upstream failure)
  */
 
 const fs = require("fs");
 const path = require("path");
 
-// ── Date logic (mirrors the app's effective-game-day logic) ────────────
+// ── Config ─────────────────────────────────────────────────────────────
+
+const DATA_DIR = path.resolve(__dirname, "..", "data");
+const CLUBS_FILE = path.join(DATA_DIR, "clubs.json"); // optional manifest
+const HISTORY_DIR = path.join(DATA_DIR, "club_rank_history");
+const HISTORY_FILE = path.join(HISTORY_DIR, "rank_history.json");
+
+// ── Date logic (mirrors the app's effective-game-day derivation) ──────
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -69,119 +70,136 @@ function getLocalDateKeyFromTimestamp(timestamp) {
 }
 
 /**
- * Core logic: derive the effective game-day key from the
- * `yesterday_updated` timestamp on the circle object.
- *
  * yesterday_updated "2026-04-03T06:51:23Z"
- *   → local date key  "2026-04-03"  (or "2026-04-02" depending on tz offset)
- *   → shift back 1 day → "2026-04-02"
- *
- * This is the date the rank actually represents.
+ *   → local date "2026-04-03"
+ *   → shift back 1 day → "2026-04-02"  (the actual game day)
  */
 function getGameDayKeyFromTimestamp(timestamp) {
   const sourceKey = getLocalDateKeyFromTimestamp(timestamp);
   return sourceKey ? getPreviousDisplayKeyFromKey(sourceKey) : null;
 }
 
-// ── History file I/O ───────────────────────────────────────────────────
+// ── History I/O ────────────────────────────────────────────────────────
 
-const DEFAULT_HISTORY_PATH = path.resolve("rank_history.json");
-
-function loadHistory(historyPath) {
+function loadHistory() {
   try {
-    return JSON.parse(fs.readFileSync(historyPath, "utf-8"));
+    return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf-8"));
   } catch {
     return {};
   }
 }
 
-function saveHistory(history, historyPath) {
-  fs.writeFileSync(historyPath, JSON.stringify(history, null, 2) + "\n", "utf-8");
+function saveHistory(history) {
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2) + "\n", "utf-8");
 }
 
-// ── Main processing ────────────────────────────────────────────────────
+// ── Find circle data files ────────────────────────────────────────────
 
-function processClubJson(filePath, history) {
-  const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-
-  // Support both bare circle objects and wrapper objects with a `circle` key
-  const circle = raw.circle || raw;
-
-  const circleId = String(circle.circle_id);
-  const name = circle.name || circleId;
-  const rank = circle.yesterday_rank;
-  const points = circle.yesterday_points ?? null;
-  const updatedAt = circle.yesterday_updated;
-
-  if (rank == null) {
-    console.warn(`  ⚠  ${name}: no yesterday_rank found, skipping`);
-    return null;
-  }
-
-  const gameDayKey = getGameDayKeyFromTimestamp(updatedAt);
-  if (!gameDayKey) {
-    console.warn(`  ⚠  ${name}: could not derive game day from yesterday_updated (${updatedAt}), skipping`);
-    return null;
-  }
-
-  // Ensure club entry exists
-  if (!history[circleId]) {
-    history[circleId] = { name, history: {} };
-  }
-  history[circleId].name = name; // keep name fresh
-
-  const alreadyExists = !!history[circleId].history[gameDayKey];
-  history[circleId].history[gameDayKey] = {
-    rank,
-    points,
-    recorded_at: new Date().toISOString(),
-  };
-
-  console.log(
-    `  ${alreadyExists ? "↻" : "✓"}  ${name} │ ${gameDayKey} │ rank ${rank} │ pts ${points ?? "—"}`
-  );
-
-  return gameDayKey;
+function getClubIds() {
+  // If a clubs manifest exists, use it to know which IDs to look for
+  try {
+    const clubs = JSON.parse(fs.readFileSync(CLUBS_FILE, "utf-8"));
+    if (Array.isArray(clubs)) {
+      return clubs.map((c) => ({ id: String(c.id), name: c.name }));
+    }
+  } catch {}
+  return null;
 }
 
-// ── CLI entry point ────────────────────────────────────────────────────
+function findCircleFiles() {
+  const clubList = getClubIds();
+  const files = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
+  const results = [];
+
+  for (const file of files) {
+    if (file === "rank_history.json" || file === "clubs.json") continue;
+
+    const filePath = path.join(DATA_DIR, file);
+    try {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      const circle = raw.circle || raw;
+
+      // Must have the fields we need
+      if (!circle.circle_id || circle.yesterday_rank == null) continue;
+
+      const id = String(circle.circle_id);
+
+      // If we have a manifest, only process listed clubs
+      if (clubList && !clubList.some((c) => c.id === id)) continue;
+
+      const manifestEntry = clubList?.find((c) => c.id === id);
+      results.push({
+        id,
+        name: manifestEntry?.name || circle.name || id,
+        circle,
+        file,
+      });
+    } catch {
+      // Not a valid circle file, skip
+    }
+  }
+
+  return results;
+}
+
+// ── Main ───────────────────────────────────────────────────────────────
 
 function main() {
-  const args = process.argv.slice(2);
-  if (args.length === 0) {
-    console.log("Usage: node track_ranks.js <club.json> [club2.json ...] [--history path/to/history.json]");
+  console.log(`Data dir:    ${DATA_DIR}`);
+  console.log(`History:     ${HISTORY_FILE}\n`);
+
+  const circleFiles = findCircleFiles();
+
+  if (circleFiles.length === 0) {
+    console.error("No valid circle data files found in data/. Aborting.");
     process.exit(1);
   }
 
-  // Parse --history flag
-  let historyPath = DEFAULT_HISTORY_PATH;
-  const jsonFiles = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--history" && args[i + 1]) {
-      historyPath = path.resolve(args[++i]);
-    } else {
-      jsonFiles.push(args[i]);
-    }
-  }
-
-  console.log(`History file: ${historyPath}\n`);
-  const history = loadHistory(historyPath);
-
+  const history = loadHistory();
   let updated = 0;
-  for (const file of jsonFiles) {
-    try {
-      const result = processClubJson(path.resolve(file), history);
-      if (result) updated++;
-    } catch (err) {
-      console.error(`  ✗  Error processing ${file}: ${err.message}`);
+
+  for (const { id, name, circle, file } of circleFiles) {
+    const rank = circle.yesterday_rank;
+    const points = circle.yesterday_points ?? null;
+    const updatedAt = circle.yesterday_updated;
+
+    const gameDayKey = getGameDayKeyFromTimestamp(updatedAt);
+    if (!gameDayKey) {
+      console.warn(`  ⚠  ${name} (${file}): could not derive game day from yesterday_updated, skipping`);
+      continue;
     }
+
+    if (!history[id]) {
+      history[id] = { name, history: {} };
+    }
+    history[id].name = name;
+
+    const existed = !!history[id].history[gameDayKey];
+    const prev = history[id].history[gameDayKey];
+
+    // Skip if identical data already recorded
+    if (prev && prev.rank === rank && prev.points === points) {
+      console.log(`  ·  ${name.padEnd(14)} │ ${gameDayKey} │ rank ${String(rank).padStart(4)} │ (unchanged)`);
+      continue;
+    }
+
+    history[id].history[gameDayKey] = {
+      rank,
+      points,
+      recorded_at: new Date().toISOString(),
+    };
+
+    const symbol = existed ? "↻" : "✓";
+    console.log(`  ${symbol}  ${name.padEnd(14)} │ ${gameDayKey} │ rank ${String(rank).padStart(4)} │ pts ${points ?? "—"}`);
+    updated++;
   }
 
   if (updated > 0) {
-    saveHistory(history, historyPath);
-    console.log(`\nSaved ${updated} update(s) → ${historyPath}`);
+    saveHistory(history);
+    console.log(`\nSaved ${updated} update(s) → ${HISTORY_FILE}`);
   } else {
-    console.log("\nNo updates to save.");
+    console.log("\nNo new updates to save.");
   }
 }
 
