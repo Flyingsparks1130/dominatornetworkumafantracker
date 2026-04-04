@@ -42,18 +42,17 @@ jobs:
         id: verify
         if: steps.refresh.outcome == 'success'
         run: |
-          # Check that at least one data JSON has yesterday_rank
+          # Check that at least one circle JSON in data/ has monthly_rank
           found=0
           for f in data/*.json; do
-            [ "$f" = "data/clubs.json" ] && continue
-            [ "$f" = "data/rank_history.json" ] && continue
-            if grep -q '"yesterday_rank"' "$f" 2>/dev/null; then
+            [ "$(basename "$f")" = "clubs.json" ] && continue
+            if grep -q '"monthly_rank"' "$f" 2>/dev/null; then
               found=$((found + 1))
             fi
           done
           echo "circles_found=$found" >> "$GITHUB_OUTPUT"
           if [ "$found" -eq 0 ]; then
-            echo "::warning::No circle files with yesterday_rank found — skipping rank tracker"
+            echo "::warning::No circle files with monthly_rank found — skipping rank tracker"
           else
             echo "Found $found circle file(s) with rank data"
           fi
@@ -66,7 +65,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/*.json
+          git add data/*.json data/club_rank_history/
           git diff --staged --quiet || git commit -m "Refresh circle JSON"
       - name: Push changes
         run: git push
