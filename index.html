@@ -603,6 +603,60 @@
       );
     }
 
+
+    function NetworkRankChart({ clubs = [], dim, effectiveGameDayKey, rankHistory }) {
+      const [hoverIdx, setHoverIdx] = useState(null);
+      const dateKeyForDay = (dayNum) => {
+        const [y, m] = effectiveGameDayKey.split("-").map(Number);
+        return formatDateKey(y, m, dayNum);
+      };
+      const clubLines = clubs.filter((c) => c.id && rankHistory[c.id]).map((c) => {
+        const hist = rankHistory[c.id];
+        const series = [];
+        for (let d = 1; d <= dim; d++) { series.push(hist[dateKeyForDay(d)]?.rank ?? null); }
+        return { ...c, rankSeries: series, clubColor: c.clubColor || getClubColor(CLUBS.indexOf(c)) };
+      }).filter((c) => c.rankSeries.some((v) => v != null));
+      if (!clubLines.length) return (<div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>No rank history data available yet.</div>);
+      const allRanks = clubLines.flatMap((c) => c.rankSeries.filter((v) => v != null));
+      const minRank = Math.min(...allRanks);
+      const maxRank = Math.max(...allRanks);
+      const sortedTiers = [...RANKING_CONFIG].sort((a, b) => a.min - b.min);
+      let topTierIdx = sortedTiers.findIndex((t) => minRank >= t.min && (t.max === null || minRank <= t.max));
+      let botTierIdx = sortedTiers.findIndex((t) => maxRank >= t.min && (t.max === null || maxRank <= t.max));
+      if (topTierIdx < 0) topTierIdx = 0;
+      if (botTierIdx < 0) botTierIdx = sortedTiers.length - 1;
+      topTierIdx = Math.max(0, topTierIdx - 1);
+      botTierIdx = Math.min(sortedTiers.length - 1, botTierIdx + 1);
+      const visibleTiers = sortedTiers.slice(topTierIdx, botTierIdx + 1);
+      const yMinR = visibleTiers[0].min;
+      const yMaxR = visibleTiers[visibleTiers.length - 1].max ?? (visibleTiers[visibleTiers.length - 1].min * 2);
+      const W = 980, H = 400, pad = { top: 30, right: 28, bottom: 42, left: 80 };
+      const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
+      const logMin = Math.log10(Math.max(1, yMinR));
+      const logMax = Math.log10(Math.max(2, yMaxR));
+      const logRange = logMax - logMin || 1;
+      const xI = (i) => pad.left + (dim <= 1 ? 0 : (i / (dim - 1)) * innerW);
+      const yV = (rank) => { if (rank == null) return null; return pad.top + ((Math.log10(Math.max(1, rank)) - logMin) / logRange) * innerH; };
+      const buildPath = (series) => { let p = "", drawing = false; for (let i = 0; i < series.length; i++) { const y = yV(series[i]); if (y == null) { drawing = false; continue; } p += drawing ? `L ${xI(i)} ${y} ` : `M ${xI(i)} ${y} `; drawing = true; } return p; };
+      const tierBounds = visibleTiers.map((t) => ({ tier: t.tier, rank: t.min, y: yV(t.min), icon: t.icon }));
+      const latestDay = clubLines.reduce((mx, c) => { for (let i = c.rankSeries.length - 1; i >= 0; i--) { if (c.rankSeries[i] != null) return Math.max(mx, i); } return mx; }, 0);
+      return (
+        <div style={{ position: "relative" }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={RANK_ICON_PATH + RANKING_CONFIG.find((r) => r.tier === tb.tier)?.icon + ".png"} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
+            {clubLines.map((c) => (<path key={c.id} d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" /> : null; })}
+            {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
+            {hoverIdx != null && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
+            {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return <rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />; })}
+            {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? <text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text> : null)}
+          </svg>
+          {hoverIdx != null && (() => { const dayNum = hoverIdx + 1; const dk = dateKeyForDay(dayNum); const items = clubLines.map((c) => ({ ...c, rank: c.rankSeries[hoverIdx] })).filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank); if (!items.length) return null; const tx = Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100)); return (<div style={{ position: "absolute", left: `${tx}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 220, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {dayNum} · {dk}</div>{items.map((c) => { const tier = getTierForRank(c.rank); return (<div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: c.clubColor, flexShrink: 0 }} />{c.clubName || c.name}</div><div style={{ display: "flex", alignItems: "center", gap: 4 }}>{tier && <TierIcon tier={tier} size={14} showFallbackText={false} />}<span style={{ color: "#e2e0f0", fontWeight: 700 }}>#{c.rank.toLocaleString()}</span></div></div>); })}</div>); })()}
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>{clubLines.map((c) => (<span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: c.clubColor, borderRadius: 99, display: "inline-block" }} />{c.clubName || c.name}</span>))}</div>
+        </div>
+      );
+    }
+
     function CircleTracker() {
       const [view, setView] = useState("home");
       const [activeIdx, setActiveIdx] = useState(0);
@@ -631,6 +685,8 @@
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(false);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
+      const [demotionVisibleCount, setDemotionVisibleCount] = useState(10);
+      const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
 
@@ -1070,10 +1126,7 @@
                       <div key={`top-five-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div></div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" />}
-                            <span style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</span>
-                          </div>
+                          <div style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</div>
                         </div>
                         {!entry.hasData ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No JSON loaded for this club yet.</div>) : !hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>{noComparisonLabel}</div>) : entry.topFiveMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No active members available.</div>) : (
                           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -1114,11 +1167,24 @@
                 <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} />
               </div>
               <div style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <div>
+                    <div style={S.h2}>Club Rank History</div>
+                    <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Daily monthly_rank for each club. Lower rank = better. Tier icons mark boundaries on the y-axis.</div>
+                  </div>
+                </div>
+                <NetworkRankChart clubs={networkClubs} dim={dim} effectiveGameDayKey={effectiveGameDayKey} rankHistory={rankHistory} />
+              </div>
+              <div style={S.card}>
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>{transferCandidates.demotionCandidates.map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}</tbody></table></div>)}</div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>{transferCandidates.promotionCandidates.map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}</tbody></table></div>)}</div>
+                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}</tbody></table></div>)}
+                    {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
+                  </div>
+                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}</tbody></table></div>)}
+                    {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
+                  </div>
                 </div>
               </div>
             </>)}
