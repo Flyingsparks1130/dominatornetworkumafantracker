@@ -1,6 +1,10 @@
 name: Refresh circle JSON
 on:
   schedule:
+    - cron: "0 14 * * *"
+      timezone: "America/New_York"
+    - cron: "0 15 * * *"
+      timezone: "America/New_York"
     - cron: "0 0 * * *"
       timezone: "America/New_York"
     - cron: "0 1 * * *"
