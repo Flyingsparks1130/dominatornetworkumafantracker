@@ -900,6 +900,22 @@
       const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatEtDateLabel(entry.date)).join(" · ");
       const nextRefreshCountdownLabel = nextRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
       const nextRefreshDateLabel = nextRefresh ? formatEtDateLabel(nextRefresh.date) : "No upcoming refresh scheduled";
+      const isCurrentDayLive = !isAwaitingFirstScheduledRefresh;
+      const liveStatus = isCurrentDayLive
+        ? {
+            label: "🟢 Live for current game day",
+            sub: "Current in-game day data is live and will keep updating automatically on each scheduled JSON refresh.",
+            color: "#34d399",
+            bg: "#34d39918",
+            border: "#34d39955",
+          }
+        : {
+            label: "🟡 Waiting for first day-start refresh",
+            sub: "The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. Weekly Comparison, Under Plan Reminder, and Discord export will unlock automatically when that JSON lands.",
+            color: "#fbbf24",
+            bg: "#fbbf2418",
+            border: "#f59e0b55",
+          };
       const dataDate = dateKeyToLocalDate(effectiveGameDayKey);
       const year = dataDate.getFullYear();
       const monthIndex = dataDate.getMonth();
@@ -1247,10 +1263,14 @@
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 270, maxWidth: 420, flex: "1 1 300px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : "#2a2540"}`, borderRadius: 12, padding: "11px 13px" }}>
+              <div style={{ minWidth: 270, maxWidth: 420, flex: "1 1 300px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "11px 13px" }}>
                 <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
                 <div style={{ color: "#e2e0f0", fontSize: 21, fontWeight: 800, lineHeight: 1.15 }}>{nextRefreshCountdownLabel}</div>
                 <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{nextRefreshDateLabel}</div>
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3, padding: "8px 10px", borderRadius: 10, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
+                  <div style={{ color: liveStatus.color, fontSize: 12, fontWeight: 800 }}>{liveStatus.label}</div>
+                  <div style={{ color: "#cfcbe6", fontSize: 10, lineHeight: 1.4 }}>{liveStatus.sub}</div>
+                </div>
                 {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
                 <div style={{ color: "#6b7280", fontSize: 11, marginTop: 7, lineHeight: 1.35 }}>Upcoming ET: {upcomingRefreshLabel || "—"}</div>
               </div>
@@ -1261,13 +1281,6 @@
               </div>)}
             </div>
           </div>
-
-          {isAwaitingFirstScheduledRefresh && (
-            <div style={{ ...S.card, border: "1px solid #f59e0b55", background: "linear-gradient(180deg, rgba(245,158,11,0.10), rgba(17,16,40,1))", padding: "12px 14px", color: "#fbbf24" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Scheduled reset window active</div>
-              <div style={{ color: "#d6d3ea", fontSize: 11, lineHeight: 1.45 }}>The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. Weekly Comparison, Under Plan Reminder, and Discord export are temporarily disabled and will unlock automatically when the new JSON lands.</div>
-            </div>
-          )}
 
           <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
