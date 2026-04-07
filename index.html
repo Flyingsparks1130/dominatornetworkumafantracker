@@ -220,6 +220,17 @@
     }
 
     const GAME_RESET_LOCAL_HOUR = 11;
+    const REFRESH_SCHEDULE_TIMEZONE = "America/New_York";
+    const REFRESH_SCHEDULE_SLOTS = [
+      { hour: 0, minute: 0, label: "12:00 AM" },
+      { hour: 1, minute: 0, label: "1:00 AM" },
+      { hour: 5, minute: 0, label: "5:00 AM" },
+      { hour: 6, minute: 0, label: "6:00 AM" },
+      { hour: 14, minute: 0, label: "2:00 PM" },
+      { hour: 15, minute: 0, label: "3:00 PM" },
+      { hour: 19, minute: 0, label: "7:00 PM" },
+      { hour: 20, minute: 0, label: "8:00 PM" },
+    ];
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
     const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDay";
 
@@ -240,6 +251,117 @@
     function isAfterResetHour(now = new Date()) { return now.getHours() >= GAME_RESET_LOCAL_HOUR; }
     function getResetCycleKey(now = new Date()) { return isAfterResetHour(now) ? getLocalTodayKey(now) : getYesterdayKey(now); }
 
+    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(date).reduce((acc, part) => {
+        if (part.type !== "literal") acc[part.type] = part.value;
+        return acc;
+      }, {});
+      return {
+        year: Number(parts.year),
+        month: Number(parts.month),
+        day: Number(parts.day),
+        hour: Number(parts.hour),
+        minute: Number(parts.minute),
+        second: Number(parts.second),
+      };
+    }
+
+    function parseShortOffsetToMinutes(offsetLabel) {
+      const normalized = String(offsetLabel || "GMT").replace("UTC", "GMT");
+      if (normalized === "GMT") return 0;
+      const match = normalized.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+      if (!match) return 0;
+      const sign = match[1] === "-" ? -1 : 1;
+      const hours = Number(match[2] || 0);
+      const minutes = Number(match[3] || 0);
+      return sign * ((hours * 60) + minutes);
+    }
+
+    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const tzNamePart = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        timeZoneName: "shortOffset",
+        hour: "2-digit",
+      }).formatToParts(date).find((part) => part.type === "timeZoneName");
+      return parseShortOffsetToMinutes(tzNamePart?.value || "GMT");
+    }
+
+    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const utcGuessMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0, 0);
+      const initialOffset = getTimeZoneOffsetMinutes(new Date(utcGuessMs), timeZone);
+      let resolved = new Date(utcGuessMs - initialOffset * 60 * 1000);
+      const resolvedOffset = getTimeZoneOffsetMinutes(resolved, timeZone);
+      if (resolvedOffset !== initialOffset) resolved = new Date(utcGuessMs - resolvedOffset * 60 * 1000);
+      return resolved;
+    }
+
+    function addDaysToParts(parts, deltaDays) {
+      const utc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+      utc.setUTCDate(utc.getUTCDate() + deltaDays);
+      return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
+    }
+
+    function formatEtDateLabel(date) {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: REFRESH_SCHEDULE_TIMEZONE,
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(date);
+    }
+
+    function formatCountdown(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+      if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+      return `${seconds}s`;
+    }
+
+    function getUpcomingRefreshSchedule(now = new Date(), count = 4) {
+      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
+      const dayPartsList = [0, 1, 2].map((delta) => addDaysToParts(etNowParts, delta));
+      const candidates = [];
+      dayPartsList.forEach((dayParts) => {
+        REFRESH_SCHEDULE_SLOTS.forEach((slot) => {
+          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, REFRESH_SCHEDULE_TIMEZONE);
+          candidates.push({
+            key: `${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
+            date,
+            slot,
+            label: slot.label,
+          });
+        });
+      });
+      return candidates.filter((entry) => entry.date.getTime() > now.getTime() + 999).sort((a, b) => a.date - b.date).slice(0, count);
+    }
+
+    function getRefreshScheduleMeta(now = new Date()) {
+      const upcoming = getUpcomingRefreshSchedule(now, 4);
+      const next = upcoming[0] || null;
+      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
+      const etMinutesNow = (etNowParts.hour * 60) + etNowParts.minute;
+      const isNextRefreshForNextGameDay = Boolean(next && next.slot.hour === 14 && next.slot.minute === 0 && etMinutesNow >= (6 * 60));
+      return {
+        next,
+        upcoming,
+        countdownMs: next ? Math.max(0, next.date.getTime() - now.getTime()) : 0,
+        isNextRefreshForNextGameDay,
+      };
+    }
+
     function shiftDateKeyWithinSameMonth(key, deltaDays) {
       if (!isDateKey(key)) return key;
       const shifted = shiftDateKey(key, deltaDays);
@@ -250,7 +372,7 @@
 
     function getEffectiveDayWindow(now = new Date()) {
       const resetCycleKey = getResetCycleKey(now);
-      const latestDisplayKey = resetCycleKey;
+      const latestDisplayKey = getPreviousDisplayKeyFromKey(resetCycleKey);
       const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
       const resetBoundary = dateKeyToLocalDate(resetCycleKey);
       resetBoundary.setHours(GAME_RESET_LOCAL_HOUR, 0, 0, 0);
@@ -273,7 +395,8 @@
     }
 
     function getGameDayKeyFromResult(result) {
-      return getLocalDateKeyFromTimestamp(result?.sourceUpdatedAt || null);
+      const sourceKey = getLocalDateKeyFromTimestamp(result?.sourceUpdatedAt || null);
+      return sourceKey ? getPreviousDisplayKeyFromKey(sourceKey) : null;
     }
 
     function getEffectiveRefreshTimestamp(result) {
@@ -728,6 +851,7 @@
       const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
+      const [clockNow, setClockNow] = useState(() => new Date());
       const [err, setErr] = useState("");
       const [tab, setTab] = useState("dashboard");
       const [copied, setCopied] = useState(false);
@@ -752,19 +876,16 @@
       const [rankHistory, setRankHistory] = useState({});
       const [demotionVisibleCount, setDemotionVisibleCount] = useState(10);
       const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
-      const [now, setNow] = useState(() => new Date());
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
-      const scheduledRefreshCycleRef = useRef(null);
 
+      const now = clockNow;
       const effectiveDayWindow = getEffectiveDayWindow(now);
-      const refreshScheduleMeta = getRefreshScheduleMeta(now);
       const isAwaitingFirstScheduledRefresh = effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey;
-      const resetWindowBlocksExports = isAwaitingFirstScheduledRefresh;
-      const nextRefresh = refreshScheduleMeta.next;
-      const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatEtDateLabel(entry.date)).join(" · ");
-      const nextRefreshCountdownLabel = nextRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
-      const nextRefreshDateLabel = nextRefresh ? formatEtDateLabel(nextRefresh.date) : "No upcoming refresh scheduled";
+      const refreshScheduleMeta = getRefreshScheduleMeta(now);
+      const nextScheduledRefresh = refreshScheduleMeta.next;
+      const upcomingRefreshes = refreshScheduleMeta.upcoming;
+      const refreshCountdownLabel = nextScheduledRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
       const dataDate = dateKeyToLocalDate(effectiveGameDayKey);
       const year = dataDate.getFullYear();
       const monthIndex = dataDate.getMonth();
@@ -806,7 +927,7 @@
             const text = await res.text();
             const preview = parseJSON(text);
             if (preview.error) { log.push("  ↳ " + preview.error); continue; }
-            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
+            const nextGameDayKey = resolveEffectiveGameDayKey(safeReadStoredGameDayKey() || effectiveGameDayKey, preview, new Date());
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
             const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey));
             if (result.error) { log.push("  ↳ " + result.error); continue; }
@@ -823,7 +944,7 @@
       async function loadAllData() {
         setLoading(true); setErr("");
         const allLogs = []; const rawById = {};
-        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
+        let resolvedGameDayKey = safeReadStoredGameDayKey() || effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
         for (const c of CLUBS) {
           if (!c.id) continue;
           const candidates = [`./data/${c.id}.json`, `/data/${c.id}.json`];
@@ -875,20 +996,18 @@
       useEffect(() => { loadAllData(); }, []);
 
       useEffect(() => {
-        const tick = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(tick);
+        const timer = setInterval(() => setClockNow(new Date()), 1000);
+        return () => clearInterval(timer);
       }, []);
 
       useEffect(() => {
-        const latestStarted = refreshScheduleMeta.latestStarted;
-        if (!latestStarted) return;
-        const elapsedMs = now.getTime() - latestStarted.date.getTime();
-        if (elapsedMs < 0 || elapsedMs > SCHEDULE_AUTO_REFRESH_WINDOW_MS) return;
-        if (scheduledRefreshCycleRef.current === latestStarted.key) return;
-        scheduledRefreshCycleRef.current = latestStarted.key;
-        const timeouts = SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS.map((delayMs) => setTimeout(() => loadAllData(), delayMs));
-        return () => timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-      }, [refreshScheduleMeta.latestStarted?.key]);
+        if (!nextScheduledRefresh) return;
+        const timeout = setTimeout(() => {
+          loadAllData();
+          setClockNow(new Date());
+        }, Math.max(0, nextScheduledRefresh.date.getTime() - Date.now()) + 250);
+        return () => clearTimeout(timeout);
+      }, [nextScheduledRefresh?.key]);
 
       useEffect(() => {
         const currentNow = new Date();
@@ -1102,7 +1221,6 @@
       };
 
       const accent = view === "home" ? "#c4b5fd" : tc.text;
-      const actionButtonDisabledStyle = resetWindowBlocksExports ? { opacity: 0.45, cursor: "not-allowed", filter: "saturate(0.5)" } : null;
 
       return (
         <div style={S.root}>
@@ -1111,26 +1229,34 @@
               <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left</div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 270, maxWidth: 420, flex: "1 1 300px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : "#2a2540"}`, borderRadius: 12, padding: "11px 13px" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "stretch", justifyContent: "flex-end" }}>
+              <div style={{ background: "#111028", border: `1px solid ${loading ? "#34d39955" : "#2a2540"}`, borderRadius: 12, padding: "10px 12px", minWidth: 260, boxShadow: loading ? "0 0 0 1px rgba(52,211,153,0.14) inset" : "none" }}>
                 <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
-                <div style={{ color: "#e2e0f0", fontSize: 21, fontWeight: 800, lineHeight: 1.15 }}>{nextRefreshCountdownLabel}</div>
-                <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{nextRefreshDateLabel}</div>
-                {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
-                <div style={{ color: "#6b7280", fontSize: 11, marginTop: 7, lineHeight: 1.35 }}>Upcoming ET: {upcomingRefreshLabel || "—"}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ color: "#e2e0f0", fontSize: 18, fontWeight: 800 }}>{refreshCountdownLabel}</div>
+                  <div style={{ color: "#9ca3af", fontSize: 11 }}>{nextScheduledRefresh ? formatEtDateLabel(nextScheduledRefresh.date) : "No upcoming refreshes"}</div>
+                </div>
+                <div style={{ color: refreshScheduleMeta.isNextRefreshForNextGameDay ? "#fbbf24" : "#6b7280", fontSize: 11, marginTop: 5, lineHeight: 1.45 }}>
+                  {refreshScheduleMeta.isNextRefreshForNextGameDay ? "After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day." : "Auto-refresh follows the JSON job schedule in America/New_York."}
+                </div>
+                {upcomingRefreshes.length > 0 && (
+                  <div style={{ color: "#6b7280", fontSize: 10, marginTop: 7, lineHeight: 1.45 }}>
+                    Upcoming ET: {upcomingRefreshes.map((entry) => formatEtDateLabel(entry.date)).join(" · ")}
+                  </div>
+                )}
               </div>
-              {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
-                <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}</button>
-              </div>)}
+              {view === "club" && (<>
+                <button style={S.btn(false, weeklyCopied ? "#059669" : "#60a5fa")} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
+                <button style={S.btn(false, reminderCopied ? "#059669" : "#f59e0b")} onClick={copyReminderDiscord} disabled={!decoratedMembers.length}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
+                <button style={S.btn(true, copied ? "#059669" : tc.bar)} onClick={copyDiscord} disabled={!decoratedMembers.length}>{copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}</button>
+              </>)}
             </div>
           </div>
 
           {isAwaitingFirstScheduledRefresh && (
             <div style={{ ...S.card, border: "1px solid #f59e0b55", background: "linear-gradient(180deg, rgba(245,158,11,0.10), rgba(17,16,40,1))", padding: "12px 14px", color: "#fbbf24" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Scheduled reset window active</div>
-              <div style={{ color: "#d6d3ea", fontSize: 11, lineHeight: 1.45 }}>The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. Weekly Comparison, Under Plan Reminder, and Discord export are temporarily disabled and will unlock automatically when the new JSON lands.</div>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Reset window active</div>
+              <div style={{ color: "#d6d3ea", fontSize: 11, lineHeight: 1.45 }}>The tracker stays on the last confirmed game day until the first post-reset refresh lands. Refresh the data after the scheduled JSON job runs to unlock the next day.</div>
             </div>
           )}
 
