@@ -169,10 +169,41 @@
 
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
 
+    function clamp01(value) {
+      if (!Number.isFinite(Number(value))) return 0;
+      return Math.min(1, Math.max(0, Number(value)));
+    }
+
     function computeHealthGrade(pctOnTrack, projectedRatio, nonStagnantRatio) {
-      const score = 0.40 * pctOnTrack + 0.35 * Math.min(1, projectedRatio) + 0.25 * nonStagnantRatio;
-      const g = HEALTH_GRADES.find((h) => score >= h.min) || HEALTH_GRADES[HEALTH_GRADES.length - 1];
-      return { ...g, score: Math.round(score * 100) };
+      const normalizedOnTrack = clamp01(pctOnTrack);
+      const normalizedProjectedRatio = clamp01(projectedRatio);
+      const normalizedNonStagnantRatio = clamp01(nonStagnantRatio);
+      const components = {
+        onTrack: {
+          label: "On-track members",
+          weight: 0.40,
+          ratio: normalizedOnTrack,
+          weightedScore: normalizedOnTrack * 0.40,
+          accent: "#34d399",
+        },
+        projected: {
+          label: "Projected vs target",
+          weight: 0.35,
+          ratio: normalizedProjectedRatio,
+          weightedScore: normalizedProjectedRatio * 0.35,
+          accent: "#c4b5fd",
+        },
+        activity: {
+          label: "Active members",
+          weight: 0.25,
+          ratio: normalizedNonStagnantRatio,
+          weightedScore: normalizedNonStagnantRatio * 0.25,
+          accent: "#60a5fa",
+        },
+      };
+      const rawScore = components.onTrack.weightedScore + components.projected.weightedScore + components.activity.weightedScore;
+      const g = HEALTH_GRADES.find((h) => rawScore >= h.min) || HEALTH_GRADES[HEALTH_GRADES.length - 1];
+      return { ...g, rawScore, score: Math.round(rawScore * 100), components };
     }
 
     function getStagnantDays(dailyGainSeries, todayIdx) {
@@ -189,6 +220,17 @@
     }
 
     const GAME_RESET_LOCAL_HOUR = 11;
+    const REFRESH_SCHEDULE_TIMEZONE = "America/New_York";
+    const REFRESH_SCHEDULE_SLOTS = [
+      { hour: 0, minute: 0, label: "12:00 AM" },
+      { hour: 1, minute: 0, label: "1:00 AM" },
+      { hour: 5, minute: 0, label: "5:00 AM" },
+      { hour: 6, minute: 0, label: "6:00 AM" },
+      { hour: 14, minute: 0, label: "2:00 PM" },
+      { hour: 15, minute: 0, label: "3:00 PM" },
+      { hour: 19, minute: 0, label: "7:00 PM" },
+      { hour: 20, minute: 0, label: "8:00 PM" },
+    ];
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
     const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDay";
 
@@ -207,6 +249,118 @@
     function getLocalTodayKey(now = new Date()) { return formatLocalDateKey(now); }
     function getYesterdayKey(now = new Date()) { return shiftDateKey(getLocalTodayKey(now), -1); }
     function isAfterResetHour(now = new Date()) { return now.getHours() >= GAME_RESET_LOCAL_HOUR; }
+    function getResetCycleKey(now = new Date()) { return isAfterResetHour(now) ? getLocalTodayKey(now) : getYesterdayKey(now); }
+
+    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(date).reduce((acc, part) => {
+        if (part.type !== "literal") acc[part.type] = part.value;
+        return acc;
+      }, {});
+      return {
+        year: Number(parts.year),
+        month: Number(parts.month),
+        day: Number(parts.day),
+        hour: Number(parts.hour),
+        minute: Number(parts.minute),
+        second: Number(parts.second),
+      };
+    }
+
+    function parseShortOffsetToMinutes(offsetLabel) {
+      const normalized = String(offsetLabel || "GMT").replace("UTC", "GMT");
+      if (normalized === "GMT") return 0;
+      const match = normalized.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+      if (!match) return 0;
+      const sign = match[1] === "-" ? -1 : 1;
+      const hours = Number(match[2] || 0);
+      const minutes = Number(match[3] || 0);
+      return sign * ((hours * 60) + minutes);
+    }
+
+    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const tzNamePart = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        timeZoneName: "shortOffset",
+        hour: "2-digit",
+      }).formatToParts(date).find((part) => part.type === "timeZoneName");
+      return parseShortOffsetToMinutes(tzNamePart?.value || "GMT");
+    }
+
+    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+      const utcGuessMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0, 0);
+      const initialOffset = getTimeZoneOffsetMinutes(new Date(utcGuessMs), timeZone);
+      let resolved = new Date(utcGuessMs - initialOffset * 60 * 1000);
+      const resolvedOffset = getTimeZoneOffsetMinutes(resolved, timeZone);
+      if (resolvedOffset !== initialOffset) resolved = new Date(utcGuessMs - resolvedOffset * 60 * 1000);
+      return resolved;
+    }
+
+    function addDaysToParts(parts, deltaDays) {
+      const utc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+      utc.setUTCDate(utc.getUTCDate() + deltaDays);
+      return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
+    }
+
+    function formatEtDateLabel(date) {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: REFRESH_SCHEDULE_TIMEZONE,
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(date);
+    }
+
+    function formatCountdown(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+      if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+      return `${seconds}s`;
+    }
+
+    function getUpcomingRefreshSchedule(now = new Date(), count = 4) {
+      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
+      const dayPartsList = [0, 1, 2].map((delta) => addDaysToParts(etNowParts, delta));
+      const candidates = [];
+      dayPartsList.forEach((dayParts) => {
+        REFRESH_SCHEDULE_SLOTS.forEach((slot) => {
+          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, REFRESH_SCHEDULE_TIMEZONE);
+          candidates.push({
+            key: `${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
+            date,
+            slot,
+            label: slot.label,
+          });
+        });
+      });
+      return candidates.filter((entry) => entry.date.getTime() > now.getTime() + 999).sort((a, b) => a.date - b.date).slice(0, count);
+    }
+
+    function getRefreshScheduleMeta(now = new Date()) {
+      const upcoming = getUpcomingRefreshSchedule(now, 4);
+      const next = upcoming[0] || null;
+      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
+      const etMinutesNow = (etNowParts.hour * 60) + etNowParts.minute;
+      const isNextRefreshForNextGameDay = Boolean(next && next.slot.hour === 14 && next.slot.minute === 0 && etMinutesNow >= (6 * 60));
+      return {
+        next,
+        upcoming,
+        countdownMs: next ? Math.max(0, next.date.getTime() - now.getTime()) : 0,
+        isNextRefreshForNextGameDay,
+      };
+    }
 
     function shiftDateKeyWithinSameMonth(key, deltaDays) {
       if (!isDateKey(key)) return key;
@@ -215,8 +369,18 @@
     }
 
     function getPreviousDisplayKeyFromKey(key) { return shiftDateKeyWithinSameMonth(key, -1); }
-    function getDefaultDisplayKey(now = new Date()) { return getPreviousDisplayKeyFromKey(getLocalTodayKey(now)); }
-    function getFallbackGameDayKey(now = new Date()) { return getDefaultDisplayKey(now); }
+
+    function getEffectiveDayWindow(now = new Date()) {
+      const resetCycleKey = getResetCycleKey(now);
+      const latestDisplayKey = getPreviousDisplayKeyFromKey(resetCycleKey);
+      const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
+      const resetBoundary = dateKeyToLocalDate(resetCycleKey);
+      resetBoundary.setHours(GAME_RESET_LOCAL_HOUR, 0, 0, 0);
+      return { resetCycleKey, latestDisplayKey, previousDisplayKey, resetBoundary };
+    }
+
+    function getDefaultDisplayKey(now = new Date()) { return getEffectiveDayWindow(now).latestDisplayKey; }
+    function getFallbackGameDayKey(now = new Date()) { return getEffectiveDayWindow(now).previousDisplayKey; }
 
     function dateKeyToLocalDate(key) {
       const [year, month, day] = String(key).split("-").map(Number);
@@ -235,6 +399,21 @@
       return sourceKey ? getPreviousDisplayKeyFromKey(sourceKey) : null;
     }
 
+    function getEffectiveRefreshTimestamp(result) {
+      const candidate = result?.refreshedAt || result?.sourceUpdatedAt || result?.lastFetch || null;
+      if (!candidate) return null;
+      const parsed = new Date(candidate);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function hasUnlockedCurrentResetCycle(result, now = new Date()) {
+      const { latestDisplayKey, resetBoundary } = getEffectiveDayWindow(now);
+      const candidateKey = getGameDayKeyFromResult(result);
+      const refreshAt = getEffectiveRefreshTimestamp(result);
+      if (!candidateKey || !refreshAt) return false;
+      return candidateKey === latestDisplayKey && refreshAt.getTime() >= resetBoundary.getTime();
+    }
+
     function safeReadStoredUnlockCycleKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
     }
@@ -246,29 +425,22 @@
     }
 
     function getInitialEffectiveGameDayKey(now = new Date()) {
-      const currentLocalDayKey = getLocalTodayKey(now);
-      const latestDisplayKey = getDefaultDisplayKey(now);
-      const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
+      const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const storedKey = safeReadStoredGameDayKey();
-      const unlockedLocalDayKey = safeReadStoredUnlockCycleKey();
-      if (unlockedLocalDayKey === currentLocalDayKey) return latestDisplayKey;
-      if (storedKey === latestDisplayKey || storedKey === previousDisplayKey) return storedKey;
-      return latestDisplayKey;
+      const unlockedCycleKey = safeReadStoredUnlockCycleKey();
+      if (unlockedCycleKey === resetCycleKey) return latestDisplayKey;
+      if (storedKey === previousDisplayKey) return previousDisplayKey;
+      if (storedKey === latestDisplayKey) return previousDisplayKey;
+      return previousDisplayKey;
     }
 
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
-      const currentLocalDayKey = getLocalTodayKey(now);
-      const latestDisplayKey = getDefaultDisplayKey(now);
-      const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
-      const unlockedLocalDayKey = safeReadStoredUnlockCycleKey();
-      const candidateKey = getGameDayKeyFromResult(result);
-      const boundedCandidateKey = candidateKey
-        ? (candidateKey > latestDisplayKey ? latestDisplayKey : candidateKey < previousDisplayKey ? previousDisplayKey : candidateKey)
-        : null;
-      if (unlockedLocalDayKey === currentLocalDayKey) return latestDisplayKey;
-      if (boundedCandidateKey === latestDisplayKey || boundedCandidateKey === previousDisplayKey) return boundedCandidateKey;
-      if (currentKey === latestDisplayKey || currentKey === previousDisplayKey) return currentKey;
-      return latestDisplayKey;
+      const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
+      const unlockedCycleKey = safeReadStoredUnlockCycleKey();
+      if (hasUnlockedCurrentResetCycle(result, now)) return latestDisplayKey;
+      if (unlockedCycleKey === resetCycleKey || currentKey === latestDisplayKey) return latestDisplayKey;
+      if (currentKey === previousDisplayKey) return previousDisplayKey;
+      return previousDisplayKey;
     }
 
     function safeReadStoredGameDayKey() {
@@ -490,6 +662,22 @@
       return (<span style={{ background: g.bg, border: `1px solid ${g.color}66`, color: g.color, borderRadius: 6, padding: "2px 10px", fontSize: 13, fontWeight: 900, letterSpacing: "0.04em" }}>{grade}</span>);
     }
 
+    function HealthScoreComponent({ label, ratio = 0, weight = 0, accent = "#7c3aed", helper = "" }) {
+      const normalizedRatio = clamp01(ratio);
+      const weightPoints = Math.round(weight * 100);
+      const contributionPoints = Math.round(normalizedRatio * weight * 100);
+      return (
+        <div style={{ background: "#0c0b18", border: "1px solid #1e1b35", borderRadius: 10, padding: "10px 10px 9px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", marginBottom: 6 }}>
+            <div style={{ color: "#c7c4dd", fontSize: 11, fontWeight: 700 }}>{label}</div>
+            <div style={{ color: accent, fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}>{Math.round(normalizedRatio * 100)}% · {contributionPoints}/{weightPoints} pts</div>
+          </div>
+          <div style={{ marginBottom: 6 }}><ProgressBar pct={normalizedRatio * 100} color={accent} height={5} /></div>
+          <div style={{ color: "#6b7280", fontSize: 10, lineHeight: 1.35 }}>{helper} · Weight {weightPoints}%</div>
+        </div>
+      );
+    }
+
     function StagnantBadge({ days }) {
       if (days < 2) return null;
       const color = days >= 5 ? "#f87171" : days >= 3 ? "#f97316" : "#fbbf24";
@@ -663,6 +851,7 @@
       const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
+      const [clockNow, setClockNow] = useState(() => new Date());
       const [err, setErr] = useState("");
       const [tab, setTab] = useState("dashboard");
       const [copied, setCopied] = useState(false);
@@ -690,7 +879,13 @@
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
 
-      const now = new Date();
+      const now = clockNow;
+      const effectiveDayWindow = getEffectiveDayWindow(now);
+      const isAwaitingFirstScheduledRefresh = effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey;
+      const refreshScheduleMeta = getRefreshScheduleMeta(now);
+      const nextScheduledRefresh = refreshScheduleMeta.next;
+      const upcomingRefreshes = refreshScheduleMeta.upcoming;
+      const refreshCountdownLabel = nextScheduledRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
       const dataDate = dateKeyToLocalDate(effectiveGameDayKey);
       const year = dataDate.getFullYear();
       const monthIndex = dataDate.getMonth();
@@ -732,7 +927,7 @@
             const text = await res.text();
             const preview = parseJSON(text);
             if (preview.error) { log.push("  ↳ " + preview.error); continue; }
-            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
+            const nextGameDayKey = resolveEffectiveGameDayKey(safeReadStoredGameDayKey() || effectiveGameDayKey, preview, new Date());
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
             const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey));
             if (result.error) { log.push("  ↳ " + result.error); continue; }
@@ -749,7 +944,7 @@
       async function loadAllData() {
         setLoading(true); setErr("");
         const allLogs = []; const rawById = {};
-        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
+        let resolvedGameDayKey = safeReadStoredGameDayKey() || effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
         for (const c of CLUBS) {
           if (!c.id) continue;
           const candidates = [`./data/${c.id}.json`, `/data/${c.id}.json`];
@@ -801,10 +996,25 @@
       useEffect(() => { loadAllData(); }, []);
 
       useEffect(() => {
-        const currentNow = new Date(); const todayKey = getLocalTodayKey(currentNow); const latestDisplayKey = getDefaultDisplayKey(currentNow);
+        const timer = setInterval(() => setClockNow(new Date()), 1000);
+        return () => clearInterval(timer);
+      }, []);
+
+      useEffect(() => {
+        if (!nextScheduledRefresh) return;
+        const timeout = setTimeout(() => {
+          loadAllData();
+          setClockNow(new Date());
+        }, Math.max(0, nextScheduledRefresh.date.getTime() - Date.now()) + 250);
+        return () => clearTimeout(timeout);
+      }, [nextScheduledRefresh?.key]);
+
+      useEffect(() => {
+        const currentNow = new Date();
+        const { resetCycleKey, latestDisplayKey } = getEffectiveDayWindow(currentNow);
         safeWriteStoredGameDayKey(effectiveGameDayKey);
-        if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(todayKey);
-        else if (safeReadStoredUnlockCycleKey() !== todayKey) safeClearStoredUnlockCycleKey();
+        if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(resetCycleKey);
+        else if (safeReadStoredUnlockCycleKey() === resetCycleKey) safeClearStoredUnlockCycleKey();
       }, [effectiveGameDayKey]);
 
       useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true); }, [activeIdx]);
@@ -884,7 +1094,8 @@
           sourceUpdatedAt: cdata?.sourceUpdatedAt || null, jsonMeta: getJsonLoadMeta(entry, cdata, now),
           statusCounts: clubStatusCounts,
           topFiveMembers: [...decorated].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 5),
-          health, clubDailySeries, clubCumSeries, clubPctSeries, clubDailyPctSeries, clubColor: getClubColor(CLUBS.indexOf(entry)),
+          health, pctOnTrack, projectedRatio, nonStagnantRatio, nonStagnantMembers: nonStagnant, clubTarget,
+          clubDailySeries, clubCumSeries, clubPctSeries, clubDailyPctSeries, clubColor: getClubColor(CLUBS.indexOf(entry)),
           currentMonthlyRank: ri.rank, rankDelta: ri.delta,
         };
       });
@@ -1009,8 +1220,6 @@
         td: { padding: "10px 8px", borderBottom: "1px solid #1e1b35", fontSize: 12, verticalAlign: "middle" },
       };
 
-      const refreshLabel = view === "home" ? "🔄 Refresh Network" : "🔄 Refresh Club";
-      const refreshAction = view === "home" ? loadAllData : fetchData;
       const accent = view === "home" ? "#c4b5fd" : tc.text;
 
       return (
@@ -1020,8 +1229,22 @@
               <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left</div>
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button style={S.btn(false)} onClick={refreshAction} disabled={loading || (view === "club" && !cid)}>{loading ? "⟳ Refreshing…" : refreshLabel}</button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "stretch", justifyContent: "flex-end" }}>
+              <div style={{ background: "#111028", border: `1px solid ${loading ? "#34d39955" : "#2a2540"}`, borderRadius: 12, padding: "10px 12px", minWidth: 260, boxShadow: loading ? "0 0 0 1px rgba(52,211,153,0.14) inset" : "none" }}>
+                <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ color: "#e2e0f0", fontSize: 18, fontWeight: 800 }}>{refreshCountdownLabel}</div>
+                  <div style={{ color: "#9ca3af", fontSize: 11 }}>{nextScheduledRefresh ? formatEtDateLabel(nextScheduledRefresh.date) : "No upcoming refreshes"}</div>
+                </div>
+                <div style={{ color: refreshScheduleMeta.isNextRefreshForNextGameDay ? "#fbbf24" : "#6b7280", fontSize: 11, marginTop: 5, lineHeight: 1.45 }}>
+                  {refreshScheduleMeta.isNextRefreshForNextGameDay ? "After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day." : "Auto-refresh follows the JSON job schedule in America/New_York."}
+                </div>
+                {upcomingRefreshes.length > 0 && (
+                  <div style={{ color: "#6b7280", fontSize: 10, marginTop: 7, lineHeight: 1.45 }}>
+                    Upcoming ET: {upcomingRefreshes.map((entry) => formatEtDateLabel(entry.date)).join(" · ")}
+                  </div>
+                )}
+              </div>
               {view === "club" && (<>
                 <button style={S.btn(false, weeklyCopied ? "#059669" : "#60a5fa")} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
                 <button style={S.btn(false, reminderCopied ? "#059669" : "#f59e0b")} onClick={copyReminderDiscord} disabled={!decoratedMembers.length}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
@@ -1029,6 +1252,13 @@
               </>)}
             </div>
           </div>
+
+          {isAwaitingFirstScheduledRefresh && (
+            <div style={{ ...S.card, border: "1px solid #f59e0b55", background: "linear-gradient(180deg, rgba(245,158,11,0.10), rgba(17,16,40,1))", padding: "12px 14px", color: "#fbbf24" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Reset window active</div>
+              <div style={{ color: "#d6d3ea", fontSize: 11, lineHeight: 1.45 }}>The tracker stays on the last confirmed game day until the first post-reset refresh lands. Refresh the data after the scheduled JSON job runs to unlock the next day.</div>
+            </div>
+          )}
 
           <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
@@ -1157,8 +1387,52 @@
                 <div style={S.h2}>Club Health Scores</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
                 {!hasComparisonData ? (<div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                    {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (<div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><span style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</span></div><HealthBadge grade={entry.health.grade} /></div><div style={{ marginBottom: 8 }}><ProgressBar pct={entry.health.score} color={entry.health.color} height={6} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 11 }}><div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>On Track</div><div style={{ color: "#34d399", fontWeight: 700 }}>{entry.statusCounts["on-track"]}/{entry.activeMembers}</div></div><div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Projected</div><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(entry.totalProjected)}</div></div><div><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase" }}>Score</div><div style={{ color: entry.health.color, fontWeight: 700 }}>{entry.health.score}%</div></div></div></div>))}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
+                    {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
+                      <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <TierBadge tier={entry.tier} />
+                            <div>
+                              <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div>
+                              <div style={{ color: "#6b7280", fontSize: 10, marginTop: 2 }}>{entry.activeMembers} members · {entry.health.score}/100 composite</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                            <HealthBadge grade={entry.health.grade} />
+                            <span style={{ color: entry.health.color, fontSize: 11, fontWeight: 800 }}>{entry.health.score}%</span>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: 10 }}><ProgressBar pct={entry.health.score} color={entry.health.color} height={7} /></div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 10, fontSize: 11 }}>
+                          <div style={{ background: "#0c0b18", border: "1px solid #1e1b35", borderRadius: 10, padding: "10px" }}><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase", marginBottom: 3 }}>On-track members</div><div style={{ color: "#34d399", fontWeight: 800 }}>{entry.statusCounts["on-track"]}/{entry.activeMembers}</div></div>
+                          <div style={{ background: "#0c0b18", border: "1px solid #1e1b35", borderRadius: 10, padding: "10px" }}><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase", marginBottom: 3 }}>Projected monthly</div><div style={{ color: "#c4b5fd", fontWeight: 800 }}>{fmt(entry.totalProjected)}</div></div>
+                        </div>
+                        <div style={{ display: "grid", gap: 8 }}>
+                          <HealthScoreComponent
+                            label="On-track members"
+                            ratio={entry.health.components.onTrack.ratio}
+                            weight={entry.health.components.onTrack.weight}
+                            accent={entry.health.components.onTrack.accent}
+                            helper={`${entry.statusCounts["on-track"]}/${entry.activeMembers} members currently on pace`}
+                          />
+                          <HealthScoreComponent
+                            label="Projected vs target"
+                            ratio={entry.health.components.projected.ratio}
+                            weight={entry.health.components.projected.weight}
+                            accent={entry.health.components.projected.accent}
+                            helper={`${fmt(entry.totalProjected)} projected against ${fmt(entry.clubTarget)} target`}
+                          />
+                          <HealthScoreComponent
+                            label="Member activity"
+                            ratio={entry.health.components.activity.ratio}
+                            weight={entry.health.components.activity.weight}
+                            accent={entry.health.components.activity.accent}
+                            helper={`${entry.nonStagnantMembers}/${entry.activeMembers} members with fewer than 3 idle days`}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
