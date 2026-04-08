@@ -842,6 +842,7 @@
 
     function NetworkRankChart({ clubs = [], dim, effectiveGameDayKey, rankHistory }) {
       const [hoverIdx, setHoverIdx] = useState(null);
+      const effectiveRankDayNumber = Math.max(1, Math.min(dim, dateKeyToLocalDate(effectiveGameDayKey).getDate()));
       const dateKeyForDay = (dayNum) => {
         const [y, m] = effectiveGameDayKey.split("-").map(Number);
         return formatDateKey(y, m, dayNum);
@@ -849,7 +850,10 @@
       const clubLines = clubs.filter((c) => c.id && rankHistory[c.id]).map((c) => {
         const hist = rankHistory[c.id];
         const series = [];
-        for (let d = 1; d <= dim; d++) { series.push(hist[dateKeyForDay(d)]?.rank ?? null); }
+        for (let d = 1; d <= dim; d++) {
+          const shouldDisplayDay = d <= effectiveRankDayNumber;
+          series.push(shouldDisplayDay ? (hist[dateKeyForDay(d)]?.rank ?? null) : null);
+        }
         return { ...c, rankSeries: series, clubColor: c.clubColor || getClubColor(CLUBS.indexOf(c)) };
       }).filter((c) => c.rankSeries.some((v) => v != null));
       if (!clubLines.length) return (<div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>No rank history data available yet.</div>);
@@ -875,19 +879,19 @@
       const yV = (rank) => { if (rank == null) return null; return pad.top + ((Math.log10(Math.max(1, rank)) - logMin) / logRange) * innerH; };
       const buildPath = (series) => { let p = "", drawing = false; for (let i = 0; i < series.length; i++) { const y = yV(series[i]); if (y == null) { drawing = false; continue; } p += drawing ? `L ${xI(i)} ${y} ` : `M ${xI(i)} ${y} `; drawing = true; } return p; };
       const tierBounds = visibleTiers.map((t) => ({ tier: t.tier, rank: t.min, y: yV(t.min), icon: t.icon }));
-      const latestDay = clubLines.reduce((mx, c) => { for (let i = c.rankSeries.length - 1; i >= 0; i--) { if (c.rankSeries[i] != null) return Math.max(mx, i); } return mx; }, 0);
+      const latestDay = Math.max(0, effectiveRankDayNumber - 1);
       return (
         <div style={{ position: "relative" }}>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={RANK_ICON_PATH + RANKING_CONFIG.find((r) => r.tier === tb.tier)?.icon + ".png"} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
             {clubLines.map((c) => (<path key={c.id} d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
             {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" /> : null; })}
-            {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
-            {hoverIdx != null && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
+            {hoverIdx != null && hoverIdx <= latestDay && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
+            {hoverIdx != null && hoverIdx <= latestDay && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return <rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />; })}
-            {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? <text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text> : null)}
+            {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? <text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill={i <= latestDay ? "#6b7280" : "#312b4a"} fontSize="10">{i + 1}</text> : null)}
           </svg>
-          {hoverIdx != null && (() => { const dayNum = hoverIdx + 1; const dk = dateKeyForDay(dayNum); const items = clubLines.map((c) => ({ ...c, rank: c.rankSeries[hoverIdx] })).filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank); if (!items.length) return null; const tx = Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100)); return (<div style={{ position: "absolute", left: `${tx}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 220, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {dayNum} · {dk}</div>{items.map((c) => { const tier = getTierForRank(c.rank); return (<div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: c.clubColor, flexShrink: 0 }} />{c.clubName || c.name}</div><div style={{ display: "flex", alignItems: "center", gap: 4 }}>{tier && <TierIcon tier={tier} size={14} showFallbackText={false} />}<span style={{ color: "#e2e0f0", fontWeight: 700 }}>#{c.rank.toLocaleString()}</span></div></div>); })}</div>); })()}
+          {hoverIdx != null && hoverIdx <= latestDay && (() => { const dayNum = hoverIdx + 1; const dk = dateKeyForDay(dayNum); const items = clubLines.map((c) => ({ ...c, rank: c.rankSeries[hoverIdx] })).filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank); if (!items.length) return null; const tx = Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100)); return (<div style={{ position: "absolute", left: `${tx}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 220, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {dayNum} · {dk}</div>{items.map((c) => { const tier = getTierForRank(c.rank); return (<div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: c.clubColor, flexShrink: 0 }} />{c.clubName || c.name}</div><div style={{ display: "flex", alignItems: "center", gap: 4 }}>{tier && <TierIcon tier={tier} size={14} showFallbackText={false} />}<span style={{ color: "#e2e0f0", fontWeight: 700 }}>#{c.rank.toLocaleString()}</span></div></div>); })}</div>); })()}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>{clubLines.map((c) => (<span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: c.clubColor, borderRadius: 99, display: "inline-block" }} />{c.clubName || c.name}</span>))}</div>
         </div>
       );
@@ -1329,16 +1333,16 @@
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 270, maxWidth: 420, flex: "1 1 300px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "11px 13px" }}>
-                <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
-                <div style={{ color: "#e2e0f0", fontSize: 21, fontWeight: 800, lineHeight: 1.15 }}>{nextRefreshCountdownLabel}</div>
-                <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{nextRefreshDateLabel}</div>
-                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3, padding: "8px 10px", borderRadius: 10, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
-                  <div style={{ color: liveStatus.color, fontSize: 12, fontWeight: 800 }}>{liveStatus.label}</div>
-                  <div style={{ color: "#cfcbe6", fontSize: 10, lineHeight: 1.4 }}>{liveStatus.sub}</div>
+              <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
+                <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
+                <div style={{ color: "#e2e0f0", fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>{nextRefreshCountdownLabel}</div>
+                <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>{nextRefreshDateLabel}</div>
+                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, padding: "6px 8px", borderRadius: 8, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
+                  <div style={{ color: liveStatus.color, fontSize: 11, fontWeight: 800 }}>{liveStatus.label}</div>
+                  <div style={{ color: "#cfcbe6", fontSize: 9, lineHeight: 1.3 }}>{liveStatus.sub}</div>
                 </div>
-                {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
-                <div style={{ color: "#6b7280", fontSize: 11, marginTop: 7, lineHeight: 1.35 }}>Upcoming ET: {upcomingRefreshLabel || "—"}</div>
+                {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 10, marginTop: 4, lineHeight: 1.3 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
+                <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming ET: {upcomingRefreshLabel || "—"}</div>
               </div>
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
