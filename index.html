@@ -1233,13 +1233,89 @@
       function criticalSortLabel(key) { if (criticalSort.key !== key || criticalSort.direction === "off") return "OFF"; return criticalSort.direction === "asc" ? "ASC" : "DESC"; }
 
       function buildDiscord() {
-        const P = (s, n) => String(s).padStart(n); const PL = (s, n) => String(s).padEnd(n);
+        function charDisplayWidth(char) {
+          if (!char) return 0;
+          const code = char.codePointAt(0);
+          if (code == null) return 0;
+          if (
+            (code >= 0x1100 && code <= 0x115F) ||
+            (code >= 0x2329 && code <= 0x232A) ||
+            (code >= 0x2E80 && code <= 0xA4CF) ||
+            (code >= 0xAC00 && code <= 0xD7A3) ||
+            (code >= 0xF900 && code <= 0xFAFF) ||
+            (code >= 0xFE10 && code <= 0xFE19) ||
+            (code >= 0xFE30 && code <= 0xFE6F) ||
+            (code >= 0xFF00 && code <= 0xFF60) ||
+            (code >= 0xFFE0 && code <= 0xFFE6) ||
+            (code >= 0x1F300 && code <= 0x1FAFF)
+          ) return 2;
+          return 1;
+        }
+        function getDisplayWidth(value) {
+          return Array.from(String(value ?? "")).reduce((sum, ch) => sum + charDisplayWidth(ch), 0);
+        }
+        function truncateDisplayWidth(value, maxWidth) {
+          const chars = Array.from(String(value ?? ""));
+          let out = "";
+          let width = 0;
+          for (const ch of chars) {
+            const nextWidth = width + charDisplayWidth(ch);
+            if (nextWidth > maxWidth) break;
+            out += ch;
+            width = nextWidth;
+          }
+          return out;
+        }
+        function padEndDisplay(value, width) {
+          const truncated = truncateDisplayWidth(value, width);
+          const pad = Math.max(0, width - getDisplayWidth(truncated));
+          return truncated + " ".repeat(pad);
+        }
+        function padStartDisplay(value, width) {
+          const stringValue = String(value ?? "");
+          const pad = Math.max(0, width - getDisplayWidth(stringValue));
+          return " ".repeat(pad) + stringValue;
+        }
+
+        const PL = padEndDisplay;
+        const P = padStartDisplay;
+        const COL_MEMBER = 24;
+        const COL_DAILY = 10;
+        const COL_MONTH_CUMULATIVE = 17;
+        const COL_VS_PACE = 11;
+        const COL_STATUS = 4;
+        const SEP = "  ";
+        const TABLE_WIDTH =
+          COL_MEMBER + SEP.length +
+          COL_DAILY + SEP.length +
+          COL_MONTH_CUMULATIVE + SEP.length +
+          COL_VS_PACE + SEP.length +
+          COL_STATUS;
+
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
         const statusShort = (statusKey) => statusKey === "on-track" ? "✅" : statusKey === "critical" ? "❗" : "⚠️";
-        const headerLines = [`📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`, `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`, `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`, `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`, `✅ On Track: ${statusCounts["on-track"]} · ⚠️ Behind: ${statusCounts["behind"]} · ❗ Critical: ${statusCounts["critical"]}`, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "```", `${PL("MEMBER", 20)}${P("DAILY", 9)}${P("MONTH CUMULATIVE", 11)}${P("VS. PACE", 11)}${P("ST", 5)}`, "─".repeat(60)];
-        const rowLines = sortedMembers.map((member) => `${PL(member.name.slice(0, 19), 20)}${P(fmtSigned(member.dailyGain ?? 0), 9)}${P(fmtSigned(member.monthlyGain ?? 0), 11)}${P(fmtSigned(member.plan.delta ?? 0), 11)}${P(statusShort(member.plan.statusKey), 5)}`);
-        rowLines.push("─".repeat(60)); rowLines.push(`${PL("TOTAL", 20)}${P(fmtSigned(totalDaily), 9)}${P(fmtSigned(totalMonthly), 11)}${P(fmtSigned(clubWeeklyDelta), 11)}${P("—", 5)}`);
+        const headerLines = [
+          `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
+          `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
+          `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
+          `✅ On Track: ${statusCounts["on-track"]} · ⚠️ Behind: ${statusCounts["behind"]} · ❗ Critical: ${statusCounts["critical"]}`,
+          "━".repeat(TABLE_WIDTH),
+          "```",
+          `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH CUMULATIVE", COL_MONTH_CUMULATIVE)}${SEP}${P("VS. PACE", COL_VS_PACE)}${SEP}${P("ST", COL_STATUS)}`,
+          "─".repeat(TABLE_WIDTH)
+        ];
+
+        const rowLines = sortedMembers.map((member) =>
+          `${PL(member.name, COL_MEMBER)}${SEP}${P(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${P(fmtSigned(member.monthlyGain ?? 0), COL_MONTH_CUMULATIVE)}${SEP}${P(fmtSigned(member.plan.delta ?? 0), COL_VS_PACE)}${SEP}${P(statusShort(member.plan.statusKey), COL_STATUS)}`
+        );
+
+        rowLines.push("─".repeat(TABLE_WIDTH));
+        rowLines.push(
+          `${PL("TOTAL", COL_MEMBER)}${SEP}${P(fmtSigned(totalDaily), COL_DAILY)}${SEP}${P(fmtSigned(totalMonthly), COL_MONTH_CUMULATIVE)}${SEP}${P(fmtSigned(clubWeeklyDelta), COL_VS_PACE)}${SEP}${P("—", COL_STATUS)}`
+        );
+
         const footerLines = ["```", `> 🤖 *Dominator Network Tracker · ${club.officer}*`];
         const limit = 3900; const keptRows = []; let omittedCount = 0;
         for (let i = 0; i < rowLines.length; i++) { const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n"); if (candidate.length > limit) { omittedCount = Math.max(0, sortedMembers.length - keptRows.length); break; } keptRows.push(rowLines[i]); }
