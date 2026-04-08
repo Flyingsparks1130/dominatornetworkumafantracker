@@ -418,44 +418,13 @@
       return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
 
-    // ─── FIX: replaced hasUnlockedCurrentResetCycle ───────────────────────────
-    // Old version only checked timestamps, allowing the day to advance even when
-    // the scraped game data hadn't actually moved forward yet (same daily_fans
-    // values, just a newer refreshed_at). This caused plan deltas to silently
-    // shift by ~2.5 M per member on the first refresh after 11 am, flipping
-    // on-track members to "behind" with zero real change in their data.
-    //
-    // New version adds a data-content check: at least 3 members (or all members
-    // if fewer than 3 are present) must have a non-zero daily_fans entry at the
-    // new day's slot before the day is considered unlocked.
-    function hasNewDayDataUnlocked(result, now = new Date()) {
+    function hasUnlockedCurrentResetCycle(result, now = new Date()) {
       const { latestDisplayKey, resetBoundary } = getEffectiveDayWindow(now);
       const candidateKey = getGameDayKeyFromResult(result);
       const refreshAt = getEffectiveRefreshTimestamp(result);
-
-      // Basic timestamp/key guards (same as before)
       if (!candidateKey || !refreshAt) return false;
-      if (candidateKey !== latestDisplayKey) return false;
-      if (refreshAt.getTime() < resetBoundary.getTime()) return false;
-
-      // Content guard: verify the scraped data actually has entries for today's slot.
-      const dataDate = dateKeyToLocalDate(latestDisplayKey);
-      const todayIdx = dataDate.getDate() - 1; // 0-based index into daily_fans
-      const members = Array.isArray(result?.members) ? result.members : [];
-
-      // Count how many members have a positive value at today's slot
-      const newDayCount = members.filter(
-        (m) => Array.isArray(m.daily_fans) && (m.daily_fans[todayIdx] ?? 0) > 0
-      ).length;
-
-      // Require at least 1 member (or the full roster if smaller) to have
-      // new-day data before we advance. This prevents a single stale member
-      // from blocking the unlock while still guarding against a refresh where
-      // the game data simply hasn't populated yet.
-      const threshold = Math.min(1, members.length);
-      return newDayCount >= threshold;
+      return candidateKey === latestDisplayKey && refreshAt.getTime() >= resetBoundary.getTime();
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     function safeReadStoredUnlockCycleKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
@@ -477,17 +446,14 @@
       return previousDisplayKey;
     }
 
-    // ─── FIX: call site 1 — resolveEffectiveGameDayKey ───────────────────────
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
       const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const unlockedCycleKey = safeReadStoredUnlockCycleKey();
-      // Was: hasUnlockedCurrentResetCycle(result, now)
-      if (hasNewDayDataUnlocked(result, now)) return latestDisplayKey;
+      if (hasUnlockedCurrentResetCycle(result, now)) return latestDisplayKey;
       if (unlockedCycleKey === resetCycleKey || currentKey === latestDisplayKey) return latestDisplayKey;
       if (currentKey === previousDisplayKey) return previousDisplayKey;
       return previousDisplayKey;
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     function safeReadStoredGameDayKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
@@ -991,10 +957,7 @@
             const text = await res.text();
             const preview = parseJSON(text);
             if (preview.error) { log.push("  ↳ " + preview.error); continue; }
-            // ─── FIX: call site 2 — fetchData ────────────────────────────────
-            // Was: hasUnlockedCurrentResetCycle(preview, new Date())
             const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
-            // ─────────────────────────────────────────────────────────────────
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
             const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey));
             if (result.error) { log.push("  ↳ " + result.error); continue; }
