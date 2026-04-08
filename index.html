@@ -425,33 +425,32 @@
     // shift by ~2.5 M per member on the first refresh after 11 am, flipping
     // on-track members to "behind" with zero real change in their data.
     //
-    // New version adds a data-content check: at least 3 members (or all members
-    // if fewer than 3 are present) must have a non-zero daily_fans entry at the
-    // new day's slot before the day is considered unlocked.
+    // The candidateKey guard was removed because circle.last_updated is stored
+    // in JST, so it frequently reads as the next calendar day in UTC — e.g.
+    // "2026-04-09T00:25:02Z" for a refresh that actually happened on Apr 8 EST.
+    // That mismatch against latestDisplayKey ("2026-04-08") blocked the unlock
+    // even when the data was fully current. The timestamp + content guards below
+    // are sufficient on their own and don't depend on the timezone-sensitive
+    // last_updated field at all.
     function hasNewDayDataUnlocked(result, now = new Date()) {
       const { latestDisplayKey, resetBoundary } = getEffectiveDayWindow(now);
-      const candidateKey = getGameDayKeyFromResult(result);
       const refreshAt = getEffectiveRefreshTimestamp(result);
 
-      // Basic timestamp/key guards (same as before)
-      if (!candidateKey || !refreshAt) return false;
-      if (candidateKey !== latestDisplayKey) return false;
+      // Guard 1: a refresh must have happened after today's 11am reset boundary
+      if (!refreshAt) return false;
       if (refreshAt.getTime() < resetBoundary.getTime()) return false;
 
-      // Content guard: verify the scraped data actually has entries for today's slot.
+      // Guard 2: at least 3 members (or the full roster if smaller) must have
+      // a positive daily_fans value at today's 0-based slot index. This confirms
+      // the game data actually advanced to the new day rather than the refresh
+      // job simply writing a new timestamp over stale data.
       const dataDate = dateKeyToLocalDate(latestDisplayKey);
-      const todayIdx = dataDate.getDate() - 1; // 0-based index into daily_fans
+      const todayIdx = dataDate.getDate() - 1;
       const members = Array.isArray(result?.members) ? result.members : [];
-
-      // Count how many members have a positive value at today's slot
       const newDayCount = members.filter(
         (m) => Array.isArray(m.daily_fans) && (m.daily_fans[todayIdx] ?? 0) > 0
       ).length;
 
-      // Require at least 3 members (or the full roster if smaller) to have
-      // new-day data before we advance. This prevents a single stale member
-      // from blocking the unlock while still guarding against a refresh where
-      // the game data simply hasn't populated yet.
       const threshold = Math.min(3, members.length);
       return newDayCount >= threshold;
     }
