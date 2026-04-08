@@ -233,6 +233,7 @@
     ];
     const SCHEDULE_AUTO_REFRESH_WINDOW_MS = 8 * 60 * 1000;
     const SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS = [5_000, 20_000, 45_000, 90_000, 150_000];
+    const UNLOCK_POLL_INTERVAL_MS = 45 * 1000;
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
     const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDay";
 
@@ -926,6 +927,7 @@
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
       const scheduledRefreshCycleRef = useRef(null);
+      const unlockPollTimeoutRef = useRef(null);
 
       const effectiveDayWindow = getEffectiveDayWindow(now);
       const refreshScheduleMeta = getRefreshScheduleMeta(now);
@@ -946,7 +948,7 @@
           }
         : {
             label: "🟡 Waiting for first day-start refresh",
-            sub: "The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. Weekly Comparison, Under Plan Reminder, and Discord export will unlock automatically when that JSON lands.",
+            sub: "The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. After 11 AM ET, it will keep polling automatically until that JSON lands. Weekly Comparison, Under Plan Reminder, and Discord export unlock as soon as the new-day JSON is confirmed.",
             color: "#fbbf24",
             bg: "#fbbf2418",
             border: "#f59e0b55",
@@ -1078,6 +1080,32 @@
         const timeouts = SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS.map((delayMs) => setTimeout(() => loadAllData(), delayMs));
         return () => timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
       }, [refreshScheduleMeta.latestStarted?.key]);
+
+      useEffect(() => {
+        if (unlockPollTimeoutRef.current) {
+          clearTimeout(unlockPollTimeoutRef.current);
+          unlockPollTimeoutRef.current = null;
+        }
+        if (!isAwaitingFirstScheduledRefresh) return;
+        if (!isAfterResetHour(now)) return;
+
+        let cancelled = false;
+        const pollForUnlockedDay = async () => {
+          if (cancelled) return;
+          await loadAllData();
+          if (cancelled) return;
+          unlockPollTimeoutRef.current = setTimeout(pollForUnlockedDay, UNLOCK_POLL_INTERVAL_MS);
+        };
+
+        unlockPollTimeoutRef.current = setTimeout(pollForUnlockedDay, UNLOCK_POLL_INTERVAL_MS);
+        return () => {
+          cancelled = true;
+          if (unlockPollTimeoutRef.current) {
+            clearTimeout(unlockPollTimeoutRef.current);
+            unlockPollTimeoutRef.current = null;
+          }
+        };
+      }, [isAwaitingFirstScheduledRefresh, effectiveDayWindow.resetCycleKey]);
 
       useEffect(() => {
         const currentNow = new Date();
