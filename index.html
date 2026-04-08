@@ -447,8 +447,10 @@
       const dataDate = dateKeyToLocalDate(latestDisplayKey);
       const todayIdx = dataDate.getDate() - 1;
       const members = Array.isArray(result?.members) ? result.members : [];
+      // parseJSON normalises the array to camelCase "dailyFans" on the result
+      // object, so we must use that name — not the raw JSON snake_case "daily_fans"
       const newDayCount = members.filter(
-        (m) => Array.isArray(m.daily_fans) && (m.daily_fans[todayIdx] ?? 0) > 0
+        (m) => Array.isArray(m.dailyFans) && (m.dailyFans[todayIdx] ?? 0) > 0
       ).length;
 
       const threshold = Math.min(3, members.length);
