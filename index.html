@@ -448,11 +448,11 @@
         (m) => Array.isArray(m.daily_fans) && (m.daily_fans[todayIdx] ?? 0) > 0
       ).length;
 
-      // Require at least 3 members (or the full roster if smaller) to have
+      // Require at least 1 member (or the full roster if smaller) to have
       // new-day data before we advance. This prevents a single stale member
       // from blocking the unlock while still guarding against a refresh where
       // the game data simply hasn't populated yet.
-      const threshold = Math.min(3, members.length);
+      const threshold = Math.min(1, members.length);
       return newDayCount >= threshold;
     }
     // ─────────────────────────────────────────────────────────────────────────
