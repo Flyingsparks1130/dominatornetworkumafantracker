@@ -17,7 +17,14 @@ function isObject(value) {
 }
 
 function isValidExportPayload(json) {
-  return isObject(json) && Array.isArray(json.members);
+  return (
+    isObject(json) &&
+    isObject(json.club) &&
+    Array.isArray(json.club_daily_history) &&
+    Array.isArray(json.club_monthly_history) &&
+    Array.isArray(json.club_friend_profile) &&
+    Array.isArray(json.club_friend_history)
+  );
 }
 
 async function saveDebugResponse(clubId, label, body, contentType = "text/plain") {
@@ -85,20 +92,10 @@ async function fetchClubJson(club) {
 }
 
 async function saveClubJson(club, payload) {
-  const refreshedAt = new Date().toISOString();
-
-  const output = {
-    ...payload,
-    refreshed_at: refreshedAt,
-    source: "chronogenesis",
-    club_id: club.id,
-    club_name: club.name ?? null,
-  };
-
   await fs.mkdir(DATA_ROOT, { recursive: true });
 
   const outPath = path.join(DATA_ROOT, `${club.id}.json`);
-  await fs.writeFile(outPath, JSON.stringify(output, null, 2), "utf8");
+  await fs.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
 
   console.log(`✅ SUCCESS: ${club.id} saved to data/chronogenesis/${club.id}.json`);
 }
