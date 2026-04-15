@@ -1,10 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const CONFIG_PATH = path.join(process.cwd(), "scripts", "clubs.config.json");
+const CONFIG_PATH = path.join(
+  process.cwd(),
+  "scripts",
+  "chronogenesis.clubs.config.json"
+);
 const DATA_ROOT = path.join(process.cwd(), "data", "chronogenesis");
 const DEBUG_DIR = path.join(process.cwd(), "scripts", "debug");
-const OUTPUT_FILENAME = "chronogenesis.json";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
@@ -83,7 +86,6 @@ async function fetchClubJson(club) {
 
 async function saveClubJson(club, payload) {
   const refreshedAt = new Date().toISOString();
-  const clubDir = path.join(DATA_ROOT, club.id);
 
   const output = {
     ...payload,
@@ -93,12 +95,12 @@ async function saveClubJson(club, payload) {
     club_name: club.name ?? null,
   };
 
-  await fs.mkdir(clubDir, { recursive: true });
+  await fs.mkdir(DATA_ROOT, { recursive: true });
 
-  const outPath = path.join(clubDir, OUTPUT_FILENAME);
+  const outPath = path.join(DATA_ROOT, `${club.id}.json`);
   await fs.writeFile(outPath, JSON.stringify(output, null, 2), "utf8");
 
-  console.log(`✅ SUCCESS: ${club.id} saved to data/chronogenesis/${club.id}/${OUTPUT_FILENAME}`);
+  console.log(`✅ SUCCESS: ${club.id} saved to data/chronogenesis/${club.id}.json`);
 }
 
 async function main() {
@@ -108,7 +110,7 @@ async function main() {
   const clubs = JSON.parse(raw);
 
   if (!Array.isArray(clubs) || !clubs.length) {
-    throw new Error("clubs.config.json must contain a non-empty array");
+    throw new Error("chronogenesis.clubs.config.json must contain a non-empty array");
   }
 
   await fs.mkdir(DATA_ROOT, { recursive: true });
@@ -135,8 +137,9 @@ main().catch((err) => {
   console.error("FATAL ERROR:", err);
   process.exit(1);
 });
-      
-
+  
+    
+    
 
     
           
