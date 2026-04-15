@@ -460,17 +460,7 @@
     function getChronogenesisSharedActualDay(result) {
       if (result?.sourceType !== DATA_SOURCES.CHRONOGENESIS) return null;
       const explicitSharedDay = Number(result?.sharedActualDate ?? 0);
-      if (Number.isFinite(explicitSharedDay) && explicitSharedDay > 0) return explicitSharedDay;
-      const members = Array.isArray(result?.members) ? result.members.filter((member) => member?.isActive !== false) : [];
-      if (!members.length) return null;
-      const sharedDay = members.reduce((sharedMax, member) => {
-        const memberMax = Array.isArray(member?.precomputedCumulativeSeries)
-          ? member.precomputedCumulativeSeries.reduce((lastDay, value, idx) => value > 0 ? idx + 1 : lastDay, 0)
-          : 0;
-        if (!memberMax) return sharedMax;
-        return sharedMax == null ? memberMax : Math.min(sharedMax, memberMax);
-      }, null);
-      return Number.isFinite(sharedDay) && sharedDay > 0 ? sharedDay : null;
+      return Number.isFinite(explicitSharedDay) && explicitSharedDay > 0 ? explicitSharedDay : null;
     }
 
     function getChronogenesisDisplayKey(result, now = new Date()) {
@@ -528,7 +518,9 @@
 
     function getInitialEffectiveGameDayKey(now = new Date(), source = DATA_SOURCES.UMA) {
       if (source === DATA_SOURCES.CHRONOGENESIS) {
-        return safeReadStoredGameDayKey() || formatDateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        const storedKey = safeReadStoredGameDayKey();
+        if (storedKey && storedKey.slice(0, 7) === formatDateKey(now.getFullYear(), now.getMonth() + 1, 1).slice(0, 7)) return storedKey;
+        return formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
       }
       const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const storedKey = safeReadStoredGameDayKey();
@@ -542,7 +534,7 @@
     // ─── FIX: call site 1 — resolveEffectiveGameDayKey ───────────────────────
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date(), source = DATA_SOURCES.UMA) {
       if (source === DATA_SOURCES.CHRONOGENESIS || result?.sourceType === DATA_SOURCES.CHRONOGENESIS) {
-        return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
       }
       const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const unlockedCycleKey = safeReadStoredUnlockCycleKey();
@@ -674,10 +666,12 @@
         historyByViewerId[id][actualDate - 1] = Number(row?.adjusted_fan_gain_cumulative ?? 0);
       });
 
-      const activeViewerIds = Array.from(activeRosterIds);
-      const sharedActualDate = activeViewerIds.length
+      const activeProfileViewerIds = friendProfiles
+        .map((profile) => String(profile?.friend_viewer_id ?? ""))
+        .filter((viewerId) => viewerId && activeRosterIds.has(viewerId));
+      const sharedActualDate = activeProfileViewerIds.length
         ? Array.from({ length: dim }, (_, idx) => idx + 1).reduce((sharedMax, dayNum) => {
-            const everyoneHasDay = activeViewerIds.every((viewerId) => historyDaysByViewerId[viewerId]?.has(dayNum));
+            const everyoneHasDay = activeProfileViewerIds.every((viewerId) => historyDaysByViewerId[viewerId]?.has(dayNum));
             return everyoneHasDay ? dayNum : sharedMax;
           }, 0)
         : 0;
