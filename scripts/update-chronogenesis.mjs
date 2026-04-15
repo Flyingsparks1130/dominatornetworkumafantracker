@@ -16,17 +16,6 @@ function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
-function isValidExportPayload(json) {
-  return (
-    isObject(json) &&
-    isObject(json.club) &&
-    Array.isArray(json.club_daily_history) &&
-    Array.isArray(json.club_monthly_history) &&
-    Array.isArray(json.club_friend_profile) &&
-    Array.isArray(json.club_friend_history)
-  );
-}
-
 async function saveDebugResponse(clubId, label, body, contentType = "text/plain") {
   try {
     await fs.mkdir(DEBUG_DIR, { recursive: true });
@@ -81,11 +70,9 @@ async function fetchClubJson(club) {
     throw new Error(`Response is not valid JSON for ${club.id}: ${err.message}`);
   }
 
-  if (!isValidExportPayload(parsed)) {
+  if (!isObject(parsed)) {
     await saveDebugResponse(club.id, "unexpected-shape", text, contentType);
-    throw new Error(
-      `JSON has unexpected shape for ${club.id}. Top-level keys: ${Object.keys(parsed || {}).join(", ")}`
-    );
+    throw new Error(`Response is not a JSON object for ${club.id}`);
   }
 
   return parsed;
@@ -134,7 +121,6 @@ main().catch((err) => {
   console.error("FATAL ERROR:", err);
   process.exit(1);
 });
-  
     
     
 
