@@ -678,18 +678,22 @@
 
       const members = friendProfiles.map((profile) => {
         const viewerId = profile?.friend_viewer_id;
-        const rawCum = Array.isArray(historyByViewerId[viewerId]) ? [...historyByViewerId[viewerId]] : new Array(dim).fill(0);
+        const rawHistoryCum = Array.isArray(historyByViewerId[viewerId]) ? [...historyByViewerId[viewerId]] : new Array(dim).fill(0);
+        const lastActualHistoryDay = historyDaysByViewerId[viewerId]?.size ? Math.max(...historyDaysByViewerId[viewerId]) : 0;
+        const rawCum = [...rawHistoryCum];
         for (let i = 1; i < rawCum.length; i++) {
           if (rawCum[i] < rawCum[i - 1]) rawCum[i] = rawCum[i - 1];
         }
         const dailySeries = buildDailyGainSeries(rawCum);
         const latestMonthlyGain = rawCum.reduce((last, value) => value > 0 ? value : last, 0);
         const latestDailyGain = (() => {
-          for (let i = dailySeries.length - 1; i >= 0; i--) if ((dailySeries[i] ?? 0) > 0) return dailySeries[i];
+          const lastTrackedIdx = Math.max(0, (sharedActualDate || lastActualHistoryDay || dim) - 1);
+          for (let i = Math.min(lastTrackedIdx, dailySeries.length - 1); i >= 0; i--) if ((dailySeries[i] ?? 0) > 0) return dailySeries[i];
           return profile?.daily_average ?? null;
         })();
-        const lastDayWithData = rawCum.reduce((last, value, idx) => value > 0 ? idx + 1 : last, 0);
-        const projected = lastDayWithData > 0 ? Math.round((latestMonthlyGain / lastDayWithData) * dim) : null;
+        const positiveGainDays = dailySeries.slice(0, Math.max(sharedActualDate || lastActualHistoryDay, 0)).filter((value) => (value ?? 0) > 0).length;
+        const elapsedProjectionDays = Math.max(positiveGainDays, Math.min(sharedActualDate || lastActualHistoryDay || 0, lastActualHistoryDay || 0));
+        const projected = elapsedProjectionDays > 0 ? Math.round((latestMonthlyGain / elapsedProjectionDays) * dim) : null;
         return {
           name: profile?.name || (Array.isArray(profile?.names) && profile.names[0]) || "Unknown",
           fans: Number(profile?.fan_count ?? 0),
