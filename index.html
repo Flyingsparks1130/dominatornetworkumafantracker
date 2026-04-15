@@ -240,17 +240,29 @@
     }
 
     const GAME_RESET_LOCAL_HOUR = 11;
-    const REFRESH_SCHEDULE_TIMEZONE = "America/New_York";
-    const REFRESH_SCHEDULE_SLOTS = [
-      { hour: 0, minute: 0, label: "12:00 AM" },
-      { hour: 1, minute: 0, label: "1:00 AM" },
-      { hour: 5, minute: 0, label: "5:00 AM" },
-      { hour: 6, minute: 0, label: "6:00 AM" },
-      { hour: 14, minute: 0, label: "2:00 PM" },
-      { hour: 15, minute: 0, label: "3:00 PM" },
-      { hour: 19, minute: 0, label: "7:00 PM" },
-      { hour: 20, minute: 0, label: "8:00 PM" },
-    ];
+    const REFRESH_SCHEDULES = {
+      [DATA_SOURCES.UMA]: {
+        timeZone: "America/New_York",
+        label: "ET",
+        slots: [
+          { hour: 0, minute: 0, label: "12:00 AM" },
+          { hour: 1, minute: 0, label: "1:00 AM" },
+          { hour: 5, minute: 0, label: "5:00 AM" },
+          { hour: 6, minute: 0, label: "6:00 AM" },
+          { hour: 14, minute: 0, label: "2:00 PM" },
+          { hour: 15, minute: 0, label: "3:00 PM" },
+          { hour: 19, minute: 0, label: "7:00 PM" },
+          { hour: 20, minute: 0, label: "8:00 PM" },
+        ],
+      },
+      [DATA_SOURCES.CHRONOGENESIS]: {
+        timeZone: "Asia/Bangkok",
+        label: "UTC+7",
+        slots: [
+          { hour: 17, minute: 15, label: "5:15 PM" },
+        ],
+      },
+    };
     const SCHEDULE_AUTO_REFRESH_WINDOW_MS = 8 * 60 * 1000;
     const SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS = [5_000, 20_000, 45_000, 90_000, 150_000];
     const UNLOCK_POLL_INTERVAL_MS = 45 * 1000;
@@ -274,7 +286,7 @@
     function isAfterResetHour(now = new Date()) { return now.getHours() >= GAME_RESET_LOCAL_HOUR; }
     function getResetCycleKey(now = new Date()) { return isAfterResetHour(now) ? getLocalTodayKey(now) : getYesterdayKey(now); }
 
-    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
       const parts = new Intl.DateTimeFormat("en-US", {
         timeZone,
         year: "numeric",
@@ -309,7 +321,7 @@
       return sign * ((hours * 60) + minutes);
     }
 
-    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
       const tzNamePart = new Intl.DateTimeFormat("en-US", {
         timeZone,
         timeZoneName: "shortOffset",
@@ -318,7 +330,7 @@
       return parseShortOffsetToMinutes(tzNamePart?.value || "GMT");
     }
 
-    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULE_TIMEZONE) {
+    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
       const utcGuessMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0, 0);
       const initialOffset = getTimeZoneOffsetMinutes(new Date(utcGuessMs), timeZone);
       let resolved = new Date(utcGuessMs - initialOffset * 60 * 1000);
@@ -333,9 +345,10 @@
       return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
     }
 
-    function formatEtDateLabel(date) {
+    function formatRefreshDateLabel(date, source = DATA_SOURCES.UMA) {
+      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
       return new Intl.DateTimeFormat("en-US", {
-        timeZone: REFRESH_SCHEDULE_TIMEZONE,
+        timeZone: schedule.timeZone,
         weekday: "short",
         hour: "numeric",
         minute: "2-digit",
@@ -353,15 +366,16 @@
       return `${seconds}s`;
     }
 
-    function buildRefreshScheduleEntries(now = new Date(), dayOffsets = [-1, 0, 1, 2]) {
-      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
-      const dayPartsList = dayOffsets.map((delta) => addDaysToParts(etNowParts, delta));
+    function buildRefreshScheduleEntries(source = DATA_SOURCES.UMA, now = new Date(), dayOffsets = [-1, 0, 1, 2]) {
+      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
+      const zonedNowParts = getTimeZoneParts(now, schedule.timeZone);
+      const dayPartsList = dayOffsets.map((delta) => addDaysToParts(zonedNowParts, delta));
       const candidates = [];
       dayPartsList.forEach((dayParts) => {
-        REFRESH_SCHEDULE_SLOTS.forEach((slot) => {
-          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, REFRESH_SCHEDULE_TIMEZONE);
+        schedule.slots.forEach((slot) => {
+          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, schedule.timeZone);
           candidates.push({
-            key: `${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
+            key: `${source}-${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
             date,
             slot,
             label: slot.label,
@@ -371,28 +385,31 @@
       return candidates.sort((a, b) => a.date - b.date);
     }
 
-    function getUpcomingRefreshSchedule(now = new Date(), count = 4) {
-      return buildRefreshScheduleEntries(now).filter((entry) => entry.date.getTime() > now.getTime() + 999).slice(0, count);
+    function getUpcomingRefreshSchedule(source = DATA_SOURCES.UMA, now = new Date(), count = 4) {
+      return buildRefreshScheduleEntries(source, now).filter((entry) => entry.date.getTime() > now.getTime() + 999).slice(0, count);
     }
 
-    function getLatestStartedRefresh(now = new Date()) {
-      const started = buildRefreshScheduleEntries(now).filter((entry) => entry.date.getTime() <= now.getTime() + 999);
+    function getLatestStartedRefresh(source = DATA_SOURCES.UMA, now = new Date()) {
+      const started = buildRefreshScheduleEntries(source, now).filter((entry) => entry.date.getTime() <= now.getTime() + 999);
       return started.length ? started[started.length - 1] : null;
     }
 
-    function getRefreshScheduleMeta(now = new Date()) {
-      const upcoming = getUpcomingRefreshSchedule(now, 4);
+    function getRefreshScheduleMeta(source = DATA_SOURCES.UMA, now = new Date()) {
+      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
+      const upcoming = getUpcomingRefreshSchedule(source, now, source === DATA_SOURCES.CHRONOGENESIS ? 1 : 4);
       const next = upcoming[0] || null;
-      const latestStarted = getLatestStartedRefresh(now);
-      const etNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE_TIMEZONE);
-      const etMinutesNow = (etNowParts.hour * 60) + etNowParts.minute;
-      const isNextRefreshForNextGameDay = Boolean(next && next.slot.hour === 14 && next.slot.minute === 0 && etMinutesNow >= (6 * 60));
+      const latestStarted = getLatestStartedRefresh(source, now);
+      const zonedNowParts = getTimeZoneParts(now, schedule.timeZone);
+      const zonedMinutesNow = (zonedNowParts.hour * 60) + zonedNowParts.minute;
+      const isNextRefreshForNextGameDay = source === DATA_SOURCES.UMA && Boolean(next && next.slot.hour === 14 && next.slot.minute === 0 && zonedMinutesNow >= (6 * 60));
       return {
         next,
         upcoming,
         latestStarted,
         countdownMs: next ? Math.max(0, next.date.getTime() - now.getTime()) : 0,
         isNextRefreshForNextGameDay,
+        label: schedule.label,
+        timeZone: schedule.timeZone,
       };
     }
 
@@ -437,6 +454,27 @@
       if (!candidate) return null;
       const parsed = new Date(candidate);
       return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+
+    function getChronogenesisSharedActualDay(result) {
+      if (result?.sourceType !== DATA_SOURCES.CHRONOGENESIS) return null;
+      const members = Array.isArray(result?.members) ? result.members.filter((member) => member?.isActive !== false) : [];
+      if (!members.length) return null;
+      const sharedDay = members.reduce((sharedMax, member) => {
+        const memberMax = Array.isArray(member?.precomputedCumulativeSeries)
+          ? member.precomputedCumulativeSeries.reduce((lastDay, value, idx) => value > 0 ? idx + 1 : lastDay, 0)
+          : 0;
+        if (!memberMax) return sharedMax;
+        return sharedMax == null ? memberMax : Math.min(sharedMax, memberMax);
+      }, null);
+      return Number.isFinite(sharedDay) && sharedDay > 0 ? sharedDay : null;
+    }
+
+    function getChronogenesisDisplayKey(result, now = new Date()) {
+      const sharedDay = getChronogenesisSharedActualDay(result);
+      if (!sharedDay) return null;
+      return formatDateKey(now.getFullYear(), now.getMonth() + 1, sharedDay);
     }
 
     // ─── FIX: replaced hasUnlockedCurrentResetCycle ───────────────────────────
@@ -486,7 +524,10 @@
       try { localStorage.removeItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); } catch (e) {}
     }
 
-    function getInitialEffectiveGameDayKey(now = new Date()) {
+    function getInitialEffectiveGameDayKey(now = new Date(), source = DATA_SOURCES.UMA) {
+      if (source === DATA_SOURCES.CHRONOGENESIS) {
+        return safeReadStoredGameDayKey() || formatDateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+      }
       const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const storedKey = safeReadStoredGameDayKey();
       const unlockedCycleKey = safeReadStoredUnlockCycleKey();
@@ -497,7 +538,10 @@
     }
 
     // ─── FIX: call site 1 — resolveEffectiveGameDayKey ───────────────────────
-    function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
+    function resolveEffectiveGameDayKey(currentKey, result, now = new Date(), source = DATA_SOURCES.UMA) {
+      if (source === DATA_SOURCES.CHRONOGENESIS || result?.sourceType === DATA_SOURCES.CHRONOGENESIS) {
+        return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+      }
       const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
       const unlockedCycleKey = safeReadStoredUnlockCycleKey();
       // Was: hasUnlockedCurrentResetCycle(result, now)
@@ -522,9 +566,11 @@
       if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
       if (Number.isNaN(parsed.getTime())) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
-      const prefix = cdata.refreshedAt ? "Refreshed" : "Source updated";
-      if (isSameCalendarDay(parsed, now)) return { label: "✅ JSON Loaded", color: "#34d399", sub: `${prefix} ${parsed.toLocaleString()}` };
-      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `${cdata.refreshedAt ? "Last refresh" : "Last source update"} ${parsed.toLocaleString()}` };
+      const isChronogenesis = cdata.sourceType === DATA_SOURCES.CHRONOGENESIS;
+      const freshLabel = isChronogenesis ? "Updated" : (cdata.refreshedAt ? "Refreshed" : "Source updated");
+      const staleLabel = isChronogenesis ? "Last updated" : (cdata.refreshedAt ? "Last refresh" : "Last source update");
+      if (isSameCalendarDay(parsed, now)) return { label: "✅ JSON Loaded", color: "#34d399", sub: `${freshLabel} ${parsed.toLocaleString()}` };
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `${staleLabel} ${parsed.toLocaleString()}` };
     }
 
     function getPodiumStyle(index) {
@@ -592,7 +638,17 @@
       const clubRoot = Array.isArray(json?.club) ? json.club[0] : null;
       if (!clubRoot) return { error: "No club array found. Keys in JSON: " + Object.keys(json || {}).join(", ") };
 
-      const effectiveDataDate = dataDateOverride instanceof Date && !Number.isNaN(dataDateOverride.getTime()) ? new Date(dataDateOverride) : dateKeyToLocalDate(getFallbackGameDayKey(new Date()));
+      const now = new Date();
+      const actualDateMax = Array.isArray(json?.club_friend_history)
+        ? json.club_friend_history.reduce((maxDay, row) => {
+            const actualDate = Number(row?.actual_date);
+            return Number.isFinite(actualDate) ? Math.max(maxDay, actualDate) : maxDay;
+          }, 0)
+        : 0;
+      const fallbackDate = actualDateMax > 0
+        ? new Date(now.getFullYear(), now.getMonth(), actualDateMax)
+        : dateKeyToLocalDate(getFallbackGameDayKey(now));
+      const effectiveDataDate = dataDateOverride instanceof Date && !Number.isNaN(dataDateOverride.getTime()) ? new Date(dataDateOverride) : fallbackDate;
       const dim = daysInMonth(effectiveDataDate.getFullYear(), effectiveDataDate.getMonth() + 1);
 
       const friendProfiles = Array.isArray(json?.club_friend_profile) ? json.club_friend_profile : [];
@@ -640,9 +696,9 @@
         };
       });
 
-      const refreshedAt = safeIso(clubRoot?.updated_at);
+      const refreshedAt = null;
       const sourceUpdatedAt = safeIso(clubRoot?.updated_at);
-      const lastFetch = refreshedAt || sourceUpdatedAt || null;
+      const lastFetch = sourceUpdatedAt || null;
       return {
         members,
         clubName: clubRoot?.name || "Unknown",
@@ -1044,7 +1100,7 @@
       const [view, setView] = useState("home");
       const [dataSource, setDataSource] = useState(DATA_SOURCES.UMA);
       const [activeIdx, setActiveIdx] = useState(0);
-      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
+      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date(), DATA_SOURCES.UMA));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
@@ -1078,15 +1134,24 @@
       const unlockPollTimeoutRef = useRef(null);
 
       const effectiveDayWindow = getEffectiveDayWindow(now);
-      const refreshScheduleMeta = getRefreshScheduleMeta(now);
-      const isAwaitingFirstScheduledRefresh = effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey;
+      const refreshScheduleMeta = getRefreshScheduleMeta(dataSource, now);
+      const isChronogenesisSource = dataSource === DATA_SOURCES.CHRONOGENESIS;
+      const isAwaitingFirstScheduledRefresh = isChronogenesisSource ? false : (effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey);
       const resetWindowBlocksExports = isAwaitingFirstScheduledRefresh;
       const nextRefresh = refreshScheduleMeta.next;
-      const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatEtDateLabel(entry.date)).join(" · ");
+      const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatRefreshDateLabel(entry.date, dataSource)).join(" · ");
       const nextRefreshCountdownLabel = nextRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
-      const nextRefreshDateLabel = nextRefresh ? formatEtDateLabel(nextRefresh.date) : "No upcoming refresh scheduled";
-      const isCurrentDayLive = !isAwaitingFirstScheduledRefresh;
-      const liveStatus = isCurrentDayLive
+      const nextRefreshDateLabel = nextRefresh ? formatRefreshDateLabel(nextRefresh.date, dataSource) : "No upcoming refresh scheduled";
+      const isCurrentDayLive = isChronogenesisSource ? true : !isAwaitingFirstScheduledRefresh;
+      const liveStatus = isChronogenesisSource
+        ? {
+            label: "🟢 Live from shared Chronogenesis actual_date",
+            sub: "Chronogenesis uses the highest actual_date shared by all active members, and refreshes once daily at 5:15 PM UTC+7.",
+            color: "#34d399",
+            bg: "#34d39918",
+            border: "#34d39955",
+          }
+        : isCurrentDayLive
         ? {
             label: "🟢 Live for current game day",
             sub: "Current in-game day data is live and will keep updating automatically on each scheduled JSON refresh.",
@@ -1123,7 +1188,7 @@
       const clubName = data?.clubName || club.name;
       const supportsMemberDailyFans = activeMembers.some((m) => (Array.isArray(m.dailyFans) && m.dailyFans.length) || (Array.isArray(m.precomputedDailyGainSeries) && m.precomputedDailyGainSeries.length));
       const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
-      const displayFetchLabel = data?.refreshedAt ? "Refreshed" : "Source updated";
+      const displayFetchLabel = data?.sourceType === DATA_SOURCES.CHRONOGENESIS ? "Updated" : (data?.refreshedAt ? "Refreshed" : "Source updated");
 
       function buildClubDataEntry(result) {
         return { members: result.members, clubName: result.clubName, lastFetch: result.lastFetch || null, refreshedAt: result.refreshedAt || null, sourceUpdatedAt: result.sourceUpdatedAt || null, sourceType: result.sourceType || dataSource, clubDailyHistory: result.clubDailyHistory || [], clubMonthlyHistory: result.clubMonthlyHistory || [] };
@@ -1144,7 +1209,7 @@
             const text = await res.text();
             const preview = parseJSON(text, null, effectiveSource);
             if (preview.error) { log.push("  ↳ " + preview.error); continue; }
-            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
+            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date(), effectiveSource);
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
             const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey), effectiveSource);
             if (result.error) { log.push("  ↳ " + result.error); continue; }
@@ -1161,7 +1226,7 @@
       async function loadAllData() {
         setLoading(true); setErr("");
         const allLogs = []; const rawById = {};
-        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
+        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date(), dataSource);
         for (const c of CLUBS) {
           if (!c.id) continue;
           const candidates = getDataCandidates(dataSource, c.id);
@@ -1175,7 +1240,7 @@
               const preview = parseJSON(text, null, dataSource);
               if (preview.error) { allLogs.push(`  ↳ ${c.id}: ${preview.error}`); continue; }
               rawById[c.id] = text;
-              resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date());
+              resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date(), dataSource);
               loaded = true; break;
             } catch (e) { allLogs.push(`✗ ${url} → ${e.message}`); }
           }
@@ -1210,7 +1275,7 @@
         setClubData(next); setDebugLog(allLogs); setLoading(false);
       }
 
-      useEffect(() => { loadAllData(); }, [dataSource]);
+      useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date(), dataSource)); loadAllData(); }, [dataSource]);
 
       useEffect(() => {
         const tick = setInterval(() => setNow(new Date()), 1000);
@@ -1258,9 +1323,13 @@
         const currentNow = new Date();
         const { resetCycleKey, latestDisplayKey } = getEffectiveDayWindow(currentNow);
         safeWriteStoredGameDayKey(effectiveGameDayKey);
+        if (dataSource === DATA_SOURCES.CHRONOGENESIS) {
+          safeClearStoredUnlockCycleKey();
+          return;
+        }
         if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(resetCycleKey);
         else if (safeReadStoredUnlockCycleKey() === resetCycleKey) safeClearStoredUnlockCycleKey();
-      }, [effectiveGameDayKey]);
+      }, [effectiveGameDayKey, dataSource]);
 
       useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true, dataSource); }, [activeIdx, dataSource]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
@@ -1591,7 +1660,7 @@
                   <div style={{ color: "#cfcbe6", fontSize: 9, lineHeight: 1.3 }}>{liveStatus.sub}</div>
                 </div>
                 {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 10, marginTop: 4, lineHeight: 1.3 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
-                <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming ET: {upcomingRefreshLabel || "—"}</div>
+                <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming {refreshScheduleMeta.label}: {upcomingRefreshLabel || "—"}</div>
               </div>
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
