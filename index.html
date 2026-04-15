@@ -1258,27 +1258,50 @@
         const resolvedDataDate = dateKeyToLocalDate(resolvedGameDayKey);
         const next = {};
 
-        // Load rank history for each club from data/club_rank_history/
         const rankHistNext = {};
-        for (const c of CLUBS) {
-          if (!c.id) continue;
-          for (const base of ["./data/club_rank_history/", "/data/club_rank_history/"]) {
-            try {
-              const res = await fetch(base + c.id + ".json", { cache: "no-store" });
-              if (!res.ok) continue;
-              const h = await res.json();
-              if (h?.history) rankHistNext[c.id] = h.history;
-              break;
-            } catch (e) {}
+        if (dataSource === DATA_SOURCES.CHRONOGENESIS) {
+          for (const [clubId, rawText] of Object.entries(rawById)) {
+            const result = parseJSON(rawText, resolvedDataDate, dataSource);
+            if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
+            next[clubId] = buildClubDataEntry(result);
+            const history = Array.isArray(result.clubDailyHistory) ? result.clubDailyHistory : [];
+            if (history.length) {
+              const rankMap = {};
+              history.forEach((row) => {
+                const actualDate = Number(row?.actual_date);
+                const rank = row?.rank == null ? null : Number(row.rank);
+                if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > daysInMonth(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1)) return;
+                if (!Number.isFinite(rank) || rank <= 0) return;
+                rankMap[formatDateKey(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1, actualDate)] = {
+                  rank,
+                  rank_gain: Number(row?.rank_gain ?? 0),
+                };
+              });
+              rankHistNext[clubId] = rankMap;
+            }
+          }
+        } else {
+          // Load rank history for each club from data/club_rank_history/
+          for (const c of CLUBS) {
+            if (!c.id) continue;
+            for (const base of ["./data/club_rank_history/", "/data/club_rank_history/"]) {
+              try {
+                const res = await fetch(base + c.id + ".json", { cache: "no-store" });
+                if (!res.ok) continue;
+                const h = await res.json();
+                if (h?.history) rankHistNext[c.id] = h.history;
+                break;
+              } catch (e) {}
+            }
+          }
+
+          for (const [clubId, rawText] of Object.entries(rawById)) {
+            const result = parseJSON(rawText, resolvedDataDate, dataSource);
+            if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
+            next[clubId] = buildClubDataEntry(result);
           }
         }
         setRankHistory(rankHistNext);
-
-        for (const [clubId, rawText] of Object.entries(rawById)) {
-          const result = parseJSON(rawText, resolvedDataDate, dataSource);
-          if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
-          next[clubId] = buildClubDataEntry(result);
-        }
         setEffectiveGameDayKey(resolvedGameDayKey);
         setClubData(next); setDebugLog(allLogs); setLoading(false);
       }
@@ -1482,6 +1505,10 @@
       function toggleCriticalSort(key) { setCriticalSort((prev) => { if (prev.key !== key || prev.direction === "off") return { key, direction: "desc" }; if (prev.direction === "desc") return { key, direction: "asc" }; return { key: null, direction: "off" }; }); }
       function criticalSortLabel(key) { if (criticalSort.key !== key || criticalSort.direction === "off") return "OFF"; return criticalSort.direction === "asc" ? "ASC" : "DESC"; }
 
+      function getSourceLabel() {
+        return dataSource === DATA_SOURCES.CHRONOGENESIS ? "Chronogenesis" : "uma.moe";
+      }
+
       function buildDiscord() {
         function charDisplayWidth(char) {
           if (!char) return 0;
@@ -1547,6 +1574,7 @@
         const statusShort = (statusKey) => statusKey === "on-track" ? "✅" : statusKey === "critical" ? "❗" : "⚠️";
         const headerLines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
           `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
@@ -1582,7 +1610,7 @@
       function buildReminderDiscord() {
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const underPlanMembers = [...decoratedMembers].filter((member) => member.plan.statusKey !== "on-track").sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0));
-        const lines = [`🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
+        const lines = [`🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
         if (!underPlanMembers.length) { lines.push("✅ Everyone is currently on track."); return lines.join("\n"); }
         underPlanMembers.forEach((member) => { const meta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; lines.push(`${meta.icon} **${member.name}** — ${deltaText(member.plan.delta)} vs plan · ${fmt(member.fansNeededForPlan)} still needed this month`); });
         const footer = `\n> 🤖 *Dominator Network Tracker · ${club.officer}*`; let message = lines.join("\n") + footer;
@@ -1597,7 +1625,7 @@
         const getWeekGain = (member, week) => { const cs = member.cumulativeSeries || []; const endVal = cs[Math.min(week.endDay - 1, cs.length - 1)] ?? 0; const startVal = week.startDay > 1 ? (cs[week.startDay - 2] ?? 0) : 0; return endVal - startVal; };
         const comparisons = decoratedMembers.map((m) => { const prevGain = getWeekGain(m, previousWeek); const currGain = getWeekGain(m, currentWeek); return { name: m.name, prevGain, currGain, diff: currGain - prevGain }; }).sort((a, b) => b.diff - a.diff);
         const improved = comparisons.filter((c) => c.diff > 0); const declined = comparisons.filter((c) => c.diff < 0);
-        const lines = [`📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
+        const lines = [`📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
         if (improved.length > 0) { lines.push(`📈 **Improved** (${improved.length}):`); improved.slice(0, 10).forEach((c) => lines.push(`  ↑ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`); lines.push(""); }
         if (declined.length > 0) { lines.push(`📉 **Declined** (${declined.length}):`); declined.slice(0, 10).forEach((c) => lines.push(`  ↓ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`); }
         lines.push("", `> 🤖 *Dominator Network Tracker · ${club.officer}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
