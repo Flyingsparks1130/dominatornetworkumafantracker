@@ -150,6 +150,7 @@
     }
 
     const TIER_RANK = { "S": 0, "A+": 1, "A": 2, "B+": 3 };
+    const CLUB_TIER_ORDER = ["S", "A+", "A", "B+"];
     const HEALTH_GRADES = [
       { min: 0.95, grade: "A+", color: "#34d399", bg: "#34d39922" },
       { min: 0.90, grade: "A",  color: "#34d399", bg: "#34d39922" },
@@ -188,6 +189,24 @@
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
 
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
+
+
+    function getSuggestedTierForProjectedMonthly(projectedMonthly = 0) {
+      const value = Math.max(0, Number(projectedMonthly) || 0);
+      const ordered = [...CLUBS].sort((a, b) => b.target - a.target);
+      const match = ordered.find((club) => value >= club.target);
+      return match ? match.tier : "B+";
+    }
+
+    function getExpectedClubTier(currentTier, projectedMonthly = 0, direction = "promotion") {
+      const suggestedTier = getSuggestedTierForProjectedMonthly(projectedMonthly);
+      const currentIdx = CLUB_TIER_ORDER.indexOf(currentTier);
+      const suggestedIdx = CLUB_TIER_ORDER.indexOf(suggestedTier);
+      if (currentIdx < 0 || suggestedIdx < 0) return suggestedTier;
+      if (direction === "promotion") return suggestedIdx < currentIdx ? suggestedTier : currentTier;
+      if (direction === "demotion") return suggestedIdx > currentIdx ? suggestedTier : currentTier;
+      return suggestedTier;
+    }
 
     function clamp01(value) {
       if (!Number.isFinite(Number(value))) return 0;
@@ -1501,8 +1520,16 @@
 
       const transferCandidates = (() => {
         if (!hasComparisonData) return { demotionCandidates: [], promotionCandidates: [] };
-        const demotionCandidates = networkMembers.filter((m) => (TIER_RANK[m.clubTier] ?? 99) <= 1 && (m.plan.statusKey === "critical" || (m.plan.statusKey === "behind" && m.stagnantDays >= 3))).sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0)).slice(0, 15);
-        const promotionCandidates = networkMembers.filter((m) => (TIER_RANK[m.clubTier] ?? 99) >= 2 && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2).sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 15);
+        const demotionCandidates = networkMembers
+          .filter((m) => m.clubTier !== "B+" && (m.plan.statusKey === "critical" || (m.plan.statusKey === "behind" && m.stagnantDays >= 3)))
+          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "demotion") }))
+          .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0))
+          .slice(0, 15);
+        const promotionCandidates = networkMembers
+          .filter((m) => m.clubTier !== "S" && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2)
+          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "promotion") }))
+          .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
+          .slice(0, 15);
         return { demotionCandidates, promotionCandidates };
       })();
 
@@ -1904,10 +1931,10 @@
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(S/A+, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td></tr>))}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except B+, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Tier</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.projectedTier} />{m.projectedTier}</div></td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div></td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(A/B+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Tier</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.projectedTier} />{m.projectedTier}</div></td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
