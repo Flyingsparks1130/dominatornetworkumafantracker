@@ -459,6 +459,8 @@
 
     function getChronogenesisSharedActualDay(result) {
       if (result?.sourceType !== DATA_SOURCES.CHRONOGENESIS) return null;
+      const explicitSharedDay = Number(result?.sharedActualDate ?? 0);
+      if (Number.isFinite(explicitSharedDay) && explicitSharedDay > 0) return explicitSharedDay;
       const members = Array.isArray(result?.members) ? result.members.filter((member) => member?.isActive !== false) : [];
       if (!members.length) return null;
       const sharedDay = members.reduce((sharedMax, member) => {
@@ -660,14 +662,25 @@
       );
 
       const historyByViewerId = {};
+      const historyDaysByViewerId = {};
       friendHistory.forEach((row) => {
         const id = row?.friend_viewer_id;
         if (id == null) return;
         if (!historyByViewerId[id]) historyByViewerId[id] = new Array(dim).fill(0);
+        if (!historyDaysByViewerId[id]) historyDaysByViewerId[id] = new Set();
         const actualDate = Number(row?.actual_date);
         if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > dim) return;
+        historyDaysByViewerId[id].add(actualDate);
         historyByViewerId[id][actualDate - 1] = Number(row?.adjusted_fan_gain_cumulative ?? 0);
       });
+
+      const activeViewerIds = Array.from(activeRosterIds);
+      const sharedActualDate = activeViewerIds.length
+        ? Array.from({ length: dim }, (_, idx) => idx + 1).reduce((sharedMax, dayNum) => {
+            const everyoneHasDay = activeViewerIds.every((viewerId) => historyDaysByViewerId[viewerId]?.has(dayNum));
+            return everyoneHasDay ? dayNum : sharedMax;
+          }, 0)
+        : 0;
 
       const members = friendProfiles.map((profile) => {
         const viewerId = profile?.friend_viewer_id;
@@ -706,6 +719,7 @@
         refreshedAt,
         sourceUpdatedAt,
         sourceType: DATA_SOURCES.CHRONOGENESIS,
+        sharedActualDate,
         clubDailyHistory: Array.isArray(json?.club_daily_history) ? json.club_daily_history : [],
         clubMonthlyHistory: Array.isArray(json?.club_monthly_history) ? json.club_monthly_history : [],
       };
