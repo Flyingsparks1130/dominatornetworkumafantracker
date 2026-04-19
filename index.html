@@ -1547,7 +1547,7 @@
         return club.tag || `@${club.name}`;
       }
 
-      function buildDiscord() {
+      function getDiscordExportData() {
         function charDisplayWidth(char) {
           if (!char) return 0;
           const code = char.codePointAt(0);
@@ -1606,6 +1606,14 @@
           return ANSI_YELLOW;
         }
 
+        function getStatusColor(statusKey) {
+          const displayStatusKey = getDisplayStatusKey(statusKey);
+          if (displayStatusKey === "on-track") return "#84cc16";
+          if (displayStatusKey === "critical") return "#ef4444";
+          if (displayStatusKey === DAY1_STATUS_KEY) return "#e5e7eb";
+          return "#fbbf24";
+        }
+
         function colorizeCell(text, statusKey) {
           return `${getStatusAnsi(statusKey)}${text}${ANSI_RESET}`;
         }
@@ -1643,58 +1651,159 @@
         );
         const TABLE_WIDTH = COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH;
 
-        const headerLines = [
+        const topLines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
           `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
-          `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`,
-          "```ansi",
-          `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH (VS. PACE)", COL_MONTH)}`,
-          "─".repeat(TABLE_WIDTH)
+          `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`
         ];
 
-        const rowLines = sortedMembers.map((member) => {
+        const tableHeader = `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH (VS. PACE)", COL_MONTH)}`;
+        const divider = "─".repeat(TABLE_WIDTH);
+
+        const tableRows = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          const memberCell = colorizeCell(PL(`+ ${member.name}`, COL_MEMBER), member.plan.statusKey);
-          const dailyCell = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
-          const monthCell = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
-          return `${memberCell}${SEP}${dailyCell}${SEP}${monthCell}`;
+          const memberText = PL(`+ ${member.name}`, COL_MEMBER);
+          const dailyText = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
+          const monthText = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
+          return {
+            memberText,
+            dailyText,
+            monthText,
+            statusKey: member.plan.statusKey,
+            ansi: `${colorizeCell(memberText, member.plan.statusKey)}${SEP}${dailyText}${SEP}${monthText}`,
+            pngLine: `${memberText}${SEP}${dailyText}${SEP}${monthText}`,
+            nameColor: getStatusColor(member.plan.statusKey)
+          };
         });
 
-        rowLines.push("─".repeat(TABLE_WIDTH));
-        rowLines.push(
-          `${PL("TOTAL", COL_MEMBER)}${SEP}${P(totalDailyLabel, COL_DAILY)}${SEP}${P(totalMonthLabel, COL_MONTH)}`
-        );
+        const totalLine = `${PL("TOTAL", COL_MEMBER)}${SEP}${P(totalDailyLabel, COL_DAILY)}${SEP}${P(totalMonthLabel, COL_MONTH)}`;
+        const footerLine = `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`;
 
-        const footerLines = ["```", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
-        const limit = 3900;
-        const keptRows = [];
-        let omittedCount = 0;
+        const fullMessage = [...topLines, "```ansi", tableHeader, divider, ...tableRows.map((row) => row.ansi), divider, totalLine, "```", footerLine].join("\n");
+        const textOnlyMessage = [...topLines, "", footerLine].join("\n");
 
-        for (let i = 0; i < rowLines.length; i++) {
-          const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
-          if (candidate.length > limit) {
-            omittedCount = Math.max(0, sortedMembers.length - keptRows.length);
-            break;
-          }
-          keptRows.push(rowLines[i]);
-        }
+        return {
+          topLines,
+          tableHeader,
+          divider,
+          tableRows,
+          totalLine,
+          footerLine,
+          textOnlyMessage,
+          fullMessage
+        };
+      }
 
-        if (omittedCount > 0) {
-          const note = `… ${omittedCount} more members omitted to stay under Discord limit`;
-          while ([...headerLines, ...keptRows, note, ...footerLines].join("\n").length > limit && keptRows.length > 0) keptRows.pop();
-          keptRows.push(note);
-        }
+      function buildDiscord() {
+        return getDiscordExportData().fullMessage;
+      }
 
-        return [...headerLines, ...keptRows, ...footerLines].join("\n");
+      async function renderDiscordTablePng(scale = 2) {
+        const exportData = getDiscordExportData();
+        const lines = [exportData.tableHeader, exportData.divider, ...exportData.tableRows.map((row) => row.pngLine), exportData.divider, exportData.totalLine];
+        if (!lines.length) return null;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+
+        const fontSize = 22;
+        const lineHeight = 34;
+        const paddingX = 24;
+        const paddingY = 22;
+        const borderRadius = 16;
+        const font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+
+        ctx.font = font;
+        const measuredWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
+        const width = Math.ceil((paddingX * 2 + measuredWidth) * scale);
+        const height = Math.ceil((paddingY * 2 + (lines.length * lineHeight)) * scale);
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.scale(scale, scale);
+        ctx.font = font;
+        ctx.textBaseline = "top";
+
+        const drawRoundedRect = (x, y, w, h, r) => {
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + w - r, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+          ctx.lineTo(x + w, y + h - r);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          ctx.lineTo(x + r, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+        };
+
+        drawRoundedRect(0, 0, width / scale, height / scale, borderRadius);
+        ctx.fillStyle = "#111028";
+        ctx.fill();
+
+        ctx.strokeStyle = "#2a2540";
+        ctx.lineWidth = 1;
+        drawRoundedRect(0.5, 0.5, width / scale - 1, height / scale - 1, borderRadius);
+        ctx.stroke();
+
+        const x = paddingX;
+        let y = paddingY;
+
+        ctx.fillStyle = "#e5e7eb";
+        ctx.fillText(exportData.tableHeader, x, y);
+        y += lineHeight;
+
+        ctx.fillStyle = "#d1d5db";
+        ctx.fillText(exportData.divider, x, y);
+        y += lineHeight;
+
+        exportData.tableRows.forEach((row) => {
+          ctx.fillStyle = row.nameColor;
+          ctx.fillText(row.memberText, x, y);
+
+          const memberWidth = ctx.measureText(row.memberText).width;
+          ctx.fillStyle = "#e5e7eb";
+          ctx.fillText(` | ${row.dailyText} | ${row.monthText}`, x + memberWidth, y);
+          y += lineHeight;
+        });
+
+        ctx.fillStyle = "#d1d5db";
+        ctx.fillText(exportData.divider, x, y);
+        y += lineHeight;
+
+        ctx.fillStyle = "#e5e7eb";
+        ctx.fillText(exportData.totalLine, x, y);
+
+        return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
       async function copyDiscord() {
-        const message = buildDiscord(); let copiedWithImage = false;
-        try { const shouldIncludeGraph = view === "club" && tab === "pace" && paceContainerRef.current; let pngBlob = null; if (shouldIncludeGraph) pngBlob = await captureContainerAsPng(paceContainerRef.current, 2); if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) { await navigator.clipboard.write([new ClipboardItem({ "text/plain": new Blob([message], { type: "text/plain" }), "image/png": pngBlob })]); copiedWithImage = true; } else await navigator.clipboard.writeText(message); } catch (error) { await navigator.clipboard.writeText(message); }
-        setCopied(copiedWithImage ? "image" : "text"); setTimeout(() => setCopied(false), 2200);
+        const exportData = getDiscordExportData();
+        let copiedWithImage = false;
+        try {
+          const pngBlob = await renderDiscordTablePng(2);
+          if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
+            await navigator.clipboard.write([
+              new ClipboardItem({
+                "text/plain": new Blob([exportData.textOnlyMessage], { type: "text/plain" }),
+                "image/png": pngBlob
+              })
+            ]);
+            copiedWithImage = true;
+          } else {
+            await navigator.clipboard.writeText(exportData.fullMessage);
+          }
+        } catch (error) {
+          await navigator.clipboard.writeText(exportData.fullMessage);
+        }
+        setCopied(copiedWithImage ? "image" : "text");
+        setTimeout(() => setCopied(false), 2200);
       }
 
       function buildReminderDiscord() {
@@ -1791,7 +1900,7 @@
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
                 <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{copied ? (copied === "image" ? "✓ Copied + Graph" : "✓ Copied!") : (view === "club" && tab === "pace" ? "💬 Discord + Graph" : "💬 Discord")}</button>
+                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{copied ? (copied === "image" ? "✓ Copied + PNG" : "✓ Copied!") : "💬 Discord + PNG"}</button>
               </div>)}
             </div>
           </div>
