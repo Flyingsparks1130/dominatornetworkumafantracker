@@ -1551,15 +1551,86 @@
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
 
-        function statusIcon(statusKey) {
-          const displayStatusKey = getDisplayStatusKey(statusKey);
-          if (displayStatusKey === "on-track") return "🟢";
-          if (displayStatusKey === "critical") return "🔴";
-          if (displayStatusKey === DAY1_STATUS_KEY) return "⚪";
-          return "🟡";
+        function charDisplayWidth(char) {
+          if (!char) return 0;
+          const code = char.codePointAt(0);
+          if (code == null) return 0;
+          if (
+            (code >= 0x1100 && code <= 0x115F) ||
+            (code >= 0x2329 && code <= 0x232A) ||
+            (code >= 0x2E80 && code <= 0xA4CF) ||
+            (code >= 0xAC00 && code <= 0xD7A3) ||
+            (code >= 0xF900 && code <= 0xFAFF) ||
+            (code >= 0xFE10 && code <= 0xFE19) ||
+            (code >= 0xFE30 && code <= 0xFE6F) ||
+            (code >= 0xFF00 && code <= 0xFF60) ||
+            (code >= 0xFFE0 && code <= 0xFFE6) ||
+            (code >= 0x1F300 && code <= 0x1FAFF)
+          ) return 2;
+          return 1;
         }
 
-        const headerLines = [
+        function getDisplayWidth(value) {
+          return Array.from(String(value ?? "")).reduce((sum, ch) => sum + charDisplayWidth(ch), 0);
+        }
+
+        function truncateDisplayWidth(value, maxWidth) {
+          const chars = Array.from(String(value ?? ""));
+          let out = "";
+          let width = 0;
+          for (const ch of chars) {
+            const nextWidth = width + charDisplayWidth(ch);
+            if (nextWidth > maxWidth) break;
+            out += ch;
+            width = nextWidth;
+          }
+          return out;
+        }
+
+        function padEndDisplay(value, width) {
+          const truncated = truncateDisplayWidth(value, width);
+          const pad = Math.max(0, width - getDisplayWidth(truncated));
+          return truncated + " ".repeat(pad);
+        }
+
+        function padStartDisplay(value, width) {
+          const stringValue = String(value ?? "");
+          const pad = Math.max(0, width - getDisplayWidth(stringValue));
+          return " ".repeat(pad) + stringValue;
+        }
+
+        function displayStatusKey(statusKey) {
+          const key = getDisplayStatusKey(statusKey);
+          return key === DAY1_STATUS_KEY ? "behind" : key;
+        }
+
+        const groups = {
+          "on-track": [],
+          "behind": [],
+          "critical": []
+        };
+
+        sortedMembers.forEach((member) => {
+          const key = displayStatusKey(member.plan.statusKey);
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(member);
+        });
+
+        const allMonthTexts = sortedMembers.map((member) => {
+          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
+          return `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
+        });
+        const allDailyTexts = sortedMembers.map((member) => fmtSigned(member.dailyGain ?? 0));
+
+        const COL_MEMBER = Math.max(getDisplayWidth("MEMBER"), ...sortedMembers.map((member) => getDisplayWidth(member.name))) + 1;
+        const COL_DAILY = Math.max(getDisplayWidth("DAILY"), ...allDailyTexts.map(getDisplayWidth));
+        const headerMonth = "MONTH (VS. PACE)";
+        const COL_MONTH = Math.max(getDisplayWidth(headerMonth), ...allMonthTexts.map(getDisplayWidth));
+        const SEP = " | ";
+        const tableHeader = `${padEndDisplay("MEMBER", COL_MEMBER)}${SEP}${padStartDisplay("DAILY", COL_DAILY)}${SEP}${headerMonth}`;
+        const divider = "─".repeat(COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH);
+
+        const lines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
           `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
@@ -1570,35 +1641,64 @@
           ""
         ];
 
-        const rowLines = sortedMembers.map((member) => {
-          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          return `${statusIcon(member.plan.statusKey)} ${member.name} · ${fmtSigned(member.dailyGain ?? 0)} · ${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
-        });
+        const addGroup = (icon, label, members) => {
+          if (!members.length) return;
+          lines.push(`**${icon} ${label} (${members.length})**`);
+          lines.push("```");
+          lines.push(tableHeader);
+          lines.push(divider);
+          members.forEach((member) => {
+            const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
+            const monthText = `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
+            lines.push(`${padEndDisplay(member.name, COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${monthText}`);
+          });
+          lines.push("```", "");
+        };
 
-        rowLines.push("");
-        rowLines.push(`TOTAL · ${fmtSigned(totalDaily)} · ${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
+        addGroup("🟢", "On Track", groups["on-track"]);
+        addGroup("🟡", "Behind", groups["behind"]);
+        addGroup("🔴", "Critical", groups["critical"]);
 
-        const footerLines = ["", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
-        const limit = 3900;
-        const keptRows = [];
-        let omittedCount = 0;
+        lines.push("```");
+        lines.push(tableHeader);
+        lines.push(divider);
+        lines.push(`${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
+        lines.push("```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`);
 
-        for (let i = 0; i < rowLines.length; i++) {
-          const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
-          if (candidate.length > limit) {
-            omittedCount = Math.max(0, sortedMembers.length - keptRows.filter((line) => line && !line.startsWith("TOTAL")).length);
-            break;
+        let message = lines.join("\n");
+        if (message.length <= 3900) return message;
+
+        const trimmed = lines.slice(0, 8);
+        let includedMembers = 0;
+
+        const groupOrder = [
+          ["🟢", "On Track", groups["on-track"]],
+          ["🟡", "Behind", groups["behind"]],
+          ["🔴", "Critical", groups["critical"]]
+        ];
+
+        for (const [icon, label, members] of groupOrder) {
+          if (!members.length) continue;
+          const block = [`**${icon} ${label} (${members.length})**`, "```", tableHeader, divider];
+          for (const member of members) {
+            const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
+            const monthText = `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
+            const row = `${padEndDisplay(member.name, COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${monthText}`;
+            const candidate = [...trimmed, ...block, row, "```", "", "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
+            if (candidate.length > 3900) break;
+            block.push(row);
+            includedMembers += 1;
           }
-          keptRows.push(rowLines[i]);
+          block.push("```", "");
+          const candidateBlock = [...trimmed, ...block, "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
+          if (candidateBlock.length > 3900) break;
+          trimmed.push(...block);
         }
 
-        if (omittedCount > 0) {
-          const note = `… ${omittedCount} more members omitted to stay under Discord limit`;
-          while ([...headerLines, ...keptRows, note, ...footerLines].join("\n").length > limit && keptRows.length > 0) keptRows.pop();
-          keptRows.push(note);
-        }
-
-        return [...headerLines, ...keptRows, ...footerLines].join("\n");
+        const omitted = Math.max(0, sortedMembers.length - includedMembers);
+        if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`, "");
+        trimmed.push("```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`);
+        return trimmed.join("\n");
       }
 
       async function copyDiscord() {
