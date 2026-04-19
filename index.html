@@ -1653,9 +1653,10 @@
 
         const topLines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
-          `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
+          `📈 Club Month: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
           `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`
         ];
@@ -1685,8 +1686,11 @@
         const fullMessage = [...topLines, "```ansi", tableHeader, divider, ...tableRows.map((row) => row.ansi), divider, totalLine, "```", footerLine].join("\n");
         const textOnlyMessage = [...topLines, "", footerLine].join("\n");
 
+        const pngTopLines = topLines.map((line) => line.replace(/\*\*/g, ""));
+
         return {
           topLines,
+          pngTopLines,
           tableHeader,
           divider,
           tableRows,
@@ -1703,7 +1707,7 @@
 
       async function renderDiscordTablePng(scale = 2) {
         const exportData = getDiscordExportData();
-        const lines = [exportData.tableHeader, exportData.divider, ...exportData.tableRows.map((row) => row.pngLine), exportData.divider, exportData.totalLine];
+        const lines = [...exportData.pngTopLines, "", exportData.tableHeader, exportData.divider, ...exportData.tableRows.map((row) => row.pngLine), exportData.divider, exportData.totalLine];
         if (!lines.length) return null;
 
         const canvas = document.createElement("canvas");
@@ -1754,6 +1758,14 @@
 
         const x = paddingX;
         let y = paddingY;
+
+        ctx.fillStyle = "#e5e7eb";
+        exportData.pngTopLines.forEach((line) => {
+          ctx.fillText(line, x, y);
+          y += lineHeight;
+        });
+
+        y += lineHeight * 0.5;
 
         ctx.fillStyle = "#e5e7eb";
         ctx.fillText(exportData.tableHeader, x, y);
