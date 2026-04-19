@@ -1132,9 +1132,9 @@
 
     function CircleTracker() {
       const [view, setView] = useState("home");
-      const [dataSource, setDataSource] = useState(DATA_SOURCES.UMA);
+      const [dataSource, setDataSource] = useState(DATA_SOURCES.CHRONOGENESIS);
       const [activeIdx, setActiveIdx] = useState(0);
-      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date(), DATA_SOURCES.UMA));
+      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date(), DATA_SOURCES.CHRONOGENESIS));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
