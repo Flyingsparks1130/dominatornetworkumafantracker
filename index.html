@@ -1686,7 +1686,9 @@
         const fullMessage = [...topLines, "```ansi", tableHeader, divider, ...tableRows.map((row) => row.ansi), divider, totalLine, "```", footerLine].join("\n");
         const textOnlyMessage = [...topLines, "", footerLine].join("\n");
 
-        const pngTopLines = topLines.map((line) => line.replace(/\*\*/g, ""));
+        const pngTopLines = topLines
+          .filter((line) => line !== getDiscordPingLabel())
+          .map((line) => line.replace(/\*\*/g, ""));
 
         return {
           topLines,
