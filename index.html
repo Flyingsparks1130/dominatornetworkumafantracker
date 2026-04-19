@@ -1548,127 +1548,37 @@
       }
 
       function buildDiscord() {
-        function charDisplayWidth(char) {
-          if (!char) return 0;
-          const code = char.codePointAt(0);
-          if (code == null) return 0;
-          if (
-            (code >= 0x1100 && code <= 0x115F) ||
-            (code >= 0x2329 && code <= 0x232A) ||
-            (code >= 0x2E80 && code <= 0xA4CF) ||
-            (code >= 0xAC00 && code <= 0xD7A3) ||
-            (code >= 0xF900 && code <= 0xFAFF) ||
-            (code >= 0xFE10 && code <= 0xFE19) ||
-            (code >= 0xFE30 && code <= 0xFE6F) ||
-            (code >= 0xFF00 && code <= 0xFF60) ||
-            (code >= 0xFFE0 && code <= 0xFFE6) ||
-            (code >= 0x1F300 && code <= 0x1FAFF)
-          ) return 2;
-          return 1;
-        }
-        function getDisplayWidth(value) {
-          return Array.from(String(value ?? "")).reduce((sum, ch) => sum + charDisplayWidth(ch), 0);
-        }
-        function truncateDisplayWidth(value, maxWidth) {
-          const chars = Array.from(String(value ?? ""));
-          let out = "";
-          let width = 0;
-          for (const ch of chars) {
-            const nextWidth = width + charDisplayWidth(ch);
-            if (nextWidth > maxWidth) break;
-            out += ch;
-            width = nextWidth;
-          }
-          return out;
-        }
-        function padEndDisplay(value, width) {
-          const truncated = truncateDisplayWidth(value, width);
-          const pad = Math.max(0, width - getDisplayWidth(truncated));
-          return truncated + " ".repeat(pad);
-        }
-        function padStartDisplay(value, width) {
-          const stringValue = String(value ?? "");
-          const pad = Math.max(0, width - getDisplayWidth(stringValue));
-          return " ".repeat(pad) + stringValue;
-        }
-
-        const ANSI_RESET = "\u001b[0m";
-        const ANSI_GREEN = "\u001b[0;32m";
-        const ANSI_YELLOW = "\u001b[0;33m";
-        const ANSI_RED = "\u001b[0;31m";
-        const ANSI_WHITE = "\u001b[0;37m";
-
-        function getStatusAnsi(statusKey) {
-          const displayStatusKey = getDisplayStatusKey(statusKey);
-          if (displayStatusKey === "on-track") return ANSI_GREEN;
-          if (displayStatusKey === "critical") return ANSI_RED;
-          if (displayStatusKey === DAY1_STATUS_KEY) return ANSI_WHITE;
-          return ANSI_YELLOW;
-        }
-
-        function colorizeCell(text, statusKey) {
-          return `${getStatusAnsi(statusKey)}${text}${ANSI_RESET}`;
-        }
-
-        const PL = padEndDisplay;
-        const P = padStartDisplay;
-        const SEP = " | ";
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
 
-        const memberLabels = sortedMembers.map((member) => `+ ${member.name}`);
-        const dailyLabels = sortedMembers.map((member) => fmtSigned(member.dailyGain ?? 0));
-        const monthLabels = sortedMembers.map((member) => {
-          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          return `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
-        });
-
-        const totalDailyLabel = fmtSigned(totalDaily);
-        const totalMonthLabel = `${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`;
-
-        const COL_MEMBER = Math.max(
-          getDisplayWidth("MEMBER"),
-          getDisplayWidth("TOTAL"),
-          ...memberLabels.map(getDisplayWidth)
-        ) + 4;
-        const COL_DAILY = Math.max(
-          getDisplayWidth("DAILY"),
-          getDisplayWidth(totalDailyLabel),
-          ...dailyLabels.map(getDisplayWidth)
-        );
-        const COL_MONTH = Math.max(
-          getDisplayWidth("MONTH (VS. PACE)"),
-          getDisplayWidth(totalMonthLabel),
-          ...monthLabels.map(getDisplayWidth)
-        );
-        const TABLE_WIDTH = COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH;
+        function statusIcon(statusKey) {
+          const displayStatusKey = getDisplayStatusKey(statusKey);
+          if (displayStatusKey === "on-track") return "🟢";
+          if (displayStatusKey === "critical") return "🔴";
+          if (displayStatusKey === DAY1_STATUS_KEY) return "⚪";
+          return "🟡";
+        }
 
         const headerLines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
           `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
           `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`,
-          "```ansi",
-          `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH (VS. PACE)", COL_MONTH)}`,
-          "─".repeat(TABLE_WIDTH)
+          ""
         ];
 
         const rowLines = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          const memberCell = colorizeCell(PL(`+ ${member.name}`, COL_MEMBER), member.plan.statusKey);
-          const dailyCell = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
-          const monthCell = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
-          return `${memberCell}${SEP}${dailyCell}${SEP}${monthCell}`;
+          return `${statusIcon(member.plan.statusKey)} ${member.name} | ${fmtSigned(member.dailyGain ?? 0)} | ${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
         });
 
-        rowLines.push("─".repeat(TABLE_WIDTH));
-        rowLines.push(
-          `${PL("TOTAL", COL_MEMBER)}${SEP}${P(totalDailyLabel, COL_DAILY)}${SEP}${P(totalMonthLabel, COL_MONTH)}`
-        );
+        rowLines.push("");
+        rowLines.push(`TOTAL | ${fmtSigned(totalDaily)} | ${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
 
-        const footerLines = ["```", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
+        const footerLines = ["", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
         const limit = 3900;
         const keptRows = [];
         let omittedCount = 0;
@@ -1676,7 +1586,7 @@
         for (let i = 0; i < rowLines.length; i++) {
           const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
           if (candidate.length > limit) {
-            omittedCount = Math.max(0, sortedMembers.length - keptRows.length);
+            omittedCount = Math.max(0, sortedMembers.length - Math.max(0, keptRows.filter((line) => line && !line.startsWith("TOTAL")).length));
             break;
           }
           keptRows.push(rowLines[i]);
