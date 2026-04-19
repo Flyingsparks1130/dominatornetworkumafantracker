@@ -1593,6 +1593,13 @@
           return truncated + " ".repeat(pad);
         }
 
+        function ellipsizeDisplay(value, width) {
+          const stringValue = String(value ?? "");
+          if (getDisplayWidth(stringValue) <= width) return stringValue;
+          if (width <= 1) return "…";
+          return truncateDisplayWidth(stringValue, width - 1) + "…";
+        }
+
         function padStartDisplay(value, width) {
           const stringValue = String(value ?? "");
           const pad = Math.max(0, width - getDisplayWidth(stringValue));
@@ -1616,19 +1623,18 @@
           groups[key].push(member);
         });
 
-        const allMonthTexts = sortedMembers.map((member) => {
-          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          return `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
-        });
         const allDailyTexts = sortedMembers.map((member) => fmtSigned(member.dailyGain ?? 0));
+        const allMonthTexts = sortedMembers.map((member) => fmtSigned(member.monthlyGain ?? 0));
+        const allPaceTexts = sortedMembers.map((member) => hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—");
 
-        const COL_MEMBER = Math.max(getDisplayWidth("MEMBER"), ...sortedMembers.map((member) => getDisplayWidth(member.name))) + 1;
-        const COL_DAILY = Math.max(getDisplayWidth("DAILY"), ...allDailyTexts.map(getDisplayWidth));
-        const headerMonth = "MONTH (VS. PACE)";
-        const COL_MONTH = Math.max(getDisplayWidth(headerMonth), ...allMonthTexts.map(getDisplayWidth));
+        const MAX_MEMBER_COL = 12;
+        const COL_MEMBER = Math.min(MAX_MEMBER_COL, Math.max(getDisplayWidth("MEMBER"), ...sortedMembers.map((member) => getDisplayWidth(member.name))) + 1);
+        const COL_DAILY = Math.max(getDisplayWidth("DLY"), ...allDailyTexts.map(getDisplayWidth));
+        const COL_MONTH = Math.max(getDisplayWidth("MONTH"), ...allMonthTexts.map(getDisplayWidth));
+        const COL_PACE = Math.max(getDisplayWidth("PACE"), ...allPaceTexts.map(getDisplayWidth));
         const SEP = " | ";
-        const tableHeader = `${padEndDisplay("MEMBER", COL_MEMBER)}${SEP}${padStartDisplay("DAILY", COL_DAILY)}${SEP}${headerMonth}`;
-        const divider = "─".repeat(COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH);
+        const tableHeader = `${padEndDisplay("MEMBER", COL_MEMBER)}${SEP}${padStartDisplay("DLY", COL_DAILY)}${SEP}${padStartDisplay("MONTH", COL_MONTH)}${SEP}${padStartDisplay("PACE", COL_PACE)}`;
+        const divider = "─".repeat(COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH + SEP.length + COL_PACE);
 
         const lines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
@@ -1648,9 +1654,9 @@
           lines.push(tableHeader);
           lines.push(divider);
           members.forEach((member) => {
-            const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-            const monthText = `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
-            lines.push(`${padEndDisplay(member.name, COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${monthText}`);
+            lines.push(
+              `${padEndDisplay(ellipsizeDisplay(member.name, COL_MEMBER), COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(member.monthlyGain ?? 0), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—", COL_PACE)}`
+            );
           });
           lines.push("```", "");
         };
@@ -1662,7 +1668,7 @@
         lines.push("```");
         lines.push(tableHeader);
         lines.push(divider);
-        lines.push(`${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
+        lines.push(`${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(totalMonthly), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", COL_PACE)}`);
         lines.push("```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`);
 
         let message = lines.join("\n");
@@ -1670,7 +1676,6 @@
 
         const trimmed = lines.slice(0, 8);
         let includedMembers = 0;
-
         const groupOrder = [
           ["🟢", "On Track", groups["on-track"]],
           ["🟡", "Behind", groups["behind"]],
@@ -1681,23 +1686,21 @@
           if (!members.length) continue;
           const block = [`**${icon} ${label} (${members.length})**`, "```", tableHeader, divider];
           for (const member of members) {
-            const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-            const monthText = `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
-            const row = `${padEndDisplay(member.name, COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${monthText}`;
-            const candidate = [...trimmed, ...block, row, "```", "", "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
+            const row = `${padEndDisplay(ellipsizeDisplay(member.name, COL_MEMBER), COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(member.monthlyGain ?? 0), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—", COL_PACE)}`;
+            const candidate = [...trimmed, ...block, row, "```", "", "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(totalMonthly), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", COL_PACE)}`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
             if (candidate.length > 3900) break;
             block.push(row);
             includedMembers += 1;
           }
           block.push("```", "");
-          const candidateBlock = [...trimmed, ...block, "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
+          const candidateBlock = [...trimmed, ...block, "```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(totalMonthly), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", COL_PACE)}`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`].join("\n");
           if (candidateBlock.length > 3900) break;
           trimmed.push(...block);
         }
 
         const omitted = Math.max(0, sortedMembers.length - includedMembers);
         if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`, "");
-        trimmed.push("```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`);
+        trimmed.push("```", tableHeader, divider, `${padEndDisplay("TOTAL", COL_MEMBER)}${SEP}${padStartDisplay(fmtSigned(totalDaily), COL_DAILY)}${SEP}${padStartDisplay(fmtSigned(totalMonthly), COL_MONTH)}${SEP}${padStartDisplay(hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", COL_PACE)}`, "```", "", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`);
         return trimmed.join("\n");
       }
 
