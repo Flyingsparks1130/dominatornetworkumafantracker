@@ -1543,6 +1543,10 @@
         return dataSource === DATA_SOURCES.CHRONOGENESIS ? "Chronogenesis" : "uma.moe";
       }
 
+      function getDiscordPingLabel() {
+        return club.tag || `@${club.name}`;
+      }
+
       function buildDiscord() {
         function charDisplayWidth(char) {
           if (!char) return 0;
@@ -1588,50 +1592,102 @@
           return " ".repeat(pad) + stringValue;
         }
 
+        const ANSI_RESET = "\u001b[0m";
+        const ANSI_GREEN = "\u001b[0;32m";
+        const ANSI_YELLOW = "\u001b[0;33m";
+        const ANSI_RED = "\u001b[0;31m";
+        const ANSI_WHITE = "\u001b[0;37m";
+
+        function getStatusAnsi(statusKey) {
+          const displayStatusKey = getDisplayStatusKey(statusKey);
+          if (displayStatusKey === "on-track") return ANSI_GREEN;
+          if (displayStatusKey === "critical") return ANSI_RED;
+          if (displayStatusKey === DAY1_STATUS_KEY) return ANSI_WHITE;
+          return ANSI_YELLOW;
+        }
+
+        function colorizeCell(text, statusKey) {
+          return `${getStatusAnsi(statusKey)}${text}${ANSI_RESET}`;
+        }
+
         const PL = padEndDisplay;
         const P = padStartDisplay;
-        const COL_MEMBER = 24;
-        const COL_DAILY = 10;
-        const COL_MONTH_CUMULATIVE = 17;
-        const COL_VS_PACE = 11;
-        const COL_STATUS = 4;
-        const SEP = "  ";
-        const TABLE_WIDTH =
-          COL_MEMBER + SEP.length +
-          COL_DAILY + SEP.length +
-          COL_MONTH_CUMULATIVE + SEP.length +
-          COL_VS_PACE + SEP.length +
-          COL_STATUS;
-
+        const SEP = " | ";
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
-        const statusShort = (statusKey) => statusKey === "on-track" ? "✅" : statusKey === "critical" ? "❗" : "⚠️";
+
+        const memberLabels = sortedMembers.map((member) => `+ ${member.name}`);
+        const dailyLabels = sortedMembers.map((member) => fmtSigned(member.dailyGain ?? 0));
+        const monthLabels = sortedMembers.map((member) => {
+          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
+          return `${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
+        });
+
+        const totalDailyLabel = fmtSigned(totalDaily);
+        const totalMonthLabel = `${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`;
+
+        const COL_MEMBER = Math.max(
+          getDisplayWidth("MEMBER"),
+          getDisplayWidth("TOTAL"),
+          ...memberLabels.map(getDisplayWidth)
+        ) + 4;
+        const COL_DAILY = Math.max(
+          getDisplayWidth("DAILY"),
+          getDisplayWidth(totalDailyLabel),
+          ...dailyLabels.map(getDisplayWidth)
+        );
+        const COL_MONTH = Math.max(
+          getDisplayWidth("MONTH (VS. PACE)"),
+          getDisplayWidth(totalMonthLabel),
+          ...monthLabels.map(getDisplayWidth)
+        );
+        const TABLE_WIDTH = COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH;
+
         const headerLines = [
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
           `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
-          `✅ On Track: ${statusCounts["on-track"]} · ⚠️ Behind: ${statusCounts["behind"]} · ❗ Critical: ${statusCounts["critical"]}`,
-          "━".repeat(TABLE_WIDTH),
-          "```",
-          `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH", COL_MONTH_CUMULATIVE)}${SEP}${P("VS. PACE", COL_VS_PACE)}${SEP}${P("ST", COL_STATUS)}`,
+          `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`,
+          "```ansi",
+          `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH (VS. PACE)", COL_MONTH)}`,
           "─".repeat(TABLE_WIDTH)
         ];
 
-        const rowLines = sortedMembers.map((member) =>
-          `${PL(member.name, COL_MEMBER)}${SEP}${P(fmtSigned(member.dailyGain ?? 0), COL_DAILY)}${SEP}${P(fmtSigned(member.monthlyGain ?? 0), COL_MONTH_CUMULATIVE)}${SEP}${P(fmtSigned(member.plan.delta ?? 0), COL_VS_PACE)}${SEP}${P(statusShort(member.plan.statusKey), COL_STATUS)}`
-        );
+        const rowLines = sortedMembers.map((member) => {
+          const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
+          const memberCell = colorizeCell(PL(`+ ${member.name}`, COL_MEMBER), member.plan.statusKey);
+          const dailyCell = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
+          const monthCell = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
+          return `${memberCell}${SEP}${dailyCell}${SEP}${monthCell}`;
+        });
 
         rowLines.push("─".repeat(TABLE_WIDTH));
         rowLines.push(
-          `${PL("TOTAL", COL_MEMBER)}${SEP}${P(fmtSigned(totalDaily), COL_DAILY)}${SEP}${P(fmtSigned(totalMonthly), COL_MONTH_CUMULATIVE)}${SEP}${P(fmtSigned(clubWeeklyDelta), COL_VS_PACE)}${SEP}${P("—", COL_STATUS)}`
+          `${PL("TOTAL", COL_MEMBER)}${SEP}${P(totalDailyLabel, COL_DAILY)}${SEP}${P(totalMonthLabel, COL_MONTH)}`
         );
 
-        const footerLines = ["```", `> 🤖 *Dominator Network Tracker · ${club.officer}*`];
-        const limit = 3900; const keptRows = []; let omittedCount = 0;
-        for (let i = 0; i < rowLines.length; i++) { const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n"); if (candidate.length > limit) { omittedCount = Math.max(0, sortedMembers.length - keptRows.length); break; } keptRows.push(rowLines[i]); }
-        if (omittedCount > 0) { const note = `… ${omittedCount} more members omitted to stay under Discord limit`; while ([...headerLines, ...keptRows, note, ...footerLines].join("\n").length > limit && keptRows.length > 0) keptRows.pop(); keptRows.push(note); }
+        const footerLines = ["```", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
+        const limit = 3900;
+        const keptRows = [];
+        let omittedCount = 0;
+
+        for (let i = 0; i < rowLines.length; i++) {
+          const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
+          if (candidate.length > limit) {
+            omittedCount = Math.max(0, sortedMembers.length - keptRows.length);
+            break;
+          }
+          keptRows.push(rowLines[i]);
+        }
+
+        if (omittedCount > 0) {
+          const note = `… ${omittedCount} more members omitted to stay under Discord limit`;
+          while ([...headerLines, ...keptRows, note, ...footerLines].join("\n").length > limit && keptRows.length > 0) keptRows.pop();
+          keptRows.push(note);
+        }
+
         return [...headerLines, ...keptRows, ...footerLines].join("\n");
       }
 
@@ -1647,7 +1703,7 @@
         const lines = [`🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
         if (!underPlanMembers.length) { lines.push("✅ Everyone is currently on track."); return lines.join("\n"); }
         underPlanMembers.forEach((member) => { const meta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; lines.push(`${meta.icon} **${member.name}** — ${deltaText(member.plan.delta)} vs plan · ${fmt(member.fansNeededForPlan)} still needed this month`); });
-        const footer = `\n> 🤖 *Dominator Network Tracker · ${club.officer}*`; let message = lines.join("\n") + footer;
+        const footer = `\n> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`; let message = lines.join("\n") + footer;
         if (message.length > 3900) { const trimmed = []; for (const line of lines) { const candidate = [...trimmed, line].join("\n") + footer; if (candidate.length > 3900) break; trimmed.push(line); } const omitted = Math.max(0, underPlanMembers.length - Math.max(0, trimmed.length - 3)); if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`); message = trimmed.join("\n") + footer; }
         return message;
       }
@@ -1662,7 +1718,7 @@
         const lines = [`📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
         if (improved.length > 0) { lines.push(`📈 **Improved** (${improved.length}):`); improved.slice(0, 10).forEach((c) => lines.push(`  ↑ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`); lines.push(""); }
         if (declined.length > 0) { lines.push(`📉 **Declined** (${declined.length}):`); declined.slice(0, 10).forEach((c) => lines.push(`  ↓ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`); }
-        lines.push("", `> 🤖 *Dominator Network Tracker · ${club.officer}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
+        lines.push("", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
       }
 
       async function copyWeeklyDiscord() { await navigator.clipboard.writeText(buildWeeklyComparisonDiscord()); setWeeklyCopied(true); setTimeout(() => setWeeklyCopied(false), 2200); }
