@@ -1627,7 +1627,7 @@
         const allMonthTexts = sortedMembers.map((member) => fmtSigned(member.monthlyGain ?? 0));
         const allPaceTexts = sortedMembers.map((member) => hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—");
 
-        const MAX_MEMBER_COL = 12;
+        const MAX_MEMBER_COL = 11;
         const COL_MEMBER = Math.min(MAX_MEMBER_COL, Math.max(getDisplayWidth("MEMBER"), ...sortedMembers.map((member) => getDisplayWidth(member.name))) + 1);
         const COL_DAILY = Math.max(getDisplayWidth("DLY"), ...allDailyTexts.map(getDisplayWidth));
         const COL_MONTH = Math.max(getDisplayWidth("MONTH"), ...allMonthTexts.map(getDisplayWidth));
