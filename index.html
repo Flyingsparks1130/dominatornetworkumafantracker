@@ -1799,24 +1799,69 @@
 
       async function copyDiscord() {
         const exportData = getDiscordExportData();
-        let copiedWithImage = false;
+        let result = "text";
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
         try {
           const pngBlob = await renderDiscordTablePng(2);
-          if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
+
+          if (isIOS && pngBlob && navigator.share) {
+            const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+            const shareData = { files: [file] };
+            if (!navigator.canShare || navigator.canShare(shareData)) {
+              await navigator.share(shareData);
+              result = "shared";
+            } else if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(exportData.fullMessage);
+              result = "text";
+            }
+          } else if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
             await navigator.clipboard.write([
               new ClipboardItem({
                 "text/plain": new Blob([exportData.textOnlyMessage], { type: "text/plain" }),
                 "image/png": pngBlob
               })
             ]);
-            copiedWithImage = true;
-          } else {
+            result = "image";
+          } else if (pngBlob && navigator.share) {
+            const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+            const shareData = { text: exportData.textOnlyMessage, files: [file] };
+            if (!navigator.canShare || navigator.canShare(shareData)) {
+              await navigator.share(shareData);
+              result = "shared";
+            } else if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(exportData.fullMessage);
+              result = "text";
+            }
+          } else if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(exportData.fullMessage);
+            result = "text";
           }
         } catch (error) {
-          await navigator.clipboard.writeText(exportData.fullMessage);
+          try {
+            const pngBlob = await renderDiscordTablePng(2);
+            if (pngBlob && navigator.share) {
+              const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+              const shareData = isIOS ? { files: [file] } : { text: exportData.textOnlyMessage, files: [file] };
+              if (!navigator.canShare || navigator.canShare(shareData)) {
+                await navigator.share(shareData);
+                result = "shared";
+              } else if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(exportData.fullMessage);
+                result = "text";
+              }
+            } else if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(exportData.fullMessage);
+              result = "text";
+            }
+          } catch (fallbackError) {
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(exportData.fullMessage);
+            }
+            result = "text";
+          }
         }
-        setCopied(copiedWithImage ? "image" : "text");
+        setCopied(result);
         setTimeout(() => setCopied(false), 2200);
       }
 
@@ -1914,7 +1959,7 @@
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
                 <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{copied ? (copied === "image" ? "✓ Copied + PNG" : "✓ Copied!") : "💬 Discord + PNG"}</button>
+                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports ? actionButtonDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports} title={resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : ""}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
               </div>)}
             </div>
           </div>
