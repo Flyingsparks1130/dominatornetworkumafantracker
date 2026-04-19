@@ -1624,7 +1624,7 @@
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const sortedMembers = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
 
-        const memberLabels = sortedMembers.map((member) => `+ ${member.name}`);
+        const memberLabels = sortedMembers.map((member) => `${member.name}`);
         const dailyLabels = sortedMembers.map((member) => fmtSigned(member.dailyGain ?? 0));
         const monthLabels = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
@@ -1666,7 +1666,7 @@
 
         const tableRows = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          const memberText = PL(`+ ${member.name}`, COL_MEMBER);
+          const memberText = PL(`${member.name}`, COL_MEMBER);
           const dailyText = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
           const monthText = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
           return {
