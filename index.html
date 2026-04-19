@@ -1564,7 +1564,7 @@
           `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
-          `📈 Club Month Cumulative: ${fmtSigned(totalMonthly)}`,
+          `📈 Club Month: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
           `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`,
           ""
@@ -1572,11 +1572,11 @@
 
         const rowLines = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
-          return `${statusIcon(member.plan.statusKey)} ${member.name} | ${fmtSigned(member.dailyGain ?? 0)} | ${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
+          return `${statusIcon(member.plan.statusKey)} ${member.name} · ${fmtSigned(member.dailyGain ?? 0)} · ${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`;
         });
 
         rowLines.push("");
-        rowLines.push(`TOTAL | ${fmtSigned(totalDaily)} | ${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
+        rowLines.push(`TOTAL · ${fmtSigned(totalDaily)} · ${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`);
 
         const footerLines = ["", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`];
         const limit = 3900;
@@ -1586,7 +1586,7 @@
         for (let i = 0; i < rowLines.length; i++) {
           const candidate = [...headerLines, ...keptRows, rowLines[i], ...footerLines].join("\n");
           if (candidate.length > limit) {
-            omittedCount = Math.max(0, sortedMembers.length - Math.max(0, keptRows.filter((line) => line && !line.startsWith("TOTAL")).length));
+            omittedCount = Math.max(0, sortedMembers.length - keptRows.filter((line) => line && !line.startsWith("TOTAL")).length);
             break;
           }
           keptRows.push(rowLines[i]);
