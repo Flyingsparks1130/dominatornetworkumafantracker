@@ -3,7 +3,7 @@ name: Update Chronogenesis Data
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 10 * * *"
+    - cron: "15 09 * * *"
 
 permissions:
   contents: write
