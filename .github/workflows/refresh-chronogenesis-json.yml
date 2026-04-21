@@ -2,11 +2,13 @@ name: Update Chronogenesis Data
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "15 09 * * *"
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-chronogenesis
+  cancel-in-progress: false
 
 jobs:
   update-chronogenesis:
