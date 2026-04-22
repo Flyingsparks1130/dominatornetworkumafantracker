@@ -582,11 +582,20 @@
       if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
       if (Number.isNaN(parsed.getTime())) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
-      const isChronogenesis = cdata.sourceType === DATA_SOURCES.CHRONOGENESIS;
-      const freshLabel = isChronogenesis ? "Updated" : (cdata.refreshedAt ? "Refreshed" : "Source updated");
-      const staleLabel = isChronogenesis ? "Last updated" : (cdata.refreshedAt ? "Last refresh" : "Last source update");
-      if (isSameCalendarDay(parsed, now)) return { label: "✅ JSON Loaded", color: "#34d399", sub: `${freshLabel} ${parsed.toLocaleString()}` };
-      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `${staleLabel} ${parsed.toLocaleString()}` };
+
+      const statusTimeZone = REFRESH_SCHEDULES[DATA_SOURCES.CHRONOGENESIS].timeZone;
+      const nowParts = getTimeZoneParts(now, statusTimeZone);
+      const parsedParts = getTimeZoneParts(parsed, statusTimeZone);
+      const nowDateKey = `${nowParts.year}-${String(nowParts.month).padStart(2, "0")}-${String(nowParts.day).padStart(2, "0")}`;
+      const parsedDateKey = `${parsedParts.year}-${String(parsedParts.month).padStart(2, "0")}-${String(parsedParts.day).padStart(2, "0")}`;
+      const hasUpdatedToday = parsedDateKey === nowDateKey;
+      const isPastDailyDeadline = (nowParts.hour > 17) || (nowParts.hour === 17 && nowParts.minute >= 0);
+
+      if (hasUpdatedToday || !isPastDailyDeadline) {
+        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${parsed.toLocaleString()} · deadline 5:00 PM UTC+7` };
+      }
+
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${parsed.toLocaleString()} · missing today’s 5:00 PM UTC+7 update` };
     }
 
     function getPodiumStyle(index) {
