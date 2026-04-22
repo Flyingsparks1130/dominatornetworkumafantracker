@@ -1825,13 +1825,100 @@
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
-      async function exportDiscordPayload(exportData, filename = "circle-report.png") {
+      async function renderDiscordMessagePng(message, scale = 2) {
+        if (!message) return null;
+        const rawLines = String(message).split("\n");
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+
+        const fontSize = 22;
+        const lineHeight = 34;
+        const paddingX = 24;
+        const paddingY = 22;
+        const borderRadius = 16;
+        const maxWidth = 1080;
+        const maxTextWidth = maxWidth - (paddingX * 2);
+        const font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+
+        ctx.font = font;
+        const wrappedLines = [];
+        rawLines.forEach((rawLine) => {
+          if (!rawLine) {
+            wrappedLines.push("");
+            return;
+          }
+          let current = "";
+          rawLine.split(" ").forEach((word) => {
+            const candidate = current ? `${current} ${word}` : word;
+            if (!current || ctx.measureText(candidate).width <= maxTextWidth) {
+              current = candidate;
+            } else {
+              wrappedLines.push(current);
+              current = word;
+            }
+          });
+          wrappedLines.push(current);
+        });
+
+        const measuredWidth = Math.max(...wrappedLines.map((line) => ctx.measureText(line || " ").width), 0);
+        const width = Math.ceil((paddingX * 2 + measuredWidth) * scale);
+        const height = Math.ceil((paddingY * 2 + (wrappedLines.length * lineHeight)) * scale);
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.scale(scale, scale);
+        ctx.font = font;
+        ctx.textBaseline = "top";
+
+        const drawRoundedRect = (x, y, w, h, r) => {
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + w - r, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+          ctx.lineTo(x + w, y + h - r);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          ctx.lineTo(x + r, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+        };
+
+        drawRoundedRect(0, 0, width / scale, height / scale, borderRadius);
+        ctx.fillStyle = "#111028";
+        ctx.fill();
+
+        ctx.strokeStyle = "#2a2540";
+        ctx.lineWidth = 1;
+        drawRoundedRect(0.5, 0.5, width / scale - 1, height / scale - 1, borderRadius);
+        ctx.stroke();
+
+        const x = paddingX;
+        let y = paddingY;
+
+        wrappedLines.forEach((line) => {
+          if (line.startsWith("❗")) ctx.fillStyle = "#f87171";
+          else if (line.startsWith("⚠️")) ctx.fillStyle = "#fbbf24";
+          else if (line.startsWith("✅")) ctx.fillStyle = "#34d399";
+          else if (line.startsWith("> ")) ctx.fillStyle = "#9ca3af";
+          else ctx.fillStyle = "#e5e7eb";
+          ctx.fillText(line, x, y);
+          y += lineHeight;
+        });
+
+        return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+
+      async function exportDiscordPayload(exportData, filename = "circle-report.png", pngRenderer = () => renderDiscordTablePng(2)) {
         if (!isDiscordExportsEnabled) return false;
         let result = "text";
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
         try {
-          const pngBlob = await renderDiscordTablePng(2);
+          const pngBlob = await pngRenderer();
 
           if (isIOS && pngBlob && navigator.share) {
             const file = new File([pngBlob], filename, { type: "image/png" });
@@ -1867,7 +1954,7 @@
           }
         } catch (error) {
           try {
-            const pngBlob = await renderDiscordTablePng(2);
+            const pngBlob = await pngRenderer();
             if (pngBlob && navigator.share) {
               const file = new File([pngBlob], filename, { type: "image/png" });
               const shareData = isIOS ? { files: [file] } : { text: exportData.textOnlyMessage, files: [file] };
@@ -1894,7 +1981,7 @@
 
       async function copyDiscord() {
         const exportData = getDiscordExportData();
-        const result = await exportDiscordPayload(exportData, "circle-report.png");
+        const result = await exportDiscordPayload(exportData, "circle-report.png", () => renderDiscordTablePng(2));
         if (!result) return;
         setCopied(result);
         setTimeout(() => setCopied(false), 2200);
@@ -1932,7 +2019,11 @@
       }
       async function copyReminderDiscord() {
         const message = buildReminderDiscord();
-        const result = await exportDiscordPayload({ fullMessage: message, textOnlyMessage: message }, "under-plan-reminder.png");
+        const result = await exportDiscordPayload(
+          { fullMessage: message, textOnlyMessage: message },
+          "under-plan-reminder.png",
+          () => renderDiscordMessagePng(message, 2)
+        );
         if (!result) return;
         setReminderCopied(result);
         setTimeout(() => setReminderCopied(false), 2200);
@@ -2008,7 +2099,7 @@
               </div>
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
+                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
                 <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
               </div>)}
             </div>
