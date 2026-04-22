@@ -1816,9 +1816,8 @@
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
-      async function copyDiscord() {
-        if (!isDiscordExportsEnabled) return;
-        const exportData = getDiscordExportData();
+      async function exportDiscordPayload(exportData, filename = "circle-report.png") {
+        if (!isDiscordExportsEnabled) return false;
         let result = "text";
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
@@ -1826,7 +1825,7 @@
           const pngBlob = await renderDiscordTablePng(2);
 
           if (isIOS && pngBlob && navigator.share) {
-            const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+            const file = new File([pngBlob], filename, { type: "image/png" });
             const shareData = { files: [file] };
             if (!navigator.canShare || navigator.canShare(shareData)) {
               await navigator.share(shareData);
@@ -1844,7 +1843,7 @@
             ]);
             result = "image";
           } else if (pngBlob && navigator.share) {
-            const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+            const file = new File([pngBlob], filename, { type: "image/png" });
             const shareData = { text: exportData.textOnlyMessage, files: [file] };
             if (!navigator.canShare || navigator.canShare(shareData)) {
               await navigator.share(shareData);
@@ -1861,7 +1860,7 @@
           try {
             const pngBlob = await renderDiscordTablePng(2);
             if (pngBlob && navigator.share) {
-              const file = new File([pngBlob], "circle-report.png", { type: "image/png" });
+              const file = new File([pngBlob], filename, { type: "image/png" });
               const shareData = isIOS ? { files: [file] } : { text: exportData.textOnlyMessage, files: [file] };
               if (!navigator.canShare || navigator.canShare(shareData)) {
                 await navigator.share(shareData);
@@ -1881,6 +1880,13 @@
             result = "text";
           }
         }
+        return result;
+      }
+
+      async function copyDiscord() {
+        const exportData = getDiscordExportData();
+        const result = await exportDiscordPayload(exportData, "circle-report.png");
+        if (!result) return;
         setCopied(result);
         setTimeout(() => setCopied(false), 2200);
       }
@@ -1916,9 +1922,10 @@
         setTimeout(() => setWeeklyCopied(false), 2200);
       }
       async function copyReminderDiscord() {
-        if (!isDiscordExportsEnabled || !navigator.clipboard?.writeText) return;
-        await navigator.clipboard.writeText(buildReminderDiscord());
-        setReminderCopied(true);
+        const message = buildReminderDiscord();
+        const result = await exportDiscordPayload({ fullMessage: message, textOnlyMessage: message }, "under-plan-reminder.png");
+        if (!result) return;
+        setReminderCopied(result);
         setTimeout(() => setReminderCopied(false), 2200);
       }
 
@@ -1976,7 +1983,7 @@
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
-              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: {dataSource === DATA_SOURCES.UMA ? "uma.moe" : "Chronogenesis"}</div>
+              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: Chronogenesis</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
               <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
@@ -1992,7 +1999,7 @@
               </div>
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
                 <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
+                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
                 <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
               </div>)}
             </div>
@@ -2002,7 +2009,7 @@
             <div>
               <div style={S.h2}>Navigation</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button></div>
-              <div style={{ marginTop: 10 }}><div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(dataSource === DATA_SOURCES.UMA, "#7c3aed")} onClick={() => setDataSource(DATA_SOURCES.UMA)}>uma.moe</button><button style={S.btn(dataSource === DATA_SOURCES.CHRONOGENESIS, "#2563eb")} onClick={() => setDataSource(DATA_SOURCES.CHRONOGENESIS)}>Chronogenesis</button></div></div>
+              <div style={{ marginTop: 10 }}><div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span></div></div>
             </div>
             {view === "club" && (
               <div style={{ flex: 1, minWidth: 280 }}>
@@ -2336,7 +2343,7 @@
                 <div style={S.card}>
                   <div style={S.h2}>Debug</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}><button style={S.btn(false)} onClick={() => fetchData()}>Reload current club</button><button style={S.btn(false)} onClick={() => loadAllData()}>Reload all clubs</button><button style={S.btn(false)} onClick={() => setDebugLog([])}>Clear log</button></div>
-                  <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>This page reads JSON from your deployed repo files. Expected path for this club: <b style={{ color: "#e2e0f0" }}>{dataSource === DATA_SOURCES.UMA ? `data/${cid}.json` : `data/chronogenesis/${cid}.json`}</b></div>
+                  <div style={{ color: "#9ca3af", fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>This page reads JSON from your deployed repo files. Expected path for this club: <b style={{ color: "#e2e0f0" }}>`data/chronogenesis/${cid}.json`</b></div>
                   <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "#0a0912", border: "1px solid #1e1b35", borderRadius: 10, padding: 12, color: "#c4b5fd", fontSize: 12, lineHeight: 1.55 }}>{debugLog.length ? debugLog.join("\n") : "No debug entries yet."}</pre>
                 </div>
               )}
