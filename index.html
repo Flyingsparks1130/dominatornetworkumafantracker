@@ -187,15 +187,6 @@
     };
     const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
-    function getDailyTrendMeta(currentValue, previousValue, hasPreviousDay) {
-      if (!hasPreviousDay || currentValue == null || previousValue == null) {
-        return { color: "#6b7280", label: "No prior day to compare" };
-      }
-      const delta = currentValue - previousValue;
-      if (delta > 0) return { color: "#34d399", label: `▲ Up ${fmt(delta)} vs prev day` };
-      if (delta < 0) return { color: "#f87171", label: `▼ Down ${fmt(Math.abs(delta))} vs prev day` };
-      return { color: "#9ca3af", label: "• Flat vs prev day" };
-    }
 
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
 
@@ -500,7 +491,7 @@
       return formatDateKey(now.getFullYear(), now.getMonth() + 1, sharedDay);
     }
 
-    // --- FIX: replaced hasUnlockedCurrentResetCycle ---------------------------
+    // ─── FIX: replaced hasUnlockedCurrentResetCycle ───────────────────────────
     // Old version only checked timestamps, allowing the day to advance even when
     // the scraped game data hadn't actually moved forward yet (same daily_fans
     // values, just a newer refreshed_at). This caused plan deltas to silently
@@ -535,7 +526,7 @@
       return newDayCount >= threshold;
     }
 
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
 
     function safeReadStoredUnlockCycleKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
@@ -562,7 +553,7 @@
       return previousDisplayKey;
     }
 
-    // --- FIX: call site 1 — resolveEffectiveGameDayKey -----------------------
+    // ─── FIX: call site 1 — resolveEffectiveGameDayKey ───────────────────────
     function resolveEffectiveGameDayKey(currentKey, result, now = new Date(), source = DATA_SOURCES.UMA) {
       if (source === DATA_SOURCES.CHRONOGENESIS || result?.sourceType === DATA_SOURCES.CHRONOGENESIS) {
         return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
@@ -575,7 +566,7 @@
       if (currentKey === previousDisplayKey) return previousDisplayKey;
       return previousDisplayKey;
     }
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
 
     function safeReadStoredGameDayKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
@@ -585,17 +576,17 @@
     }
 
     function getJsonLoadMeta(entry, cdata, now) {
-      if (!entry.id) return { label: "? Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
-      if (!cdata) return { label: "? No JSON", color: "#f87171", sub: "No JSON file loaded" };
+      if (!entry.id) return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
+      if (!cdata) return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
       const effectiveTimestamp = cdata.refreshedAt || cdata.sourceUpdatedAt || cdata.lastFetch || null;
-      if (!effectiveTimestamp) return { label: "?? Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
+      if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
-      if (Number.isNaN(parsed.getTime())) return { label: "?? Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
+      if (Number.isNaN(parsed.getTime())) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
       const isChronogenesis = cdata.sourceType === DATA_SOURCES.CHRONOGENESIS;
       const freshLabel = isChronogenesis ? "Updated" : (cdata.refreshedAt ? "Refreshed" : "Source updated");
       const staleLabel = isChronogenesis ? "Last updated" : (cdata.refreshedAt ? "Last refresh" : "Last source update");
-      if (isSameCalendarDay(parsed, now)) return { label: "? JSON Loaded", color: "#34d399", sub: `${freshLabel} ${parsed.toLocaleString()}` };
-      return { label: "?? Outdated", color: "#fbbf24", sub: `${staleLabel} ${parsed.toLocaleString()}` };
+      if (isSameCalendarDay(parsed, now)) return { label: "✅ JSON Loaded", color: "#34d399", sub: `${freshLabel} ${parsed.toLocaleString()}` };
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `${staleLabel} ${parsed.toLocaleString()}` };
     }
 
     function getPodiumStyle(index) {
@@ -894,6 +885,13 @@
       return (<span style={{ color: isUp ? "#34d399" : "#f87171", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}>{isUp ? "▲" : "▼"} {Math.abs(delta).toLocaleString()}</span>);
     }
 
+    function DailyTrendIndicator({ delta }) {
+      if (delta == null) return (<span style={{ color: "#6b7280", fontSize: 10, fontWeight: 700 }}>—</span>);
+      if (delta === 0) return (<span style={{ color: "#f59e0b", fontSize: 10, fontWeight: 700 }}>→ 0</span>);
+      const isUp = delta > 0;
+      return (<span style={{ color: isUp ? "#34d399" : "#f87171", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>{isUp ? "▲" : "▼"} {fmt(Math.abs(delta))}</span>);
+    }
+
     function MonthlyRankBadge({ rank, delta, size = "normal" }) {
       if (rank == null) return null;
       const currentTier = getTierForRank(rank);
@@ -997,7 +995,7 @@
             </svg>
           </div>
           {hover && (<div style={{ position: "absolute", left: `${tooltipLeftPct}%`, top: 8, transform: `translateX(${tooltipTranslateX})`, background: "#111028", border: `1px solid ${isPinned ? "#a78bfa" : "#2a2540"}`, borderRadius: 10, padding: "10px 12px", minWidth: 320, width: "max-content", maxWidth: "min(92vw, 620px)", boxShadow: isPinned ? "0 16px 40px rgba(124,58,237,0.25)" : "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: isPinned ? "auto" : "none", zIndex: 5, overflow: "visible" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12 }}>{getDateLabel(year, monthIndex, hover.day)}</div>{isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 6, padding: "2px 7px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>?? Pinned — click to unpin</span>)}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12 }}>{getDateLabel(year, monthIndex, hover.day)}</div>{isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 6, padding: "2px 7px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>📌 Pinned — click to unpin</span>)}</div>
             <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>{targetLabel}: {fmt(hover.target)}</div>
             {hoverMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>) : (hoverMembers.map((item) => (<div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, marginBottom: 4, whiteSpace: "nowrap" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} /><span>{item.name}</span></div><div style={{ textAlign: "right", color: item.color, fontWeight: 700 }}>{fmt(item.value)} <span style={{ color: gainColor(item.delta), fontWeight: 600 }}>({fmtSigned(item.delta)})</span></div></div>)))}
           </div>)}
@@ -1189,7 +1187,7 @@
       const isCurrentDayLive = isChronogenesisSource ? true : !isAwaitingFirstScheduledRefresh;
       const liveStatus = isChronogenesisSource
         ? {
-            label: "?? Live from shared Chronogenesis actual_date",
+            label: "🟢 Live from shared Chronogenesis actual_date",
             sub: "Chronogenesis uses the highest actual_date shared by all active members, and refreshes once daily at 5:15 PM UTC+7.",
             color: "#34d399",
             bg: "#34d39918",
@@ -1197,14 +1195,14 @@
           }
         : isCurrentDayLive
         ? {
-            label: "?? Live for current game day",
+            label: "🟢 Live for current game day",
             sub: "Current in-game day data is live and will keep updating automatically on each scheduled JSON refresh.",
             color: "#34d399",
             bg: "#34d39918",
             border: "#34d39955",
           }
         : {
-            label: "?? Waiting for first day-start refresh",
+            label: "🟡 Waiting for first day-start refresh",
             sub: "The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. After 11 AM ET, it will keep polling automatically until that JSON lands. Weekly Comparison, Under Plan Reminder, and Discord export unlock as soon as the new-day JSON is confirmed.",
             color: "#fbbf24",
             bg: "#fbbf2418",
@@ -1248,20 +1246,20 @@
         for (const url of candidates) {
           try {
             const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-            log.push(`${res.ok ? "?" : "?"} [${effectiveSource}] ${url} ? ${res.status}`);
+            log.push(`${res.ok ? "✓" : "✗"} [${effectiveSource}] ${url} → ${res.status}`);
             if (!res.ok) continue;
             const text = await res.text();
             const preview = parseJSON(text, null, effectiveSource);
-            if (preview.error) { log.push("  ? " + preview.error); continue; }
+            if (preview.error) { log.push("  ↳ " + preview.error); continue; }
             const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date(), effectiveSource);
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
             const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey), effectiveSource);
-            if (result.error) { log.push("  ? " + result.error); continue; }
+            if (result.error) { log.push("  ↳ " + result.error); continue; }
             setClubData((prev) => ({ ...prev, [targetId]: buildClubDataEntry(result) }));
             setDebugLog(log);
             if (!silent) setLoading(false);
             return;
-          } catch (e) { log.push(`? [${effectiveSource}] ${url} ? ${e.message}`); }
+          } catch (e) { log.push(`✗ [${effectiveSource}] ${url} → ${e.message}`); }
         }
         setDebugLog(log);
         if (!silent) { setErr(`Failed to load ${effectiveSource} JSON for ${targetId}. Make sure the matching file exists.`); setLoading(false); }
@@ -1278,17 +1276,17 @@
           for (const url of candidates) {
             try {
               const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-              allLogs.push(`${res.ok ? "?" : "?"} [${dataSource}] ${url} ? ${res.status}`);
+              allLogs.push(`${res.ok ? "✓" : "✗"} [${dataSource}] ${url} → ${res.status}`);
               if (!res.ok) continue;
               const text = await res.text();
               const preview = parseJSON(text, null, dataSource);
-              if (preview.error) { allLogs.push(`  ? ${c.id}: ${preview.error}`); continue; }
+              if (preview.error) { allLogs.push(`  ↳ ${c.id}: ${preview.error}`); continue; }
               rawById[c.id] = text;
               resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date(), dataSource);
               loaded = true; break;
-            } catch (e) { allLogs.push(`? ${url} ? ${e.message}`); }
+            } catch (e) { allLogs.push(`✗ ${url} → ${e.message}`); }
           }
-          if (!loaded) allLogs.push(`? ${c.id} not loaded`);
+          if (!loaded) allLogs.push(`⚠ ${c.id} not loaded`);
         }
 
         const resolvedDataDate = dateKeyToLocalDate(resolvedGameDayKey);
@@ -1298,7 +1296,7 @@
         if (dataSource === DATA_SOURCES.CHRONOGENESIS) {
           for (const [clubId, rawText] of Object.entries(rawById)) {
             const result = parseJSON(rawText, resolvedDataDate, dataSource);
-            if (result.error) { allLogs.push(`  ? ${clubId}: ${result.error}`); continue; }
+            if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
             next[clubId] = buildClubDataEntry(result);
             const history = Array.isArray(result.clubDailyHistory) ? result.clubDailyHistory : [];
             if (history.length) {
@@ -1333,7 +1331,7 @@
 
           for (const [clubId, rawText] of Object.entries(rawById)) {
             const result = parseJSON(rawText, resolvedDataDate, dataSource);
-            if (result.error) { allLogs.push(`  ? ${clubId}: ${result.error}`); continue; }
+            if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
             next[clubId] = buildClubDataEntry(result);
           }
         }
@@ -1397,13 +1395,6 @@
         if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(resetCycleKey);
         else if (safeReadStoredUnlockCycleKey() === resetCycleKey) safeClearStoredUnlockCycleKey();
       }, [effectiveGameDayKey, dataSource]);
-
-      useEffect(() => {
-        if (isDiscordExportsEnabled) return;
-        setCopied(false);
-        setWeeklyCopied(false);
-        setReminderCopied(false);
-      }, [isDiscordExportsEnabled]);
 
       useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true, dataSource); }, [activeIdx, dataSource]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
@@ -1488,6 +1479,17 @@
             })()
           : null;
         const clubDailySeries = historyDailySeries || Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.dailyGainSeries[d] ?? 0), 0));
+        const latestDailyIdx = Math.min(Math.max(today - 1, 0), Math.max(clubDailySeries.length - 1, 0));
+        const totalDaily = latestDailyIdx >= 0 ? (clubDailySeries[latestDailyIdx] ?? null) : null;
+        let previousDaily = null;
+        for (let i = latestDailyIdx - 1; i >= 0; i--) {
+          const value = clubDailySeries[i];
+          if (value != null) {
+            previousDaily = value;
+            break;
+          }
+        }
+        const dailyTrendDelta = totalDaily != null && previousDaily != null ? totalDaily - previousDaily : null;
         const clubCumSeries = historyDailySeries
           ? (() => {
               const nextSeries = new Array(dim).fill(0);
@@ -1502,14 +1504,11 @@
           : buildCumulativeFromDailyGainSeries(clubDailySeries, dim);
         const clubPctSeries = clubTarget > 0 ? clubCumSeries.map((v) => (v / clubTarget) * 100) : [];
         const clubDailyPctSeries = clubTarget > 0 ? clubDailySeries.map((v) => (v / clubTarget) * 100) : [];
-        const clubCurrentDaily = today > 0 ? (clubDailySeries[today - 1] ?? 0) : null;
-        const clubPreviousDaily = today > 1 ? (clubDailySeries[today - 2] ?? 0) : null;
-        const clubDailyTrend = getDailyTrendMeta(clubCurrentDaily, clubPreviousDaily, today > 1);
         const ri = getClubRankInfo(entry.id);
         return {
           ...entry, clubName: cdata?.clubName || entry.name, activeMembers: decorated.length,
           totalFans: decorated.reduce((sum, member) => sum + (member.fans || 0), 0),
-          totalMonthly: totalM, totalProjected: totalP, totalDaily: clubCurrentDaily, previousDaily: clubPreviousDaily, dailyTrend: clubDailyTrend,
+          totalMonthly: totalM, totalDaily, dailyTrendDelta, totalProjected: totalP,
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata), lastFetch: cdata?.lastFetch || null, refreshedAt: cdata?.refreshedAt || null,
           sourceUpdatedAt: cdata?.sourceUpdatedAt || null, jsonMeta: getJsonLoadMeta(entry, cdata, now),
@@ -1672,17 +1671,17 @@
         const TABLE_WIDTH = COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH;
 
         const topLines = [
-          `?? **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
           `${getDiscordPingLabel()}`,
-          `??? Source: ${getSourceLabel()}`,
-          `?? Target: ${fmt(club.target)}/member · ?? ${decoratedMembers.length}/${MAX_MEMBERS} active · ?? Day ${today}/${dim}`,
-          `?? Club Month: ${fmtSigned(totalMonthly)}`,
-          `${clubWeeklyDelta >= 0 ? "?? Ahead of pace" : "?? Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
-          `?? On Track: ${statusCounts["on-track"]} · ?? Behind: ${statusCounts["behind"]} · ?? Critical: ${statusCounts["critical"]}`
+          `🗂️ Source: ${getSourceLabel()}`,
+          `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
+          `📈 Club Month: ${fmtSigned(totalMonthly)}`,
+          `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
+          `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`
         ];
 
         const tableHeader = `${PL("MEMBER", COL_MEMBER)}${SEP}${P("DAILY", COL_DAILY)}${SEP}${P("MONTH (VS. PACE)", COL_MONTH)}`;
-        const divider = "-".repeat(TABLE_WIDTH);
+        const divider = "─".repeat(TABLE_WIDTH);
 
         const tableRows = sortedMembers.map((member) => {
           const paceText = hasComparisonData ? fmtSigned(member.plan.delta ?? 0) : "—";
@@ -1701,7 +1700,7 @@
         });
 
         const totalLine = `${PL("TOTAL", COL_MEMBER)}${SEP}${P(totalDailyLabel, COL_DAILY)}${SEP}${P(totalMonthLabel, COL_MONTH)}`;
-        const footerLine = `> ?? *Dominator Network Tracker · ${getDiscordPingLabel()}*`;
+        const footerLine = `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`;
 
         const fullMessage = [...topLines, "```ansi", tableHeader, divider, ...tableRows.map((row) => row.ansi), divider, totalLine, "```", footerLine].join("\n");
         const textOnlyMessage = [...topLines, "", footerLine].join("\n");
@@ -1818,11 +1817,10 @@
       }
 
       async function copyDiscord() {
+        if (!isDiscordExportsEnabled) return;
         const exportData = getDiscordExportData();
         let result = "text";
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-        if (!isDiscordExportsEnabled) return;
 
         try {
           const pngBlob = await renderDiscordTablePng(2);
@@ -1890,10 +1888,10 @@
       function buildReminderDiscord() {
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const underPlanMembers = [...decoratedMembers].filter((member) => member.plan.statusKey !== "on-track").sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0));
-        const lines = [`?? **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `??? Source: ${getSourceLabel()}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
-        if (!underPlanMembers.length) { lines.push("? Everyone is currently on track."); return lines.join("\n"); }
+        const lines = [`🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
+        if (!underPlanMembers.length) { lines.push("✅ Everyone is currently on track."); return lines.join("\n"); }
         underPlanMembers.forEach((member) => { const meta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; lines.push(`${meta.icon} **${member.name}** — ${deltaText(member.plan.delta)} vs plan · ${fmt(member.fansNeededForPlan)} still needed this month`); });
-        const footer = `\n> ?? *Dominator Network Tracker · ${getDiscordPingLabel()}*`; let message = lines.join("\n") + footer;
+        const footer = `\n> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`; let message = lines.join("\n") + footer;
         if (message.length > 3900) { const trimmed = []; for (const line of lines) { const candidate = [...trimmed, line].join("\n") + footer; if (candidate.length > 3900) break; trimmed.push(line); } const omitted = Math.max(0, underPlanMembers.length - Math.max(0, trimmed.length - 3)); if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`); message = trimmed.join("\n") + footer; }
         return message;
       }
@@ -1905,20 +1903,20 @@
         const getWeekGain = (member, week) => { const cs = member.cumulativeSeries || []; const endVal = cs[Math.min(week.endDay - 1, cs.length - 1)] ?? 0; const startVal = week.startDay > 1 ? (cs[week.startDay - 2] ?? 0) : 0; return endVal - startVal; };
         const comparisons = decoratedMembers.map((m) => { const prevGain = getWeekGain(m, previousWeek); const currGain = getWeekGain(m, currentWeek); return { name: m.name, prevGain, currGain, diff: currGain - prevGain }; }).sort((a, b) => b.diff - a.diff);
         const improved = comparisons.filter((c) => c.diff > 0); const declined = comparisons.filter((c) => c.diff < 0);
-        const lines = [`?? **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `??? Source: ${getSourceLabel()}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
-        if (improved.length > 0) { lines.push(`?? **Improved** (${improved.length}):`); improved.slice(0, 10).forEach((c) => lines.push(`  ? **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} ? W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`); lines.push(""); }
-        if (declined.length > 0) { lines.push(`?? **Declined** (${declined.length}):`); declined.slice(0, 10).forEach((c) => lines.push(`  ? **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} ? W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`); }
-        lines.push("", `> ?? *Dominator Network Tracker · ${getDiscordPingLabel()}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
+        const lines = [`📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
+        if (improved.length > 0) { lines.push(`📈 **Improved** (${improved.length}):`); improved.slice(0, 10).forEach((c) => lines.push(`  ↑ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`); lines.push(""); }
+        if (declined.length > 0) { lines.push(`📉 **Declined** (${declined.length}):`); declined.slice(0, 10).forEach((c) => lines.push(`  ↓ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`); }
+        lines.push("", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
       }
 
       async function copyWeeklyDiscord() {
-        if (!isDiscordExportsEnabled) return;
+        if (!isDiscordExportsEnabled || !navigator.clipboard?.writeText) return;
         await navigator.clipboard.writeText(buildWeeklyComparisonDiscord());
         setWeeklyCopied(true);
         setTimeout(() => setWeeklyCopied(false), 2200);
       }
       async function copyReminderDiscord() {
-        if (!isDiscordExportsEnabled) return;
+        if (!isDiscordExportsEnabled || !navigator.clipboard?.writeText) return;
         await navigator.clipboard.writeText(buildReminderDiscord());
         setReminderCopied(true);
         setTimeout(() => setReminderCopied(false), 2200);
@@ -1968,14 +1966,16 @@
 
       const accent = view === "home" ? "#c4b5fd" : tc.text;
       const discordActionsBlocked = !isDiscordExportsEnabled;
-      const discordActionDisabledStyle = (resetWindowBlocksExports || discordActionsBlocked) ? { opacity: 0.45, cursor: "not-allowed", filter: "saturate(0.5)" } : null;
-      const discordActionTitle = discordActionsBlocked ? "Discord exports are only enabled when Chronogenesis is selected." : (resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : "");
+      const actionButtonDisabledStyle = (resetWindowBlocksExports || discordActionsBlocked) ? { opacity: 0.45, cursor: "not-allowed", filter: "saturate(0.5)" } : null;
+      const actionButtonTitle = discordActionsBlocked
+        ? "Discord copy/export actions are disabled for uma.moe and only enabled for Chronogenesis."
+        : (resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : "");
 
       return (
         <div style={S.root}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>?</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
               <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: {dataSource === DATA_SOURCES.UMA ? "uma.moe" : "Chronogenesis"}</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
@@ -1991,9 +1991,9 @@
                 <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming {refreshScheduleMeta.label}: {upcomingRefreshLabel || "—"}</div>
               </div>
               {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
-                <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(resetWindowBlocksExports || discordActionsBlocked ? discordActionDisabledStyle : {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={discordActionTitle}>{weeklyCopied ? "? Weekly Copied!" : "?? Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(resetWindowBlocksExports || discordActionsBlocked ? discordActionDisabledStyle : {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={discordActionTitle}>{reminderCopied ? "? Reminder Copied!" : "?? Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(resetWindowBlocksExports || discordActionsBlocked ? discordActionDisabledStyle : {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={discordActionTitle}>{copied ? (copied === "image" ? "? Copied + PNG" : copied === "shared" ? "? Shared" : "? Copied!") : "?? Discord + PNG"}</button>
+                <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
+                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? "✓ Reminder Copied!" : "🔔 Under Plan Reminder"}</button>
+                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
               </div>)}
             </div>
           </div>
@@ -2001,7 +2001,7 @@
           <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <div style={S.h2}>Navigation</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>?? Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>?? Club Detail</button></div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button></div>
               <div style={{ marginTop: 10 }}><div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(dataSource === DATA_SOURCES.UMA, "#7c3aed")} onClick={() => setDataSource(DATA_SOURCES.UMA)}>uma.moe</button><button style={S.btn(dataSource === DATA_SOURCES.CHRONOGENESIS, "#2563eb")} onClick={() => setDataSource(DATA_SOURCES.CHRONOGENESIS)}>Chronogenesis</button></div></div>
             </div>
             {view === "club" && (
@@ -2028,10 +2028,10 @@
             )}
           </div>
 
-          {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>?? {err}</div>)}
+          {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
 
           {view === "home" && (<>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>?? Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>?? Network Analysis</button></div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
                 { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
@@ -2069,16 +2069,13 @@
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
                             <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
-                            {entry.hasData ? (
-                              <>
-                                <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 7 }}>Daily Fans</div>
-                                <div style={{ color: gainColor(entry.totalDaily), fontWeight: 700 }}>{fmtSigned(entry.totalDaily ?? 0)}</div>
-                                <div style={{ color: entry.dailyTrend.color, fontSize: 10, marginTop: 3 }}>{entry.dailyTrend.label}</div>
-                              </>
-                            ) : (
-                              <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>No JSON loaded</div>
-                            )}
                             {entry.hasData && !hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Daily Fans</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+                              <span style={{ color: entry.hasData ? "#cfcbe6" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</span>
+                              {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
+                            </div>
+                            {entry.hasData && hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>vs previous daily total</div>}
                           </div>
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div><div style={{ color: entry.jsonMeta.color, fontWeight: 700 }}>{entry.jsonMeta.label}</div><div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{entry.jsonMeta.sub}</div></div>
                         </div>
@@ -2205,10 +2202,10 @@
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>? Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>? Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
@@ -2216,7 +2213,7 @@
             </>)}
           </>)}
 
-          {view === "club" && !cid && (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 40, marginBottom: 10 }}>??</div><div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div></div>)}
+          {view === "club" && !cid && (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 40, marginBottom: 10 }}>🔜</div><div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div></div>)}
 
           {view === "club" && cid && (<>
             <div style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px" }}>
@@ -2239,9 +2236,9 @@
               </div>
             </div>
 
-            {!decoratedMembers.length ? (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, marginBottom: 10 }}>??</div><div style={{ color: "#6b7280", marginBottom: 16 }}>No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.</div><div style={{ display: "flex", justifyContent: "center", gap: 8 }}><button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>?? Refresh Data</button></div></div>) : (<>
+            {!decoratedMembers.length ? (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, marginBottom: 10 }}>🏇</div><div style={{ color: "#6b7280", marginBottom: 16 }}>No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.</div><div style={{ display: "flex", justifyContent: "center", gap: 8 }}><button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>🔄 Refresh Data</button></div></div>) : (<>
               <div style={{ display: "flex", gap: 5, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                {[["dashboard", "?? Overview"], ["members", "?? Members"], ["pace", "?? Pace"], ["debug", "?? Debug"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
+                {[["dashboard", "📊 Overview"], ["members", "👥 Members"], ["pace", "📈 Pace"], ["debug", "🔧 Debug"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
               </div>
 
               {tab === "dashboard" && (<>
@@ -2302,8 +2299,8 @@
                     {[{ label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" }, { label: "Per-Member Target by Displayed Day", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" }, { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" }, { label: "Visible on Graph", value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" }].map((card) => (<div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>))}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-                    <div style={{ color: "#9ca3af", fontSize: 12 }}>Click on the graph to pin a tooltip, then export to include it in the image.{" "}{pacePinnedIdx != null && (<span style={{ color: "#a78bfa", fontWeight: 700 }}>?? Tooltip pinned — export will capture it.</span>)}</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(paceChartMode === "cumulative", "#7c3aed")} onClick={() => setPaceChartMode("cumulative")}>Cumulative</button><button style={S.btn(paceChartMode === "daily", "#2563eb")} onClick={() => setPaceChartMode("daily")}>Daily Gain</button><button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.max(1, +(prev - 0.25).toFixed(2)))}>- Zoom</button><button style={S.btn(false)} onClick={() => setPaceZoom(1)}>Reset</button><button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.min(3, +(prev + 0.25).toFixed(2)))}>+ Zoom</button>{pacePinnedIdx != null && (<button style={S.btn(false, "#a78bfa")} onClick={() => setPacePinnedIdx(null)}>?? Unpin Tooltip</button>)}<button style={S.btn(false)} onClick={exportPaceGraph}>{paceExporting ? "? Exporting…" : "??? Export Graph"}</button></div>
+                    <div style={{ color: "#9ca3af", fontSize: 12 }}>Click on the graph to pin a tooltip, then export to include it in the image.{" "}{pacePinnedIdx != null && (<span style={{ color: "#a78bfa", fontWeight: 700 }}>📌 Tooltip pinned — export will capture it.</span>)}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(paceChartMode === "cumulative", "#7c3aed")} onClick={() => setPaceChartMode("cumulative")}>Cumulative</button><button style={S.btn(paceChartMode === "daily", "#2563eb")} onClick={() => setPaceChartMode("daily")}>Daily Gain</button><button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.max(1, +(prev - 0.25).toFixed(2)))}>− Zoom</button><button style={S.btn(false)} onClick={() => setPaceZoom(1)}>Reset</button><button style={S.btn(false)} onClick={() => setPaceZoom((prev) => Math.min(3, +(prev + 0.25).toFixed(2)))}>+ Zoom</button>{pacePinnedIdx != null && (<button style={S.btn(false, "#a78bfa")} onClick={() => setPacePinnedIdx(null)}>📌 Unpin Tooltip</button>)}<button style={S.btn(false)} onClick={exportPaceGraph}>{paceExporting ? "⟳ Exporting…" : "🖼️ Export Graph"}</button></div>
                   </div>
 {supportsMemberDailyFans ? <PaceChart seriesList={paceSeriesList} targetSeries={selectedPaceTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} svgRef={paceSvgRef} zoom={paceZoom} pinnedIdx={pacePinnedIdx} setPinnedIdx={setPacePinnedIdx} containerRef={paceContainerRef} currentDayIdx={Math.max(0, today - 1)} mode={paceChartMode} /> : <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>This source does not expose enough per-member daily history to render the pace chart.</div>}
                   <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
@@ -2315,7 +2312,7 @@
                   </div>
                   {paceCardsCollapsed ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {sortedByMonthly.map((member, index) => { const isHidden = Boolean(paceHiddenMembers[member.name]); const lineColor = allPaceSeriesList.find((s) => s.name === member.name)?.color || getLineColor(index); const sm = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; return (<button key={`chip-${member.name}`} onClick={() => togglePaceMember(member.name)} style={{ background: isHidden ? "#0a0912" : "#0f0d1a", border: `1px solid ${isHidden ? "#1e1b35" : sm.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", opacity: isHidden ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: lineColor, flexShrink: 0 }} /><span style={{ color: "#e2e0f0", fontWeight: 700 }}>{member.name}</span><span style={{ color: sm.color, fontSize: 10 }}>{fmtSigned(member.monthlyGain ?? 0)}</span>{member.stagnantDays >= 2 && <span style={{ color: "#f97316", fontSize: 9 }}>?{member.stagnantDays}d</span>}</button>); })}
+                      {sortedByMonthly.map((member, index) => { const isHidden = Boolean(paceHiddenMembers[member.name]); const lineColor = allPaceSeriesList.find((s) => s.name === member.name)?.color || getLineColor(index); const sm = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; return (<button key={`chip-${member.name}`} onClick={() => togglePaceMember(member.name)} style={{ background: isHidden ? "#0a0912" : "#0f0d1a", border: `1px solid ${isHidden ? "#1e1b35" : sm.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", opacity: isHidden ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: lineColor, flexShrink: 0 }} /><span style={{ color: "#e2e0f0", fontWeight: 700 }}>{member.name}</span><span style={{ color: sm.color, fontSize: 10 }}>{fmtSigned(member.monthlyGain ?? 0)}</span>{member.stagnantDays >= 2 && <span style={{ color: "#f97316", fontSize: 9 }}>⏸{member.stagnantDays}d</span>}</button>); })}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
@@ -2356,5 +2353,3 @@
 
 </body>
 </html>
-
-
