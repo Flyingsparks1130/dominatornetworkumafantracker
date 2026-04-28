@@ -16,16 +16,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Ensure output directories exist
         run: |
           mkdir -p data/chronogenesis
+          mkdir -p data/chronogenesis/archive
           mkdir -p scripts/debug
 
       - name: Run Chronogenesis updater
