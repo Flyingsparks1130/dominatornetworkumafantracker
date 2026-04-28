@@ -2,13 +2,9 @@ name: Archive Chronogenesis Month
 
 on:
   schedule:
-    # 1st day of month, after Chronogenesis refresh.
-    # 10:45 UTC = 5:45 PM UTC+7.
     - cron: "45 10 1 * *"
-
-    # Fallback on 2nd day before the next refresh overwrites previous month.
-    # 08:30 UTC = 11:30 AM UTC+7.
     - cron: "30 4 2 * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
