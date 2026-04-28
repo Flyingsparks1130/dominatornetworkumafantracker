@@ -1,0 +1,50 @@
+name: Archive Chronogenesis Month
+
+on:
+  schedule:
+    # 1st day of month, after Chronogenesis refresh.
+    # 10:45 UTC = 5:45 PM UTC+7.
+    - cron: "45 10 1 * *"
+
+    # Fallback on 2nd day before the next refresh overwrites previous month.
+    # 08:30 UTC = 11:30 AM UTC+7.
+    - cron: "30 4 2 * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chronogenesis-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Archive completed previous Chronogenesis month
+        run: node scripts/archive-chronogenesis-complete-month.mjs
+
+      - name: Commit archive files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/chronogenesis/archive
+
+          if git diff --cached --quiet; then
+            echo "No archive changes to commit"
+          else
+            git commit -m "Archive completed Chronogenesis month"
+            git push
+          fi
