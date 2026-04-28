@@ -40,8 +40,12 @@
       CHRONOGENESIS: "chronogenesis",
     };
 
-    function getDataCandidates(source, targetId) {
+    function getDataCandidates(source, targetId, archiveMonth = "") {
       if (source === DATA_SOURCES.CHRONOGENESIS) {
+        if (archiveMonth) {
+          const archiveName = `${targetId}_${archiveMonth}.json`;
+          return [`./data/chronogenesis/archive/${archiveName}`, `/data/chronogenesis/archive/${archiveName}`];
+        }
         return [`./data/chronogenesis/${targetId}.json`, `/data/chronogenesis/${targetId}.json`];
       }
       return [`./data/${targetId}.json`, `/data/${targetId}.json`];
@@ -51,6 +55,39 @@
       if (!value) return null;
       const parsed = new Date(value);
       return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    }
+
+    function getChronogenesisDatasetMonthInfo(json, now = new Date()) {
+      const firstMonth = Array.isArray(json?.month_filter) ? json.month_filter[0]?.sdate : null;
+      if (firstMonth) {
+        const match = String(firstMonth).match(/^(\d{4})-(\d{2})-\d{2}/);
+        if (match) {
+          const year = Number(match[1]);
+          const month = Number(match[2]);
+          if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+            return { year, month, monthIndex: month - 1, key: formatDateKey(year, month, 1).slice(0, 7) };
+          }
+        }
+      }
+
+      const latestYearMonth = Array.isArray(json?.club_monthly_history)
+        ? json.club_monthly_history.map((row) => Number(row?.year_month)).filter((value) => Number.isFinite(value) && value > 190001).sort((a, b) => b - a)[0]
+        : null;
+      if (latestYearMonth) {
+        const year = Math.floor(latestYearMonth / 100);
+        const month = latestYearMonth % 100;
+        if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+          return { year, month, monthIndex: month - 1, key: formatDateKey(year, month, 1).slice(0, 7) };
+        }
+      }
+
+      return { year: now.getFullYear(), month: now.getMonth() + 1, monthIndex: now.getMonth(), key: formatDateKey(now.getFullYear(), now.getMonth() + 1, 1).slice(0, 7) };
+    }
+
+    function getMonthKeyLabel(monthKey) {
+      if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return "Unknown month";
+      const [year, month] = monthKey.split("-").map(Number);
+      return new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
     }
 
     const CLUBS = [
@@ -488,7 +525,9 @@
     function getChronogenesisDisplayKey(result, now = new Date()) {
       const sharedDay = getChronogenesisSharedActualDay(result);
       if (!sharedDay) return null;
-      return formatDateKey(now.getFullYear(), now.getMonth() + 1, sharedDay);
+      const year = Number(result?.dataYear) || now.getFullYear();
+      const month = Number(result?.dataMonth) || (now.getMonth() + 1);
+      return formatDateKey(year, month, sharedDay);
     }
 
     // ─── FIX: replaced hasUnlockedCurrentResetCycle ───────────────────────────
@@ -578,6 +617,7 @@
     function getJsonLoadMeta(entry, cdata, now) {
       if (!entry.id) return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
       if (!cdata) return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
+      if (cdata.archiveMonthKey && cdata.sourceType === DATA_SOURCES.CHRONOGENESIS) return { label: "📦 Archive", color: "#c4b5fd", sub: `Snapshot month ${getMonthKeyLabel(cdata.archiveMonthKey)}` };
       const effectiveTimestamp = cdata.refreshedAt || cdata.sourceUpdatedAt || cdata.lastFetch || null;
       if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
@@ -664,6 +704,7 @@
       if (!clubRoot) return { error: "No club array found. Keys in JSON: " + Object.keys(json || {}).join(", ") };
 
       const now = new Date();
+      const datasetMonth = getChronogenesisDatasetMonthInfo(json, now);
       const actualDateMax = Array.isArray(json?.club_friend_history)
         ? json.club_friend_history.reduce((maxDay, row) => {
             const actualDate = Number(row?.actual_date);
@@ -671,8 +712,8 @@
           }, 0)
         : 0;
       const fallbackDate = actualDateMax > 0
-        ? new Date(now.getFullYear(), now.getMonth(), actualDateMax)
-        : dateKeyToLocalDate(getFallbackGameDayKey(now));
+        ? new Date(datasetMonth.year, datasetMonth.monthIndex, actualDateMax)
+        : new Date(datasetMonth.year, datasetMonth.monthIndex, 1);
       const effectiveDataDate = dataDateOverride instanceof Date && !Number.isNaN(dataDateOverride.getTime()) ? new Date(dataDateOverride) : fallbackDate;
       const dim = daysInMonth(effectiveDataDate.getFullYear(), effectiveDataDate.getMonth() + 1);
 
@@ -749,6 +790,10 @@
         sourceUpdatedAt,
         sourceType: DATA_SOURCES.CHRONOGENESIS,
         sharedActualDate,
+        dataYear: datasetMonth.year,
+        dataMonth: datasetMonth.month,
+        datasetMonthKey: datasetMonth.key,
+        archiveMonthKey: datasetMonth.key,
         clubDailyHistory: Array.isArray(json?.club_daily_history) ? json.club_daily_history : [],
         clubMonthlyHistory: Array.isArray(json?.club_monthly_history) ? json.club_monthly_history : [],
       };
@@ -813,6 +858,33 @@
       const safeDim = Math.max(0, dim || 0); const result = []; let running = 0;
       for (let i = 0; i < safeDim; i++) { running += Number(dailySeries[i] ?? 0); result.push(running); }
       return result;
+    }
+
+    function buildClubDailySeries(cdata, decorated = [], dim = 0) {
+      if (Array.isArray(cdata?.clubDailyHistory) && cdata.clubDailyHistory.length) {
+        const nextSeries = new Array(dim).fill(null);
+        cdata.clubDailyHistory.forEach((row) => {
+          const actualDate = Number(row?.actual_date);
+          if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > dim) return;
+          nextSeries[actualDate - 1] = Number(row?.interpolated_fan_gain ?? 0);
+        });
+        return { series: nextSeries, fromHistory: true };
+      }
+      return { series: Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.dailyGainSeries[d] ?? 0), 0)), fromHistory: false };
+    }
+
+    function buildClubDailyMetrics(cdata, decorated = [], dim = 0, today = 1) {
+      const { series, fromHistory } = buildClubDailySeries(cdata, decorated, dim);
+      const latestDailyIdx = Math.min(Math.max(today - 1, 0), Math.max(series.length - 1, 0));
+      const totalDaily = latestDailyIdx >= 0 ? (series[latestDailyIdx] ?? null) : null;
+      const previousDaily = latestDailyIdx > 0 ? (series[latestDailyIdx - 1] ?? null) : null;
+      return {
+        clubDailySeries: series,
+        historyDailySeries: fromHistory ? series : null,
+        totalDaily,
+        previousDaily,
+        dailyTrendDelta: totalDaily != null && previousDaily != null ? totalDaily - previousDaily : null,
+      };
     }
 
     function normalizeMemberSeries(rawCumulativeSeries = [], member, dim, currentIdx) {
@@ -1149,6 +1221,8 @@
     function CircleTracker() {
       const [view, setView] = useState("home");
       const [dataSource, setDataSource] = useState(DATA_SOURCES.CHRONOGENESIS);
+      const [archiveMonth, setArchiveMonth] = useState("");
+      const [archiveManifest, setArchiveManifest] = useState(null);
       const [activeIdx, setActiveIdx] = useState(0);
       const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date(), DATA_SOURCES.CHRONOGENESIS));
       const [clubData, setClubData] = useState({});
@@ -1186,6 +1260,8 @@
       const effectiveDayWindow = getEffectiveDayWindow(now);
       const refreshScheduleMeta = getRefreshScheduleMeta(dataSource, now);
       const isChronogenesisSource = dataSource === DATA_SOURCES.CHRONOGENESIS;
+      const isArchiveView = isChronogenesisSource && Boolean(archiveMonth);
+      const archiveMonths = Array.isArray(archiveManifest?.months) ? archiveManifest.months : [];
       const isDiscordExportsEnabled = isChronogenesisSource;
       const isAwaitingFirstScheduledRefresh = isChronogenesisSource ? false : (effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey);
       const resetWindowBlocksExports = isAwaitingFirstScheduledRefresh;
@@ -1194,7 +1270,15 @@
       const nextRefreshCountdownLabel = nextRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
       const nextRefreshDateLabel = nextRefresh ? formatRefreshDateLabel(nextRefresh.date, dataSource) : "No upcoming refresh scheduled";
       const isCurrentDayLive = isChronogenesisSource ? true : !isAwaitingFirstScheduledRefresh;
-      const liveStatus = isChronogenesisSource
+      const liveStatus = isArchiveView
+        ? {
+            label: "📦 Archive view",
+            sub: `Locked Chronogenesis snapshot for ${getMonthKeyLabel(archiveMonth)}. Live auto-refresh is paused while viewing archives.`,
+            color: "#c4b5fd",
+            bg: "#7c3aed18",
+            border: "#7c3aed55",
+          }
+        : isChronogenesisSource
         ? {
             label: "🟢 Live from shared Chronogenesis actual_date",
             sub: "Chronogenesis uses the highest actual_date shared by all active members, and refreshes once daily at 5:15 PM UTC+7.",
@@ -1242,7 +1326,21 @@
       const displayFetchLabel = data?.sourceType === DATA_SOURCES.CHRONOGENESIS ? "Updated" : (data?.refreshedAt ? "Refreshed" : "Source updated");
 
       function buildClubDataEntry(result) {
-        return { members: result.members, clubName: result.clubName, lastFetch: result.lastFetch || null, refreshedAt: result.refreshedAt || null, sourceUpdatedAt: result.sourceUpdatedAt || null, sourceType: result.sourceType || dataSource, clubDailyHistory: result.clubDailyHistory || [], clubMonthlyHistory: result.clubMonthlyHistory || [] };
+        return {
+          members: result.members,
+          clubName: result.clubName,
+          lastFetch: result.lastFetch || null,
+          refreshedAt: result.refreshedAt || null,
+          sourceUpdatedAt: result.sourceUpdatedAt || null,
+          sourceType: result.sourceType || dataSource,
+          sharedActualDate: result.sharedActualDate ?? null,
+          dataYear: result.dataYear ?? null,
+          dataMonth: result.dataMonth ?? null,
+          datasetMonthKey: result.datasetMonthKey || null,
+          archiveMonthKey: archiveMonth || null,
+          clubDailyHistory: result.clubDailyHistory || [],
+          clubMonthlyHistory: result.clubMonthlyHistory || [],
+        };
       }
 
       async function fetchData(idOverride = null, silent = false, sourceOverride = null) {
@@ -1251,7 +1349,7 @@
         if (!targetId) return;
         if (!silent) { setLoading(true); setErr(""); }
         const log = [];
-        const candidates = getDataCandidates(effectiveSource, targetId);
+        const candidates = getDataCandidates(effectiveSource, targetId, effectiveSource === DATA_SOURCES.CHRONOGENESIS ? archiveMonth : "");
         for (const url of candidates) {
           try {
             const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
@@ -1280,7 +1378,7 @@
         let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date(), dataSource);
         for (const c of CLUBS) {
           if (!c.id) continue;
-          const candidates = getDataCandidates(dataSource, c.id);
+          const candidates = getDataCandidates(dataSource, c.id, dataSource === DATA_SOURCES.CHRONOGENESIS ? archiveMonth : "");
           let loaded = false;
           for (const url of candidates) {
             try {
@@ -1349,7 +1447,26 @@
         setClubData(next); setDebugLog(allLogs); setLoading(false);
       }
 
-      useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date(), dataSource)); loadAllData(); }, [dataSource]);
+      useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date(), dataSource)); loadAllData(); }, [dataSource, archiveMonth]);
+
+      useEffect(() => {
+        if (dataSource !== DATA_SOURCES.CHRONOGENESIS) return;
+        let cancelled = false;
+        const loadArchiveManifest = async () => {
+          for (const url of ["./data/chronogenesis/archive/manifest.json", "/data/chronogenesis/archive/manifest.json"]) {
+            try {
+              const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+              if (!res.ok) continue;
+              const json = await res.json();
+              if (!cancelled) setArchiveManifest(json);
+              return;
+            } catch (e) {}
+          }
+          if (!cancelled) setArchiveManifest({ months: [], clubs: {}, files: [] });
+        };
+        loadArchiveManifest();
+        return () => { cancelled = true; };
+      }, [dataSource]);
 
       useEffect(() => {
         const tick = setInterval(() => setNow(new Date()), 1000);
@@ -1357,6 +1474,7 @@
       }, []);
 
       useEffect(() => {
+        if (isArchiveView) return;
         const latestStarted = refreshScheduleMeta.latestStarted;
         if (!latestStarted) return;
         const elapsedMs = now.getTime() - latestStarted.date.getTime();
@@ -1365,9 +1483,10 @@
         scheduledRefreshCycleRef.current = latestStarted.key;
         const timeouts = SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS.map((delayMs) => setTimeout(() => loadAllData(), delayMs));
         return () => timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-      }, [refreshScheduleMeta.latestStarted?.key]);
+      }, [refreshScheduleMeta.latestStarted?.key, archiveMonth]);
 
       useEffect(() => {
+        if (isArchiveView) return;
         if (unlockPollTimeoutRef.current) {
           clearTimeout(unlockPollTimeoutRef.current);
           unlockPollTimeoutRef.current = null;
@@ -1391,9 +1510,10 @@
             unlockPollTimeoutRef.current = null;
           }
         };
-      }, [isAwaitingFirstScheduledRefresh, effectiveDayWindow.resetCycleKey]);
+      }, [isAwaitingFirstScheduledRefresh, effectiveDayWindow.resetCycleKey, archiveMonth]);
 
       useEffect(() => {
+        if (isArchiveView) return;
         const currentNow = new Date();
         const { resetCycleKey, latestDisplayKey } = getEffectiveDayWindow(currentNow);
         safeWriteStoredGameDayKey(effectiveGameDayKey);
@@ -1403,9 +1523,9 @@
         }
         if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(resetCycleKey);
         else if (safeReadStoredUnlockCycleKey() === resetCycleKey) safeClearStoredUnlockCycleKey();
-      }, [effectiveGameDayKey, dataSource]);
+      }, [effectiveGameDayKey, dataSource, archiveMonth]);
 
-      useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true, dataSource); }, [activeIdx, dataSource]);
+      useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true, dataSource); }, [activeIdx, dataSource, archiveMonth]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
       useEffect(() => { setPaceHiddenMembers({}); setOverviewStatusFilter(""); setPaceZoom(1); setPacePinnedIdx(null); }, [cid]);
       useEffect(() => { if (!hasComparisonData) { setOverviewStatusFilter(""); setMemberFilters((prev) => (prev.status ? { ...prev, status: "" } : prev)); } }, [hasComparisonData, cid]);
@@ -1432,8 +1552,11 @@
       }
 
       const decoratedMembers = activeMembers.map((member) => decorateMember(member, club.target));
+      const activeClubDailyMetrics = buildClubDailyMetrics(data, decoratedMembers, dim, today);
       const totalFans = decoratedMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
-      const totalDaily = decoratedMembers.reduce((sum, member) => sum + (member.dailyGain ?? 0), 0);
+      const totalDaily = activeClubDailyMetrics.totalDaily ?? decoratedMembers.reduce((sum, member) => sum + (member.dailyGain ?? 0), 0);
+      const totalPreviousDaily = activeClubDailyMetrics.previousDaily;
+      const clubDailyTrendDelta = activeClubDailyMetrics.dailyTrendDelta;
       const totalMonthly = decoratedMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
       const totalProj = decoratedMembers.reduce((sum, member) => sum + (member.projected ?? 0), 0);
       const clubMonthlyTarget = decoratedMembers.length * club.target;
@@ -1476,29 +1599,12 @@
         const projectedRatio = clubTarget > 0 ? totalP / clubTarget : 0;
         const nonStagnantRatio = decorated.length > 0 ? nonStagnant / decorated.length : 0;
         const health = computeHealthGrade(pctOnTrack, projectedRatio, nonStagnantRatio);
-        const historyDailySeries = Array.isArray(cdata?.clubDailyHistory) && cdata.clubDailyHistory.length
-          ? (() => {
-              const nextSeries = new Array(dim).fill(0);
-              cdata.clubDailyHistory.forEach((row) => {
-                const actualDate = Number(row?.actual_date);
-                if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > dim) return;
-                nextSeries[actualDate - 1] = Number(row?.interpolated_fan_gain ?? 0);
-              });
-              return nextSeries;
-            })()
-          : null;
-        const clubDailySeries = historyDailySeries || Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.dailyGainSeries[d] ?? 0), 0));
-        const latestDailyIdx = Math.min(Math.max(today - 1, 0), Math.max(clubDailySeries.length - 1, 0));
-        const totalDaily = latestDailyIdx >= 0 ? (clubDailySeries[latestDailyIdx] ?? null) : null;
-        let previousDaily = null;
-        for (let i = latestDailyIdx - 1; i >= 0; i--) {
-          const value = clubDailySeries[i];
-          if (value != null) {
-            previousDaily = value;
-            break;
-          }
-        }
-        const dailyTrendDelta = totalDaily != null && previousDaily != null ? totalDaily - previousDaily : null;
+        const clubDailyMetrics = buildClubDailyMetrics(cdata, decorated, dim, today);
+        const historyDailySeries = clubDailyMetrics.historyDailySeries;
+        const clubDailySeries = clubDailyMetrics.clubDailySeries;
+        const totalDaily = clubDailyMetrics.totalDaily;
+        const previousDaily = clubDailyMetrics.previousDaily;
+        const dailyTrendDelta = clubDailyMetrics.dailyTrendDelta;
         const clubCumSeries = historyDailySeries
           ? (() => {
               const nextSeries = new Array(dim).fill(0);
@@ -1517,7 +1623,7 @@
         return {
           ...entry, clubName: cdata?.clubName || entry.name, activeMembers: decorated.length,
           totalFans: decorated.reduce((sum, member) => sum + (member.fans || 0), 0),
-          totalMonthly: totalM, totalDaily, dailyTrendDelta, totalProjected: totalP,
+          totalMonthly: totalM, totalDaily, previousDaily, dailyTrendDelta, totalProjected: totalP,
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
           hasData: Boolean(cdata), lastFetch: cdata?.lastFetch || null, refreshedAt: cdata?.refreshedAt || null,
           sourceUpdatedAt: cdata?.sourceUpdatedAt || null, jsonMeta: getJsonLoadMeta(entry, cdata, now),
@@ -2083,7 +2189,7 @@
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
-              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: Chronogenesis</div>
+              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: Chronogenesis{isArchiveView ? ` archive ${archiveMonth}` : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
               <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
@@ -2109,7 +2215,16 @@
             <div>
               <div style={S.h2}>Navigation</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button></div>
-              <div style={{ marginTop: 10 }}><div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span></div></div>
+              <div style={{ marginTop: 10 }}>
+                <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span>
+                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+                    <option value="">Live current month</option>
+                    {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
             {view === "club" && (
               <div style={{ flex: 1, minWidth: 280 }}>
@@ -2182,7 +2297,9 @@
                               <span style={{ color: entry.hasData ? "#cfcbe6" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</span>
                               {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
                             </div>
-                            {entry.hasData && hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>vs previous daily total</div>}
+                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Previous Day Fans</div>
+                            <div style={{ color: entry.hasData && entry.previousDaily != null ? "#c4b5fd" : "#9ca3af", fontWeight: 700, marginTop: 2 }}>{entry.hasData && entry.previousDaily != null ? fmt(entry.previousDaily) : "—"}</div>
+                            {entry.hasData && today > 1 && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>Day {today - 1} total fan gain</div>}
                           </div>
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div><div style={{ color: entry.jsonMeta.color, fontWeight: 700 }}>{entry.jsonMeta.label}</div><div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{entry.jsonMeta.sub}</div></div>
                         </div>
@@ -2356,6 +2473,8 @@
                     { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: hasComparisonData ? statusCounts["behind"] : "—", sub: hasComparisonData ? "Below pace but above 25%" : noComparisonLabel, col: "#fbbf24", filterKey: hasComparisonData ? "behind" : null },
                     { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: hasComparisonData ? statusCounts["critical"] : "—", sub: hasComparisonData ? "Under 25% of weekly pace" : noComparisonLabel, col: "#f87171", filterKey: hasComparisonData ? "critical" : null },
                     { label: "Club Monthly +", value: hasComparisonData ? fmt(totalMonthly) : "—", sub: hasComparisonData ? "All active members" : noComparisonLabel, col: hasComparisonData ? gainColor(totalMonthly) : "#9ca3af" },
+                    { label: "Club Daily +", value: totalDaily != null ? fmt(totalDaily) : "—", sub: `Current Day ${today} total fan gain`, col: "#cfcbe6" },
+                    { label: "Previous Day +", value: totalPreviousDaily != null ? fmt(totalPreviousDaily) : "—", sub: today > 1 ? `Day ${today - 1} total fan gain` : "No previous day in this month", col: "#c4b5fd" },
                     { label: "Club Vs Weekly Plan", value: hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—", sub: hasComparisonData ? `Target by displayed day: ${fmt(clubExpectedToDate)}` : noComparisonLabel, col: hasComparisonData ? gainColor(clubWeeklyDelta) : "#9ca3af" },
                   ].map((card) => { const isFilterCard = Boolean(card.filterKey); const isActive = overviewStatusFilter === card.filterKey; const sharedStyle = { background: "#111028", border: `1px solid ${isActive ? card.col : "#1e1b35"}`, borderRadius: 12, padding: "11px 14px", boxShadow: isActive ? `0 0 0 1px ${card.col}33 inset` : "none" }; return isFilterCard ? (<button key={card.label} onClick={() => toggleOverviewStatusFilter(card.filterKey)} style={{ ...sharedStyle, textAlign: "left", cursor: "pointer" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: isActive ? card.col : "#4b5563", fontSize: 10, marginTop: 2 }}>{isActive ? "Showing only this status" : card.sub}</div></button>) : (<div key={card.label} style={sharedStyle}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>); })}
                 </div>
