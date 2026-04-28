@@ -10,8 +10,6 @@ on:
     # 08:30 UTC = 11:30 AM UTC+7.
     - cron: "30 4 2 * *"
 
-  workflow_dispatch:
-
 permissions:
   contents: write
 
@@ -25,12 +23,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Archive completed previous Chronogenesis month
         run: node scripts/archive-chronogenesis-complete-month.mjs
