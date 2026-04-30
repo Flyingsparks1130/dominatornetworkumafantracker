@@ -3,26 +3,20 @@ name: Refresh circle JSON
 on:
   schedule:
     - cron: "0 13 * * *"
-      timezone: "America/New_York"
     - cron: "0 14 * * *"
-      timezone: "America/New_York"
     - cron: "0 18 * * *"
-      timezone: "America/New_York"
     - cron: "0 19 * * *"
-      timezone: "America/New_York"
     - cron: "0 23 * * *"
-      timezone: "America/New_York"
     - cron: "0 0 * * *"
-      timezone: "America/New_York"
     - cron: "0 4 * * *"
-      timezone: "America/New_York"
     - cron: "0 5 * * *"
-      timezone: "America/New_York"
-
   workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   refresh:
@@ -36,7 +30,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          package-manager-cache: false
 
       - name: Initialize package.json if missing
         run: |
@@ -55,23 +48,18 @@ jobs:
           DOWNLOAD_COOKIE: ${{ secrets.DOWNLOAD_COOKIE }}
         run: node scripts/update-json.mjs
 
-      # ── Rank history tracking only runs if refresh succeeded ──
       - name: Verify circle data exists
         id: verify
         if: steps.refresh.outcome == 'success'
         run: |
           found=0
-
           for f in data/*.json; do
             [ "$(basename "$f")" = "clubs.json" ] && continue
-
             if grep -q '"monthly_rank"' "$f" 2>/dev/null; then
               found=$((found + 1))
             fi
           done
-
           echo "circles_found=$found" >> "$GITHUB_OUTPUT"
-
           if [ "$found" -eq 0 ]; then
             echo "::warning::No circle files with monthly_rank found — skipping rank tracker"
           else
@@ -86,15 +74,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add data/*.json data/club_rank_history/
-
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "Refresh circle JSON"
+          git diff --staged --quiet || git commit -m "Refresh circle JSON"
 
       - name: Push changes
         run: git push
