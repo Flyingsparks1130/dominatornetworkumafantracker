@@ -133,19 +133,22 @@
       "D":  { bg: "#6b728022", border: "#6b7280", text: "#9ca3af", bar: "#4b5563" },
     };
 
-    function getTierForRank(monthlyRank) {
+    function getTierForRank(monthlyRank, rankingConfig = RANKING_CONFIG) {
       if (monthlyRank == null) return null;
-      const entry = RANKING_CONFIG.find((r) => monthlyRank >= r.min && (r.max === null || monthlyRank <= r.max));
+      const config = Array.isArray(rankingConfig) && rankingConfig.length ? rankingConfig : RANKING_CONFIG;
+      const entry = config.find((r) => monthlyRank >= r.min && (r.max === null || monthlyRank <= r.max));
       return entry ? entry.tier : null;
     }
 
-    function getRankIconUrl(tierName) {
-      const entry = RANKING_CONFIG.find((r) => r.tier === tierName);
-      return entry ? RANK_ICON_PATH + entry.icon + ".png" : null;
+    function getRankIconUrl(tierName, rankingConfig = RANKING_CONFIG, rankIconPath = RANK_ICON_PATH) {
+      const config = Array.isArray(rankingConfig) && rankingConfig.length ? rankingConfig : RANKING_CONFIG;
+      const entry = config.find((r) => r.tier === tierName);
+      const basePath = typeof rankIconPath === "string" && rankIconPath ? rankIconPath : RANK_ICON_PATH;
+      return entry ? basePath + entry.icon + ".png" : null;
     }
 
-    function TierIcon({ tier, size = 20, title = null, showFallbackText = true, style = {} }) {
-      const iconUrl = getRankIconUrl(tier);
+    function TierIcon({ tier, size = 20, title = null, showFallbackText = true, style = {}, rankingConfig = RANKING_CONFIG, rankIconPath = RANK_ICON_PATH }) {
+      const iconUrl = getRankIconUrl(tier, rankingConfig, rankIconPath);
       const [failed, setFailed] = React.useState(false);
 
       if (!iconUrl || failed) {
@@ -188,6 +191,58 @@
 
     const TIER_RANK = { "S": 0, "A+": 1, "A": 2, "B+": 3 };
     const CLUB_TIER_ORDER = ["S", "A+", "A", "B+"];
+
+    function normalizeArchiveFrontendConfig(config) {
+      if (!config || typeof config !== "object") return null;
+      const clubs = Array.isArray(config.clubs) ? config.clubs.filter((club) => club && club.id) : [];
+      const rankingConfig = Array.isArray(config.rankingConfig) ? config.rankingConfig : (Array.isArray(config.ranking_config) ? config.ranking_config : []);
+      const clubTierOrder = Array.isArray(config.clubTierOrder) ? config.clubTierOrder : (Array.isArray(config.club_tier_order) ? config.club_tier_order : []);
+      return {
+        schema: Number(config.schema || 1),
+        capturedAt: config.capturedAt || config.captured_at || config.createdAt || config.created_at || null,
+        sourceFile: config.sourceFile || config.source_file || null,
+        clubs,
+        clubConfig: config.clubConfig || config.club_config || null,
+        rankingConfig,
+        clubTierOrder,
+        maxMembers: Number(config.maxMembers ?? config.max_members ?? MAX_MEMBERS),
+        rankIconPath: typeof (config.rankIconPath ?? config.rank_icon_path) === "string" && (config.rankIconPath ?? config.rank_icon_path) ? (config.rankIconPath ?? config.rank_icon_path) : RANK_ICON_PATH,
+        tierColors: (config.tierColors || config.tier_colors) && typeof (config.tierColors || config.tier_colors) === "object" ? (config.tierColors || config.tier_colors) : TIER_COLORS,
+        clubConfigById: (config.clubConfigById || config.club_config_by_id) && typeof (config.clubConfigById || config.club_config_by_id) === "object" ? (config.clubConfigById || config.club_config_by_id) : {},
+      };
+    }
+
+    function getArchiveFrontendConfig(json) {
+      const archive = json?._archive || {};
+      return normalizeArchiveFrontendConfig(
+        archive.frontendConfig ||
+        archive.frontEndConfig ||
+        archive.configSnapshot ||
+        archive.config ||
+        null
+      );
+    }
+
+    function getViewClubs(archiveConfig) {
+      return archiveConfig?.clubs?.length ? archiveConfig.clubs : CLUBS;
+    }
+
+    function getViewRankingConfig(archiveConfig) {
+      return archiveConfig?.rankingConfig?.length ? archiveConfig.rankingConfig : RANKING_CONFIG;
+    }
+
+    function getViewClubTierOrder(archiveConfig) {
+      return archiveConfig?.clubTierOrder?.length ? archiveConfig.clubTierOrder : CLUB_TIER_ORDER;
+    }
+
+    function getViewRankIconPath(archiveConfig) {
+      return typeof archiveConfig?.rankIconPath === "string" && archiveConfig.rankIconPath ? archiveConfig.rankIconPath : RANK_ICON_PATH;
+    }
+
+    function getViewTierColors(archiveConfig) {
+      return archiveConfig?.tierColors && typeof archiveConfig.tierColors === "object" ? archiveConfig.tierColors : TIER_COLORS;
+    }
+
     const HEALTH_GRADES = [
       { min: 0.95, grade: "A+", color: "#34d399", bg: "#34d39922" },
       { min: 0.90, grade: "A",  color: "#34d399", bg: "#34d39922" },
@@ -228,20 +283,23 @@
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
 
 
-    function getSuggestedTierForProjectedMonthly(projectedMonthly = 0) {
+    function getSuggestedTierForProjectedMonthly(projectedMonthly = 0, clubs = CLUBS) {
       const value = Math.max(0, Number(projectedMonthly) || 0);
-      const ordered = [...CLUBS].sort((a, b) => b.target - a.target);
+      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CLUBS;
+      const ordered = [...sourceClubs].sort((a, b) => b.target - a.target);
       const match = ordered.find((club) => value >= club.target);
       return match ? match.tier : "B+";
     }
 
-    function getExpectedClubTier(currentTier, projectedMonthly = 0, direction = "promotion") {
+    function getExpectedClubTier(currentTier, projectedMonthly = 0, direction = "promotion", clubs = CLUBS, clubTierOrder = CLUB_TIER_ORDER) {
       const value = Math.max(0, Number(projectedMonthly) || 0);
-      const minClubTarget = Math.min(...CLUBS.map((club) => club.target));
+      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CLUBS;
+      const tierOrder = Array.isArray(clubTierOrder) && clubTierOrder.length ? clubTierOrder : CLUB_TIER_ORDER;
+      const minClubTarget = Math.min(...sourceClubs.map((club) => club.target));
       if (direction === "demotion" && value < minClubTarget) return "Remove";
-      const suggestedTier = getSuggestedTierForProjectedMonthly(value);
-      const currentIdx = CLUB_TIER_ORDER.indexOf(currentTier);
-      const suggestedIdx = CLUB_TIER_ORDER.indexOf(suggestedTier);
+      const suggestedTier = getSuggestedTierForProjectedMonthly(value, sourceClubs);
+      const currentIdx = tierOrder.indexOf(currentTier);
+      const suggestedIdx = tierOrder.indexOf(suggestedTier);
       if (currentIdx < 0 || suggestedIdx < 0) return suggestedTier;
       if (direction === "promotion") return suggestedIdx < currentIdx ? suggestedTier : currentTier;
       if (direction === "demotion") return suggestedIdx > currentIdx ? suggestedTier : currentTier;
@@ -782,6 +840,7 @@
       const refreshedAt = null;
       const sourceUpdatedAt = safeIso(clubRoot?.updated_at);
       const lastFetch = sourceUpdatedAt || null;
+      const archiveConfig = getArchiveFrontendConfig(json);
       return {
         members,
         clubName: clubRoot?.name || "Unknown",
@@ -789,6 +848,7 @@
         refreshedAt,
         sourceUpdatedAt,
         sourceType: DATA_SOURCES.CHRONOGENESIS,
+        archiveConfig,
         sharedActualDate,
         dataYear: datasetMonth.year,
         dataMonth: datasetMonth.month,
@@ -951,10 +1011,10 @@
       return (<div style={{ background: "#1a1730", borderRadius: 99, height, overflow: "hidden", width: "100%" }}><div style={{ width: `${Math.min(100, Math.max(0, pct || 0))}%`, height: "100%", background: color, borderRadius: 99, transition: "width 0.5s ease" }} /></div>);
     }
 
-    function TierBadge({ tier, size = 22 }) {
+    function TierBadge({ tier, size = 22, rankingConfig = RANKING_CONFIG, rankIconPath = RANK_ICON_PATH }) {
       return (
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: size, minHeight: size, lineHeight: 1, flex: "0 0 auto" }}>
-          <TierIcon tier={tier} size={size} title={`${tier} tier`} showFallbackText={true} />
+          <TierIcon tier={tier} size={size} title={`${tier} tier`} showFallbackText={true} rankingConfig={rankingConfig} rankIconPath={rankIconPath} />
         </span>
       );
     }
@@ -973,14 +1033,14 @@
       return (<span style={{ color: isUp ? "#34d399" : "#f87171", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>{isUp ? "▲" : "▼"} {fmt(Math.abs(delta))}</span>);
     }
 
-    function MonthlyRankBadge({ rank, delta, size = "normal" }) {
+    function MonthlyRankBadge({ rank, delta, size = "normal", rankingConfig = RANKING_CONFIG, rankIconPath = RANK_ICON_PATH }) {
       if (rank == null) return null;
-      const currentTier = getTierForRank(rank);
+      const currentTier = getTierForRank(rank, rankingConfig);
       const isSmall = size === "small";
       const iconSize = isSmall ? 16 : 20;
       return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: isSmall ? 4 : 6, lineHeight: 1 }}>
-          {currentTier && <TierIcon tier={currentTier} size={iconSize} title={`${currentTier} rank tier`} showFallbackText={true} />}
+          {currentTier && <TierIcon tier={currentTier} size={iconSize} title={`${currentTier} rank tier`} showFallbackText={true} rankingConfig={rankingConfig} rankIconPath={rankIconPath} />}
           <span style={{ color: "#e2e0f0", fontWeight: 800, fontSize: isSmall ? 11 : 12, whiteSpace: "nowrap" }}>#{rank.toLocaleString()}</span>
           <RankDeltaIndicator delta={delta} />
         </span>
@@ -1161,7 +1221,7 @@
     }
 
 
-    function NetworkRankChart({ clubs = [], dim, effectiveGameDayKey, rankHistory }) {
+    function NetworkRankChart({ clubs = [], dim, effectiveGameDayKey, rankHistory, rankingConfig = RANKING_CONFIG, rankIconPath = RANK_ICON_PATH }) {
       const [hoverIdx, setHoverIdx] = useState(null);
       const effectiveRankDayNumber = Math.max(1, Math.min(dim, dateKeyToLocalDate(effectiveGameDayKey).getDate()));
       const dateKeyForDay = (dayNum) => {
@@ -1175,13 +1235,13 @@
           const shouldDisplayDay = d <= effectiveRankDayNumber;
           series.push(shouldDisplayDay ? (hist[dateKeyForDay(d)]?.rank ?? null) : null);
         }
-        return { ...c, rankSeries: series, clubColor: c.clubColor || getClubColor(CLUBS.indexOf(c)) };
+        return { ...c, rankSeries: series, clubColor: c.clubColor || getClubColor(clubs.indexOf(c)) };
       }).filter((c) => c.rankSeries.some((v) => v != null));
       if (!clubLines.length) return (<div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>No rank history data available yet.</div>);
       const allRanks = clubLines.flatMap((c) => c.rankSeries.filter((v) => v != null));
       const minRank = Math.min(...allRanks);
       const maxRank = Math.max(...allRanks);
-      const sortedTiers = [...RANKING_CONFIG].sort((a, b) => a.min - b.min);
+      const sortedTiers = [...(Array.isArray(rankingConfig) && rankingConfig.length ? rankingConfig : RANKING_CONFIG)].sort((a, b) => a.min - b.min);
       let topTierIdx = sortedTiers.findIndex((t) => minRank >= t.min && (t.max === null || minRank <= t.max));
       let botTierIdx = sortedTiers.findIndex((t) => maxRank >= t.min && (t.max === null || maxRank <= t.max));
       if (topTierIdx < 0) topTierIdx = 0;
@@ -1204,7 +1264,7 @@
       return (
         <div style={{ position: "relative" }}>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-            {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={RANK_ICON_PATH + RANKING_CONFIG.find((r) => r.tier === tb.tier)?.icon + ".png"} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
+            {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={getRankIconUrl(tb.tier, rankingConfig)} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
             {clubLines.map((c) => (<path key={c.id} d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
             {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" /> : null; })}
             {hoverIdx != null && hoverIdx <= latestDay && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
@@ -1212,7 +1272,7 @@
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return <rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />; })}
             {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? <text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill={i <= latestDay ? "#6b7280" : "#312b4a"} fontSize="10">{i + 1}</text> : null)}
           </svg>
-          {hoverIdx != null && hoverIdx <= latestDay && (() => { const dayNum = hoverIdx + 1; const dk = dateKeyForDay(dayNum); const items = clubLines.map((c) => ({ ...c, rank: c.rankSeries[hoverIdx] })).filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank); if (!items.length) return null; const tx = Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100)); return (<div style={{ position: "absolute", left: `${tx}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 220, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {dayNum} · {dk}</div>{items.map((c) => { const tier = getTierForRank(c.rank); return (<div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: c.clubColor, flexShrink: 0 }} />{c.clubName || c.name}</div><div style={{ display: "flex", alignItems: "center", gap: 4 }}>{tier && <TierIcon tier={tier} size={14} showFallbackText={false} />}<span style={{ color: "#e2e0f0", fontWeight: 700 }}>#{c.rank.toLocaleString()}</span></div></div>); })}</div>); })()}
+          {hoverIdx != null && hoverIdx <= latestDay && (() => { const dayNum = hoverIdx + 1; const dk = dateKeyForDay(dayNum); const items = clubLines.map((c) => ({ ...c, rank: c.rankSeries[hoverIdx] })).filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank); if (!items.length) return null; const tx = Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100)); return (<div style={{ position: "absolute", left: `${tx}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 220, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {dayNum} · {dk}</div>{items.map((c) => { const tier = getTierForRank(c.rank, rankingConfig); return (<div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: c.clubColor, flexShrink: 0 }} />{c.clubName || c.name}</div><div style={{ display: "flex", alignItems: "center", gap: 4 }}>{tier && <TierIcon tier={tier} size={14} showFallbackText={false} rankingConfig={rankingConfig} rankIconPath={rankIconPath} />}<span style={{ color: "#e2e0f0", fontWeight: 700 }}>#{c.rank.toLocaleString()}</span></div></div>); })}</div>); })()}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}>{clubLines.map((c) => (<span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: c.clubColor, borderRadius: 99, display: "inline-block" }} />{c.clubName || c.name}</span>))}</div>
         </div>
       );
@@ -1262,6 +1322,15 @@
       const isChronogenesisSource = dataSource === DATA_SOURCES.CHRONOGENESIS;
       const isArchiveView = isChronogenesisSource && Boolean(archiveMonth);
       const archiveMonths = Array.isArray(archiveManifest?.months) ? archiveManifest.months : [];
+      const archivedFrontendConfig = isArchiveView
+        ? normalizeArchiveFrontendConfig(Object.values(clubData || {}).find((entry) => entry?.archiveConfig)?.archiveConfig || null)
+        : null;
+      const viewClubs = getViewClubs(archivedFrontendConfig);
+      const viewRankingConfig = getViewRankingConfig(archivedFrontendConfig);
+      const viewClubTierOrder = getViewClubTierOrder(archivedFrontendConfig);
+      const viewRankIconPath = getViewRankIconPath(archivedFrontendConfig);
+      const viewTierColors = getViewTierColors(archivedFrontendConfig);
+      const viewMaxMembers = Number(archivedFrontendConfig?.maxMembers || MAX_MEMBERS);
       const isDiscordExportsEnabled = isChronogenesisSource;
       const isAwaitingFirstScheduledRefresh = isChronogenesisSource ? false : (effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey);
       const resetWindowBlocksExports = isAwaitingFirstScheduledRefresh;
@@ -1314,12 +1383,12 @@
       const daysLeft = dim - today;
       const monthWeeks = getMonthWeeks(year, monthIndex);
 
-      const club = CLUBS[activeIdx];
+      const club = viewClubs[activeIdx] || viewClubs[0] || CLUBS[0];
       const cid = club.id;
       const data = cid ? (clubData[cid] || null) : null;
       const allMembers = data?.members || [];
       const activeMembers = allMembers.filter((m) => m.isActive !== false);
-      const tc = TIER_COLORS[club.tier] || TIER_COLORS["B+"];
+      const tc = viewTierColors[club.tier] || viewTierColors["B+"];
       const clubName = data?.clubName || club.name;
       const supportsMemberDailyFans = activeMembers.some((m) => (Array.isArray(m.dailyFans) && m.dailyFans.length) || (Array.isArray(m.precomputedDailyGainSeries) && m.precomputedDailyGainSeries.length));
       const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
@@ -1333,6 +1402,7 @@
           refreshedAt: result.refreshedAt || null,
           sourceUpdatedAt: result.sourceUpdatedAt || null,
           sourceType: result.sourceType || dataSource,
+          archiveConfig: result.archiveConfig || null,
           sharedActualDate: result.sharedActualDate ?? null,
           dataYear: result.dataYear ?? null,
           dataMonth: result.dataMonth ?? null,
@@ -1376,7 +1446,7 @@
         setLoading(true); setErr("");
         const allLogs = []; const rawById = {};
         let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date(), dataSource);
-        for (const c of CLUBS) {
+        for (const c of viewClubs) {
           if (!c.id) continue;
           const candidates = getDataCandidates(dataSource, c.id, dataSource === DATA_SOURCES.CHRONOGENESIS ? archiveMonth : "");
           let loaded = false;
@@ -1423,7 +1493,7 @@
           }
         } else {
           // Load rank history for each club from data/club_rank_history/
-          for (const c of CLUBS) {
+          for (const c of viewClubs) {
             if (!c.id) continue;
             for (const base of ["./data/club_rank_history/", "/data/club_rank_history/"]) {
               try {
@@ -1448,6 +1518,7 @@
       }
 
       useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date(), dataSource)); loadAllData(); }, [dataSource, archiveMonth]);
+      useEffect(() => { if (activeIdx >= viewClubs.length) setActiveIdx(0); }, [activeIdx, viewClubs.length]);
 
       useEffect(() => {
         if (dataSource !== DATA_SOURCES.CHRONOGENESIS) return;
@@ -1586,7 +1657,7 @@
         return { rank: cur, delta };
       }
 
-      const networkClubs = CLUBS.map((entry) => {
+      const networkClubs = viewClubs.map((entry) => {
         const cdata = entry.id ? clubData[entry.id] : null;
         const cMembers = (cdata?.members || []).filter((member) => member.isActive !== false);
         const decorated = cMembers.map((member) => decorateMember(member, entry.target));
@@ -1630,7 +1701,7 @@
           statusCounts: clubStatusCounts,
           topFiveMembers: [...decorated].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 5),
           health, pctOnTrack, projectedRatio, nonStagnantRatio, nonStagnantMembers: nonStagnant, clubTarget,
-          clubDailySeries, clubCumSeries, clubPctSeries, clubDailyPctSeries, clubColor: getClubColor(CLUBS.indexOf(entry)),
+          clubDailySeries, clubCumSeries, clubPctSeries, clubDailyPctSeries, clubColor: getClubColor(viewClubs.indexOf(entry)),
           currentMonthlyRank: ri.rank, rankDelta: ri.delta,
         };
       });
@@ -1659,12 +1730,12 @@
         if (!hasComparisonData) return { demotionCandidates: [], promotionCandidates: [] };
         const demotionCandidates = networkMembers
           .filter((m) => m.plan.statusKey === "critical" || (m.plan.statusKey === "behind" && m.stagnantDays >= 3))
-          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "demotion") }))
+          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0, viewClubs), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "demotion", viewClubs, viewClubTierOrder) }))
           .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0))
           .slice(0, 15);
         const promotionCandidates = networkMembers
           .filter((m) => m.clubTier !== "S" && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2)
-          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "promotion") }))
+          .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0, viewClubs), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "promotion", viewClubs, viewClubTierOrder) }))
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
           .slice(0, 15);
         return { demotionCandidates, promotionCandidates };
@@ -1789,7 +1860,7 @@
           `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
           `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
-          `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${MAX_MEMBERS} active · 📅 Day ${today}/${dim}`,
+          `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${viewMaxMembers} active · 📅 Day ${today}/${dim}`,
           `📈 Club Month: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
           `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`
@@ -2230,14 +2301,14 @@
               <div style={{ flex: 1, minWidth: 280 }}>
                 <div style={S.h2}>Select Club</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {CLUBS.map((entry, index) => {
-                    const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+                  {viewClubs.map((entry, index) => {
+                    const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     const active = index === activeIdx;
                     const hasData = entry.id && clubData[entry.id];
                     return (
                       <button key={entry.name} onClick={() => openClub(index)} style={{ ...S.btn(active, "#7c3aed"), opacity: entry.id ? 1 : 0.65, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, minHeight: 18, flexShrink: 0 }}>
-                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} style={{ opacity: active ? 1 : 0.92 }} />
+                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} style={{ opacity: active ? 1 : 0.92 }} />
                         </span>
                         <span style={{ fontSize: 12, fontWeight: 600, color: active ? "#e2e0f0" : "#6b7280" }}>{entry.name}</span>
                         {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
@@ -2256,7 +2327,7 @@
             <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
               {[
-                { label: "Tracked Clubs", value: `${loadedClubCount}/${CLUBS.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
+                { label: "Tracked Clubs", value: `${loadedClubCount}/${viewClubs.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
                 { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
                 { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
                 { label: "Active Members", value: hasComparisonData ? networkMemberCount : "—", sub: hasComparisonData ? `${clubsMissingData} clubs missing JSON` : noComparisonLabel, col: hasComparisonData ? (clubsMissingData ? "#fbbf24" : "#34d399") : "#9ca3af" },
@@ -2272,22 +2343,22 @@
                 <div style={S.h2}>Club Directory</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
                   {networkClubs.map((entry, index) => {
-                    const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+                    const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     return (
                       <div key={entry.name} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            <TierBadge tier={entry.tier} />
+                            <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
                             <div><div style={{ fontWeight: 800, color: "#e2e0f0", fontSize: 15 }}>{entry.clubName}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div></div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" />}
+                            {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
                             <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open</button>
                           </div>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Fan Quota</div><div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}</div></div>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div><div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? `${entry.activeMembers}/${MAX_MEMBERS}` : "—"}</div>{!hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}</div>
+                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div><div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? `${entry.activeMembers}/${viewMaxMembers}` : "—"}</div>{!hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}</div>
                           <div>
                             <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
                             <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
@@ -2314,7 +2385,7 @@
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Total Fans</th></tr></thead><tbody>
                   {!hasComparisonData ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>Load club JSON files to populate the network leaderboard.</td></tr>) : (
-                    topNetworkUsers.map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 1}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
+                    topNetworkUsers.map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 1}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
                   )}
                 </tbody></table></div>
               </div>
@@ -2324,11 +2395,11 @@
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Top five monthly fan gainers in each loaded club, with daily gain for quick comparison.</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
                   {networkClubs.filter((entry) => entry.id).map((entry) => {
-                    const ctc = TIER_COLORS[entry.tier] || TIER_COLORS["B+"];
+                    const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     return (
                       <div key={`top-five-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} /><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div></div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div></div>
                           <div style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</div>
                         </div>
                         {!entry.hasData ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No JSON loaded for this club yet.</div>) : !hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>{noComparisonLabel}</div>) : entry.topFiveMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12, padding: "8px 0" }}>No active members available.</div>) : (
@@ -2348,7 +2419,7 @@
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Members currently in critical status across all loaded clubs. All metrics reflect data through {dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.</div>
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("planDelta")}>Vs Weekly Plan {criticalSortLabel("planDelta")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("rolling3DayAvg")}>3-Day Avg {criticalSortLabel("rolling3DayAvg")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("projected")}>Projected Fans {criticalSortLabel("projected")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("fansNeeded")}>Needed for Month-End Plan {criticalSortLabel("fansNeeded")}</th><th style={S.th}>Idle</th></tr></thead><tbody>
                   {!hasComparisonData ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : criticalNetworkMembers.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No members are currently in critical status across the selected clubs.</td></tr>) : (
-                    visibleCriticalMembers.map((member, index) => (<tr key={`critical-${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} /><span>{member.clubName}</span></div></td><td style={{ ...S.td, color: STATUS_META["critical"].color, fontWeight: 700 }}>{deltaText(member.plan.delta)}</td><td style={{ ...S.td, color: criticalAvgColor(member.rolling3DayAvg ?? 0), fontWeight: 700 }}>{fmtSigned(member.rolling3DayAvg)}</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(member.projected ?? 0)}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmt(member.fansNeededForPlan)}</td><td style={S.td}><StagnantBadge days={member.stagnantDays} /></td></tr>))
+                    visibleCriticalMembers.map((member, index) => (<tr key={`critical-${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td><td style={{ ...S.td, color: STATUS_META["critical"].color, fontWeight: 700 }}>{deltaText(member.plan.delta)}</td><td style={{ ...S.td, color: criticalAvgColor(member.rolling3DayAvg ?? 0), fontWeight: 700 }}>{fmtSigned(member.rolling3DayAvg)}</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(member.projected ?? 0)}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmt(member.fansNeededForPlan)}</td><td style={S.td}><StagnantBadge days={member.stagnantDays} /></td></tr>))
                   )}
                 </tbody></table></div>
                 {hasComparisonData && remainingCriticalCount > 0 && (<div style={{ position: "sticky", bottom: 0, paddingTop: 12, marginTop: -6, background: "linear-gradient(to bottom, rgba(10,9,18,0), rgba(10,9,18,0.96) 45%, rgba(10,9,18,1) 100%)", display: "flex", justifyContent: "center" }}><button style={S.btn(false, "#7c3aed")} onClick={() => setCriticalVisibleCount((prev) => prev + 10)}>Show {Math.min(10, remainingCriticalCount)} More</button></div>)}
@@ -2365,7 +2436,7 @@
                       <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            <TierBadge tier={entry.tier} />
+                            <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
                             <div>
                               <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div>
                               <div style={{ color: "#6b7280", fontSize: 10, marginTop: 2 }}>{entry.activeMembers} members · {entry.health.score}/100 composite</div>
@@ -2420,16 +2491,16 @@
                     <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Daily monthly_rank for each club. Lower rank = better. Tier icons mark boundaries on the y-axis.</div>
                   </div>
                 </div>
-                <NetworkRankChart clubs={networkClubs} dim={dim} effectiveGameDayKey={effectiveGameDayKey} rankHistory={rankHistory} />
+                <NetworkRankChart clubs={networkClubs} dim={dim} effectiveGameDayKey={effectiveGameDayKey} rankHistory={rankHistory} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
               </div>
               <div style={S.card}>
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
@@ -2443,13 +2514,13 @@
             <div style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <TierBadge tier={club.tier} />
+                  <TierBadge tier={club.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       {clubName}
-                      {(() => { const ri = getClubRankInfo(cid); return ri.rank != null ? <MonthlyRankBadge rank={ri.rank} delta={ri.delta} /> : null; })()}
+                      {(() => { const ri = getClubRankInfo(cid); return ri.rank != null ? <MonthlyRankBadge rank={ri.rank} delta={ri.delta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : null; })()}
                     </div>
-                    <div style={{ fontSize: 11, color: "#9ca3af" }}>Officer: {club.officer} · ID: {club.id || "TBD"} · Max {MAX_MEMBERS} members</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>Officer: {club.officer} · ID: {club.id || "TBD"} · Max {viewMaxMembers} members</div>
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -2468,7 +2539,7 @@
               {tab === "dashboard" && (<>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                   {[
-                    { label: "Active Members", value: hasComparisonData ? `${decoratedMembers.length}/${MAX_MEMBERS}` : "—", sub: hasComparisonData ? "Inactive excluded" : noComparisonLabel, col: hasComparisonData ? "#e2e0f0" : "#9ca3af" },
+                    { label: "Active Members", value: hasComparisonData ? `${decoratedMembers.length}/${viewMaxMembers}` : "—", sub: hasComparisonData ? "Inactive excluded" : noComparisonLabel, col: hasComparisonData ? "#e2e0f0" : "#9ca3af" },
                     { label: `${STATUS_META["on-track"].icon} ${STATUS_META["on-track"].label}`, value: hasComparisonData ? statusCounts["on-track"] : "—", sub: hasComparisonData ? "At or above weekly pace" : noComparisonLabel, col: "#34d399", filterKey: hasComparisonData ? "on-track" : null },
                     { label: `${STATUS_META["behind"].icon} ${STATUS_META["behind"].label}`, value: hasComparisonData ? statusCounts["behind"] : "—", sub: hasComparisonData ? "Below pace but above 25%" : noComparisonLabel, col: "#fbbf24", filterKey: hasComparisonData ? "behind" : null },
                     { label: `${STATUS_META["critical"].icon} ${STATUS_META["critical"].label}`, value: hasComparisonData ? statusCounts["critical"] : "—", sub: hasComparisonData ? "Under 25% of weekly pace" : noComparisonLabel, col: "#f87171", filterKey: hasComparisonData ? "critical" : null },
