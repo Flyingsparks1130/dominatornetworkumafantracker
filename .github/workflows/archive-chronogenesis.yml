@@ -1,17 +1,21 @@
-name: Archive Chronogenesis Month
+name: Archive completed Chronogenesis month
 
 on:
+  # Runs after the daily Chronogenesis refresh window.
+  # GitHub cron uses UTC; 10:30 UTC is 17:30 UTC+7.
   schedule:
-    - cron: "45 10 1 * *"
-    - cron: "30 4 2 * *"
+    - cron: "30 10 1-3 * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: chronogenesis-archive
+  group: archive-chronogenesis
   cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   archive:
@@ -19,26 +23,32 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      - name: Archive completed previous Chronogenesis month
+      - name: Ensure archive directories exist
+        run: |
+          mkdir -p data/chronogenesis/archive
+          mkdir -p data/chronogenesis/archive/config
+
+      - name: Archive completed Chronogenesis month
         run: node scripts/archive-chronogenesis-complete-month.mjs
 
-      - name: Commit archive files
+      - name: Commit and push archive files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add data/chronogenesis/archive
+          git add data/chronogenesis/archive/*.json data/chronogenesis/archive/config/*.json || true
 
           if git diff --cached --quiet; then
             echo "No archive changes to commit"
-          else
-            git commit -m "Archive completed Chronogenesis month"
-            git push
+            exit 0
           fi
+
+          git commit -m "Archive completed Chronogenesis month"
+          git push
