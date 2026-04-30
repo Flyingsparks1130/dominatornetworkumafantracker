@@ -10,6 +10,9 @@ concurrency:
   group: update-chronogenesis
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   update-chronogenesis:
     runs-on: ubuntu-latest
@@ -26,7 +29,7 @@ jobs:
       - name: Ensure output directories exist
         run: |
           mkdir -p data/chronogenesis
-          mkdir -p data/chronogenesis/archive
+          mkdir -p data/chronogenesis/archive/config
           mkdir -p scripts/debug
 
       - name: Run Chronogenesis updater
@@ -35,12 +38,15 @@ jobs:
           CHRONOGENESIS_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
         run: node scripts/update-chronogenesis.mjs
 
+      - name: Snapshot current Chronogenesis frontend config
+        run: node scripts/snapshot-chronogenesis-config.mjs
+
       - name: Commit and push updated data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add data/chronogenesis/*.json scripts/debug || true
+          git add data/chronogenesis/*.json data/chronogenesis/archive/config/*.json scripts/debug || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
