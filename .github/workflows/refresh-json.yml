@@ -1,7 +1,6 @@
 name: Refresh circle JSON
 
 on:
-  schedule:
   workflow_dispatch:
 
 permissions:
@@ -51,7 +50,9 @@ jobs:
               found=$((found + 1))
             fi
           done
+
           echo "circles_found=$found" >> "$GITHUB_OUTPUT"
+
           if [ "$found" -eq 0 ]; then
             echo "::warning::No circle files with monthly_rank found — skipping rank tracker"
           else
@@ -66,8 +67,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/*.json data/club_rank_history/
-          git diff --staged --quiet || git commit -m "Refresh circle JSON"
 
-      - name: Push changes
-        run: git push
+          git add data/*.json data/club_rank_history/ || true
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Refresh circle JSON"
+          git push
