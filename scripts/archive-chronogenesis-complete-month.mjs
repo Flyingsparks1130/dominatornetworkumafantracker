@@ -98,7 +98,16 @@ function readFrontendConfigForMonth(monthKey) {
   const configPath = path.join(CONFIG_DIR, `${monthKey}.json`);
   if (fs.existsSync(configPath)) {
     const config = readJson(configPath);
-    return { ...config, sourceFile: path.posix.join("data", "chronogenesis", "archive", "config", `${monthKey}.json`) };
+    return {
+      ...config,
+      sourceFile: path.posix.join(
+        "data",
+        "chronogenesis",
+        "archive",
+        "config",
+        `${monthKey}.json`
+      ),
+    };
   }
 
   const fallback = readFrontendConfigFromIndex(monthKey);
@@ -108,6 +117,7 @@ function readFrontendConfigForMonth(monthKey) {
   } else {
     console.log(`warning: no frontend config snapshot found for ${monthKey}`);
   }
+
   return fallback;
 }
 
@@ -120,14 +130,28 @@ function getClubIdFromJson(json, fallbackClubId) {
   return String(clubRoot?.circle_id ?? clubRoot?.id ?? clubRoot?.club_id ?? fallbackClubId);
 }
 
-function getMaxActualDate(json, dim) {
-  const rows = Array.isArray(json?.club_friend_history) ? json.club_friend_history : [];
+function getMaxActualDateFromRows(rows, dim) {
+  if (!Array.isArray(rows)) return 0;
+
   return rows.reduce((maxDay, row) => {
     const actualDate = Number(row?.actual_date);
     if (!Number.isFinite(actualDate)) return maxDay;
     if (actualDate < 1 || actualDate > dim) return maxDay;
     return Math.max(maxDay, actualDate);
   }, 0);
+}
+
+function hasActualDate(rows, actualDate) {
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) => Number(row?.actual_date) === Number(actualDate));
+}
+
+function getMaxFriendHistoryActualDate(json, dim) {
+  return getMaxActualDateFromRows(json?.club_friend_history, dim);
+}
+
+function getMaxClubDailyHistoryActualDate(json, dim) {
+  return getMaxActualDateFromRows(json?.club_daily_history, dim);
 }
 
 function getSharedActualDate(json, dim) {
@@ -137,13 +161,16 @@ function getSharedActualDate(json, dim) {
   const friendProfiles = Array.isArray(json?.club_friend_profile) ? json.club_friend_profile : [];
   const friendHistory = Array.isArray(json?.club_friend_history) ? json.club_friend_history : [];
   const activeRosterIds = new Set(
-    Array.isArray(clubRoot?.circle_user_array) ? clubRoot.circle_user_array.map((id) => String(id)) : []
+    Array.isArray(clubRoot?.circle_user_array)
+      ? clubRoot.circle_user_array.map((id) => String(id))
+      : []
   );
 
   const historyDaysByViewerId = {};
   for (const row of friendHistory) {
     const viewerId = row?.friend_viewer_id;
     const actualDate = Number(row?.actual_date);
+
     if (viewerId == null) continue;
     if (!Number.isFinite(actualDate)) continue;
     if (actualDate < 1 || actualDate > dim) continue;
@@ -161,7 +188,10 @@ function getSharedActualDate(json, dim) {
 
   let sharedMax = 0;
   for (let day = 1; day <= dim; day++) {
-    const everyoneHasDay = activeProfileViewerIds.every((viewerId) => historyDaysByViewerId[viewerId]?.has(day));
+    const everyoneHasDay = activeProfileViewerIds.every((viewerId) =>
+      historyDaysByViewerId[viewerId]?.has(day)
+    );
+
     if (everyoneHasDay) sharedMax = day;
   }
 
@@ -170,14 +200,46 @@ function getSharedActualDate(json, dim) {
 
 function archiveIsAlreadyLocked(archivePath, monthKey, dim) {
   if (!fs.existsSync(archivePath)) return false;
+
   try {
     const archived = readJson(archivePath);
-    return (
-      archived?._archive?.source === "chronogenesis" &&
-      archived?._archive?.month === monthKey &&
-      archived?._archive?.locked === true &&
-      Number(archived?._archive?.completedActualDate) >= dim
+
+    const archiveMeta = archived?._archive || {};
+    const archiveClubDailyMax = Number(
+      archiveMeta.maxClubDailyHistoryActualDate ??
+      getMaxClubDailyHistoryActualDate(archived, dim)
     );
+
+    const archiveFriendMax = Number(
+      archiveMeta.maxFriendHistoryActualDate ??
+      archiveMeta.maxActualDate ??
+      getMaxFriendHistoryActualDate(archived, dim)
+    );
+
+    const archiveShared = Number(
+      archiveMeta.completedActualDate ??
+      getSharedActualDate(archived, dim)
+    );
+
+    const hasFinalClubDailyRow = hasActualDate(archived?.club_daily_history, dim);
+
+    const isLocked =
+      archiveMeta.source === "chronogenesis" &&
+      archiveMeta.month === monthKey &&
+      archiveMeta.locked === true &&
+      archiveShared >= dim &&
+      archiveFriendMax >= dim &&
+      archiveClubDailyMax >= dim &&
+      hasFinalClubDailyRow;
+
+    if (!isLocked) {
+      console.log(
+        `  existing archive is incomplete; will overwrite. ` +
+        `shared=${archiveShared}, friendMax=${archiveFriendMax}, clubDailyMax=${archiveClubDailyMax}, hasDay${dim}ClubDaily=${hasFinalClubDailyRow}`
+      );
+    }
+
+    return isLocked;
   } catch {
     return false;
   }
@@ -185,9 +247,11 @@ function archiveIsAlreadyLocked(archivePath, monthKey, dim) {
 
 function getClubConfig(frontendConfig, clubId) {
   const clubKey = String(clubId);
-  const byId = frontendConfig?.clubConfigById && typeof frontendConfig.clubConfigById === "object"
-    ? frontendConfig.clubConfigById
-    : null;
+  const byId =
+    frontendConfig?.clubConfigById && typeof frontendConfig.clubConfigById === "object"
+      ? frontendConfig.clubConfigById
+      : null;
+
   if (byId?.[clubKey]) return byId[clubKey];
 
   const clubs = Array.isArray(frontendConfig?.clubs) ? frontendConfig.clubs : [];
@@ -206,10 +270,16 @@ function updateArchiveManifest() {
   for (const file of files) {
     const match = file.match(/^(\d+)_(\d{4}-\d{2})\.json$/);
     if (!match) continue;
+
     const [, clubId, monthKey] = match;
 
-    if (!monthMap.has(monthKey)) monthMap.set(monthKey, { key: monthKey, label: monthKey, clubs: [] });
-    if (!clubMap.has(clubId)) clubMap.set(clubId, []);
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, { key: monthKey, label: monthKey, clubs: [] });
+    }
+
+    if (!clubMap.has(clubId)) {
+      clubMap.set(clubId, []);
+    }
 
     monthMap.get(monthKey).clubs.push(clubId);
     clubMap.get(clubId).push(monthKey);
@@ -219,14 +289,16 @@ function updateArchiveManifest() {
     generatedAt: new Date().toISOString(),
     files,
     months: [...monthMap.values()].sort((a, b) => b.key.localeCompare(a.key)),
-    clubs: Object.fromEntries([...clubMap.entries()].map(([clubId, months]) => [clubId, months.sort()])),
+    clubs: Object.fromEntries(
+      [...clubMap.entries()].map(([clubId, months]) => [clubId, months.sort()])
+    ),
     configFiles: fs.existsSync(CONFIG_DIR)
       ? fs.readdirSync(CONFIG_DIR).filter((file) => /^\d{4}-\d{2}\.json$/.test(file)).sort()
       : [],
   };
 
   writeJson(path.join(ARCHIVE_DIR, "manifest.json"), manifest);
-  writeJson(path.join(ARCHIVE_DIR, "index.json"), manifest); // backward-compatible alias
+  writeJson(path.join(ARCHIVE_DIR, "index.json"), manifest);
 }
 
 function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
@@ -240,13 +312,24 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
   const fallbackClubId = path.basename(fileName, ".json");
   const json = readJson(sourcePath);
   const clubId = getClubIdFromJson(json, fallbackClubId);
+
   const dim = daysInMonth(previousMonth.year, previousMonth.month);
+
   const sharedActualDate = getSharedActualDate(json, dim);
-  const maxActualDate = getMaxActualDate(json, dim);
+  const maxFriendHistoryActualDate = getMaxFriendHistoryActualDate(json, dim);
+  const maxClubDailyHistoryActualDate = getMaxClubDailyHistoryActualDate(json, dim);
+  const hasFinalClubDailyRow = hasActualDate(json?.club_daily_history, dim);
+
   const archiveFileName = `${clubId}_${previousMonth.key}.json`;
   const archivePath = path.join(ARCHIVE_DIR, archiveFileName);
 
-  console.log(`${clubId}: previousMonth=${previousMonth.key}, sharedActualDate=${sharedActualDate}, maxActualDate=${maxActualDate}, dim=${dim}`);
+  console.log(
+    `${clubId}: previousMonth=${previousMonth.key}, ` +
+    `sharedActualDate=${sharedActualDate}, ` +
+    `friendMax=${maxFriendHistoryActualDate}, ` +
+    `clubDailyMax=${maxClubDailyHistoryActualDate}, ` +
+    `dim=${dim}`
+  );
 
   if (archiveIsAlreadyLocked(archivePath, previousMonth.key, dim)) {
     console.log(`  locked already: ${archivePath}`);
@@ -258,6 +341,19 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
     return;
   }
 
+  if (maxFriendHistoryActualDate < dim) {
+    console.log("  skip: club_friend_history is not complete yet");
+    return;
+  }
+
+  if (maxClubDailyHistoryActualDate < dim || !hasFinalClubDailyRow) {
+    console.log(
+      `  skip: club_daily_history is not complete yet ` +
+      `(clubDailyMax=${maxClubDailyHistoryActualDate}, hasDay${dim}=${hasFinalClubDailyRow})`
+    );
+    return;
+  }
+
   const archivedJson = {
     ...json,
     _archive: {
@@ -266,14 +362,20 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
       month: previousMonth.key,
       year: previousMonth.year,
       monthNumber: previousMonth.month,
+
       completedActualDate: sharedActualDate,
-      maxActualDate,
+      maxActualDate: maxFriendHistoryActualDate,
+      maxFriendHistoryActualDate,
+      maxClubDailyHistoryActualDate,
+
+      hasFinalClubDailyRow,
       daysInMonth: dim,
       locked: true,
       lockedAt: new Date().toISOString(),
       timeZone: TIME_ZONE,
       sourceFile: path.posix.join("data", "chronogenesis", fileName),
       archiveFile: path.posix.join("data", "chronogenesis", "archive", archiveFileName),
+
       frontendConfig: frontendConfig
         ? {
             ...frontendConfig,
@@ -288,7 +390,9 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
 }
 
 function main() {
-  if (!fs.existsSync(DATA_DIR)) throw new Error(`Missing directory: ${DATA_DIR}`);
+  if (!fs.existsSync(DATA_DIR)) {
+    throw new Error(`Missing directory: ${DATA_DIR}`);
+  }
 
   const previousMonth = getPreviousBangkokMonth(new Date());
   const frontendConfig = readFrontendConfigForMonth(previousMonth.key);
