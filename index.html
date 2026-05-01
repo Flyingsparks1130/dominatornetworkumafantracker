@@ -972,6 +972,29 @@
       return { series: Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.dailyGainSeries[d] ?? 0), 0)), fromHistory: false };
     }
 
+
+    function getMonthNumberKey(year, monthIndex) {
+      return (Number(year) * 100) + Number(monthIndex + 1);
+    }
+
+    function getClubMonthlyHistoryRow(cdata, year, monthIndex) {
+      const yearMonth = getMonthNumberKey(year, monthIndex);
+      const rows = Array.isArray(cdata?.clubMonthlyHistory) ? cdata.clubMonthlyHistory : [];
+      return rows.find((row) => Number(row?.year_month) === yearMonth) || null;
+    }
+
+    function getFinalClubMonthlyRank(cdata, year, monthIndex) {
+      const monthlyRow = getClubMonthlyHistoryRow(cdata, year, monthIndex);
+      const rank = Number(monthlyRow?.rank);
+      return Number.isFinite(rank) && rank > 0 ? rank : null;
+    }
+
+    function getFinalClubMonthlyFanGain(cdata, year, monthIndex) {
+      const monthlyRow = getClubMonthlyHistoryRow(cdata, year, monthIndex);
+      const gain = Number(monthlyRow?.monthly_fan_gain);
+      return Number.isFinite(gain) ? gain : null;
+    }
+
     function buildClubDailyMetrics(cdata, decorated = [], dim = 0, today = 1) {
       const { series, fromHistory } = buildClubDailySeries(cdata, decorated, dim);
       const latestDailyIdx = Math.min(Math.max(today - 1, 0), Math.max(series.length - 1, 0));
@@ -1527,6 +1550,11 @@
                   rank_gain: Number(row?.rank_gain ?? 0),
                 };
               });
+              const finalMonthlyRank = getFinalClubMonthlyRank(result, resolvedDataDate.getFullYear(), resolvedDataDate.getMonth());
+              const finalDayKey = formatDateKey(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1, daysInMonth(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1));
+              if (finalMonthlyRank != null && !rankMap[finalDayKey]) {
+                rankMap[finalDayKey] = { rank: finalMonthlyRank, rank_gain: null, inferredFromMonthlyHistory: true };
+              }
               rankHistNext[clubId] = rankMap;
             }
           }
@@ -1717,14 +1745,30 @@
         const dailyTrendDelta = clubDailyMetrics.dailyTrendDelta;
         const clubCumSeries = historyDailySeries
           ? (() => {
-              const nextSeries = new Array(dim).fill(0);
+              const absoluteFanCountSeries = new Array(dim).fill(null);
               cdata.clubDailyHistory.forEach((row) => {
                 const actualDate = Number(row?.actual_date);
                 if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > dim) return;
-                nextSeries[actualDate - 1] = Number(row?.interpolated_fan_count ?? 0);
+                const fanCount = Number(row?.interpolated_fan_count);
+                if (Number.isFinite(fanCount) && fanCount > 0) absoluteFanCountSeries[actualDate - 1] = fanCount;
               });
-              const baseline = nextSeries.find((value) => value > 0) || 0;
-              return nextSeries.map((value) => Math.max(0, (value || 0) - baseline));
+
+              // Archive snapshots can have complete member data but miss the final club_daily_history row.
+              // Missing days should not be graphed as zero; carry forward the last known club count and
+              // use club_monthly_history.monthly_fan_gain as the month-end total when available.
+              const finalMonthlyGain = getFinalClubMonthlyFanGain(cdata, year, monthIndex);
+              const baseline = absoluteFanCountSeries.find((value) => value != null && value > 0) || 0;
+              let lastFanCount = null;
+              const cumulative = absoluteFanCountSeries.map((value) => {
+                if (value != null && value > 0) lastFanCount = value;
+                if (lastFanCount == null || baseline <= 0) return null;
+                return Math.max(0, lastFanCount - baseline);
+              });
+              if (finalMonthlyGain != null && finalMonthlyGain >= 0) cumulative[dim - 1] = finalMonthlyGain;
+              for (let i = 1; i < cumulative.length; i++) {
+                if (cumulative[i] == null && cumulative[i - 1] != null) cumulative[i] = cumulative[i - 1];
+              }
+              return cumulative.map((value) => value ?? 0);
             })()
           : buildCumulativeFromDailyGainSeries(clubDailySeries, dim);
         const clubPctSeries = clubTarget > 0 ? clubCumSeries.map((v) => (v / clubTarget) * 100) : [];
