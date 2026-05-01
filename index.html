@@ -1756,7 +1756,8 @@
               // Archive snapshots can have complete member data but miss the final club_daily_history row.
               // Missing days should not be graphed as zero; carry forward the last known club count and
               // use club_monthly_history.monthly_fan_gain as the month-end total when available.
-              const finalMonthlyGain = getFinalClubMonthlyFanGain(cdata, year, monthIndex);
+              const monthlyHistoryFinalGain = getFinalClubMonthlyFanGain(cdata, year, monthIndex);
+              const memberComputedFinalGain = decorated.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
               const baseline = absoluteFanCountSeries.find((value) => value != null && value > 0) || 0;
               let lastFanCount = null;
               const cumulative = absoluteFanCountSeries.map((value) => {
@@ -1764,9 +1765,20 @@
                 if (lastFanCount == null || baseline <= 0) return null;
                 return Math.max(0, lastFanCount - baseline);
               });
-              if (finalMonthlyGain != null && finalMonthlyGain >= 0) cumulative[dim - 1] = finalMonthlyGain;
+
+              // Some archived snapshots can contain a complete day-30 rank row while the
+              // archived club_monthly_history/monthly_fan_gain is stale or lower than the
+              // day-29 cumulative count. Never let the cumulative pace line move backward;
+              // use the strongest month-end total we can verify from club history or members.
+              const finalGainCandidates = [monthlyHistoryFinalGain, memberComputedFinalGain, cumulative[dim - 1]]
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value >= 0);
+              const bestFinalGain = finalGainCandidates.length ? Math.max(...finalGainCandidates) : null;
+              if (bestFinalGain != null) cumulative[dim - 1] = Math.max(bestFinalGain, cumulative[dim - 2] ?? 0);
+
               for (let i = 1; i < cumulative.length; i++) {
                 if (cumulative[i] == null && cumulative[i - 1] != null) cumulative[i] = cumulative[i - 1];
+                if (cumulative[i] != null && cumulative[i - 1] != null && cumulative[i] < cumulative[i - 1]) cumulative[i] = cumulative[i - 1];
               }
               return cumulative.map((value) => value ?? 0);
             })()
