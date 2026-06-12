@@ -28,7 +28,7 @@
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { background: var(--night-0); min-height: 100%; }
-    body { overflow-y: scroll; overflow-x: hidden; font-variant-numeric: tabular-nums; }
+    body { overflow-y: scroll; overflow-x: clip; font-variant-numeric: tabular-nums; }
     button { font-family: inherit; }
     button:not(:disabled) { cursor: pointer; }
     img { -webkit-user-drag: none; }
@@ -177,6 +177,138 @@
     @keyframes line-draw { to { stroke-dashoffset: 0; } }
     @media (prefers-reduced-motion: reduce) {
       .chart-line { animation: none; stroke-dashoffset: 0; }
+    }
+
+    /* ── Structure: "Paddock & Track" shell ─────────────────────── */
+    .app-shell { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .rail {
+      position: sticky; top: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+      max-height: calc(100vh - 28px); overflow-y: auto;
+      padding-right: 2px;
+      scrollbar-width: thin;
+    }
+    .main { min-width: 0; }
+    .mobile-only { display: none; }
+    .mobile-topbar { display: none; }
+    .mobile-dock { display: none; }
+
+    /* Starting-gate club buttons (rail = vertical, strip = horizontal) */
+    .gate-btn {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      text-align: left; border-radius: 12px; padding: 8px 10px;
+      background: rgba(20,17,40,0.7); border: 1px solid rgba(167,139,250,0.14);
+      color: #8f88b8; font-size: 12px; font-weight: 700;
+    }
+    .gate-btn.active {
+      background: linear-gradient(150deg, rgba(124,58,237,0.45), rgba(124,58,237,0.18));
+      border-color: rgba(167,139,250,0.55); color: #f1eefc;
+      box-shadow: 0 4px 18px rgba(124,58,237,0.3);
+    }
+    .gate-num {
+      font-family: "Chakra Petch", monospace; font-weight: 700; font-size: 11px;
+      min-width: 24px; height: 24px; border-radius: 7px; flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(11,9,24,0.9); border: 1px solid rgba(167,139,250,0.3);
+      color: #c4b5fd;
+    }
+    .gate-btn.active .gate-num { background: #fff; color: #4c1d95; border-color: #fff; }
+    .gate-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
+    .gate-strip .gate-btn { width: auto; flex: 0 0 auto; scroll-snap-align: start; white-space: nowrap; }
+
+    /* Telemetry ticker — stat cards become a snap-scroll strip on mobile */
+    .stat-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 980px) {
+      .stat-strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+      .stat-strip > * { min-width: 172px; flex: 0 0 auto; scroll-snap-align: start; }
+    }
+
+    /* Sticky tab dock inside views */
+    .tab-dock {
+      position: sticky; top: 10px; z-index: 8;
+      display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 14px; padding: 8px;
+      border-radius: 999px;
+      background: rgba(13,11,29,0.82);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(167,139,250,0.18);
+      box-shadow: 0 10px 30px rgba(3,2,10,0.45);
+      width: fit-content; max-width: 100%;
+    }
+
+    /* Podium for top network members */
+    .podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; margin-bottom: 14px; }
+    .podium-step { border-radius: 14px; padding: 14px 12px 12px; text-align: center; position: relative; overflow: hidden; }
+    .podium-step::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,0.05), transparent 40%); }
+    .podium-1 { order: 2; min-height: 150px; background: linear-gradient(170deg, rgba(251,191,36,0.16), rgba(13,11,29,0.9)); border: 1px solid rgba(251,191,36,0.45); box-shadow: 0 0 34px rgba(251,191,36,0.12); }
+    .podium-2 { order: 1; min-height: 120px; background: linear-gradient(170deg, rgba(209,213,219,0.12), rgba(13,11,29,0.9)); border: 1px solid rgba(209,213,219,0.35); }
+    .podium-3 { order: 3; min-height: 104px; background: linear-gradient(170deg, rgba(217,119,6,0.13), rgba(13,11,29,0.9)); border: 1px solid rgba(217,119,6,0.4); }
+    .podium-rank { font-family: "Chakra Petch", monospace; font-weight: 700; font-size: 22px; line-height: 1; }
+    @media (max-width: 640px) { .podium { gap: 6px; } .podium-step { padding: 10px 6px 9px; } }
+
+    /* Race-program club banner */
+    .club-banner { position: relative; overflow: hidden; }
+    .club-banner::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+      background:
+        repeating-linear-gradient(115deg, transparent 0 26px, color-mix(in srgb, var(--tier-c, #7c3aed) 9%, transparent) 26px 30px);
+      mask-image: linear-gradient(90deg, #000 0%, transparent 70%);
+      -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 70%);
+    }
+    .gate-plate {
+      font-family: "Chakra Petch", monospace; font-weight: 700;
+      font-size: 34px; line-height: 1; letter-spacing: -0.02em;
+      color: var(--tier-c, #c4b5fd); opacity: 0.9;
+      min-width: 56px; text-align: center; flex: 0 0 auto;
+      text-shadow: 0 0 22px color-mix(in srgb, var(--tier-c, #7c3aed) 55%, transparent);
+    }
+
+    @media (max-width: 1023px) {
+      .app-shell { display: block; }
+      .rail { display: none; }
+      .mobile-only { display: block; }
+      .mobile-topbar {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        position: sticky; top: 0; z-index: 9;
+        margin: -12px -10px 12px; padding: 10px 12px;
+        background: rgba(9,8,20,0.86);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(167,139,250,0.16);
+      }
+      .mobile-dock {
+        display: flex; gap: 8px; align-items: center; justify-content: space-around;
+        position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 10;
+        padding: 8px 10px; border-radius: 18px;
+        background: rgba(13,11,29,0.92);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(167,139,250,0.25);
+        box-shadow: 0 14px 40px rgba(3,2,10,0.7);
+      }
+      .main { padding-bottom: 88px; }
+      .tab-dock { top: 62px; }
+    }
+
+    /* Club directory — race-card rows */
+    .dir-row {
+      display: grid;
+      grid-template-areas: "id name stats actions" "bar bar bar bar";
+      grid-template-columns: auto minmax(170px, 1.3fr) minmax(260px, 2fr) auto;
+      gap: 6px 14px; align-items: center;
+      padding: 11px 14px 12px; border-radius: 14px;
+      background: rgba(13,11,29,0.6);
+      border: 1px solid rgba(167,139,250,0.12);
+      transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+    }
+    .dir-row:hover { background: rgba(22,19,44,0.75); border-color: rgba(167,139,250,0.34); transform: translateX(2px); }
+    .dir-id { grid-area: id; display: flex; align-items: center; gap: 8px; }
+    .dir-name { grid-area: name; min-width: 0; }
+    .dir-stats { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .dir-actions { grid-area: actions; display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    .dir-bar { grid-area: bar; display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+    .dir-stat-label { color: #5b5680; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; white-space: nowrap; }
+    @media (max-width: 900px) {
+      .dir-row { grid-template-areas: "id name actions" "stats stats stats" "bar bar bar"; grid-template-columns: auto minmax(0, 1fr) auto; }
+      .dir-stats { padding-top: 4px; border-top: 1px dashed rgba(167,139,250,0.12); }
     }
 
     /* ── Mobile polish ──────────────────────────────────────────── */
@@ -1336,7 +1468,7 @@
       const min = Math.min(...vals); const max = Math.max(...vals); const range = max - min || 1; const step = width / (vals.length - 1);
       const pts = vals.map((v, i) => `${i * step},${height - ((v - min) / range) * (height - 4) - 2}`).join(" ");
       const lx = (vals.length - 1) * step; const ly = height - ((vals[vals.length - 1] - min) / range) * (height - 4) - 2;
-      return (<svg width={width} height={height}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" /><circle cx={lx} cy={ly} r={2.5} fill={color} opacity={0.8} /></svg>);
+      return (<svg width={width} height={height}><polyline className="chart-line" pathLength="1" points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" /><circle cx={lx} cy={ly} r={2.5} fill={color} opacity={0.8} /></svg>);
     }
 
     function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1, pinnedIdx, setPinnedIdx, containerRef, currentDayIdx = 0, mode = "cumulative" }) {
@@ -1373,17 +1505,50 @@
               {gridValues.map((value, index) => { const y = yForValue(value); return (<g key={index}><line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{fmt(value)}</text></g>); })}
               {weeks.filter((week) => week.startDay <= dayCount).map((week) => { const boundaryDay = Math.min(week.endDay, dayCount); const x = xForIndex(boundaryDay - 1); return (<g key={week.number}><line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" /><text x={Math.max(padding.left + 12, x - 4)} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">W{week.number}</text></g>); })}
               <path d={pathFor(fullTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-              {drawnSeriesList.map((item) => (<path key={item.name} className="chart-line" pathLength="1" d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
+              {drawnSeriesList.map((item) => (<path key={`${item.name}-${mode}-${visibleDayCount}`} className="chart-line" pathLength="1" d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
               <g><circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} /></g>
               {drawnSeriesList.map((item) => { const currentValue = item.series?.[visibleDayCount - 1] ?? 0; return (<g key={`${item.name}-current-dot`}><circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${item.color})` }} /></g>); })}
               {hover && (<><line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke={isPinned ? "#a78bfa" : "#7c3aed"} strokeWidth={isPinned ? "2" : "1"} strokeDasharray="2 4" /><circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />{hoverMembers.filter((item) => item.value != null).map((item) => (<circle key={item.name} cx={hover.x} cy={yForValue(item.value)} r="3" fill={item.color} stroke="#0a0912" strokeWidth="1" />))}</>)}
               {Array.from({ length: dayCount }, (_, index) => { const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2; const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2; return (<g key={index}><rect x={startX} y={padding.top} width={Math.max(10, endX - startX)} height={innerH} fill="transparent" style={{ cursor: "pointer" }} onMouseEnter={() => { if (!isPinned) setHoverIdx(index); }} onMouseLeave={() => { if (!isPinned) setHoverIdx(null); }} onClick={() => { if (isPinned && pinnedIdx === index) setPinnedIdx(null); else setPinnedIdx(index); }} />{(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (<text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{index + 1}</text>)}</g>); })}
             </svg>
           </div>
-          {hover && (<div style={{ position: "absolute", left: `${tooltipLeftPct}%`, top: 8, transform: `translateX(${tooltipTranslateX})`, background: "#111028", border: `1px solid ${isPinned ? "#a78bfa" : "#2a2540"}`, borderRadius: 10, padding: "10px 12px", minWidth: 320, width: "max-content", maxWidth: "min(92vw, 620px)", boxShadow: isPinned ? "0 16px 40px rgba(124,58,237,0.25)" : "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: isPinned ? "auto" : "none", zIndex: 5, overflow: "visible" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12 }}>{getDateLabel(year, monthIndex, hover.day)}</div>{isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 6, padding: "2px 7px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>📌 Pinned — click to unpin</span>)}</div>
-            <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>{targetLabel}: {fmt(hover.target)}</div>
-            {hoverMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>) : (hoverMembers.map((item) => (<div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, marginBottom: 4, whiteSpace: "nowrap" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} /><span>{item.name}</span></div><div style={{ textAlign: "right", color: item.color, fontWeight: 700 }}>{fmt(item.value)} <span style={{ color: gainColor(item.delta), fontWeight: 600 }}>({fmtSigned(item.delta)})</span></div></div>)))}
+          {hover && (<div style={{ position: "absolute", left: `${tooltipLeftPct}%`, top: 8, transform: `translateX(${tooltipTranslateX})`, background: "linear-gradient(168deg, rgba(34,29,66,0.97), rgba(14,12,30,0.98))", border: `1px solid ${isPinned ? "#a78bfa" : "rgba(167,139,250,0.32)"}`, borderRadius: 12, padding: "11px 13px", minWidth: 330, width: "max-content", maxWidth: "min(92vw, 620px)", boxShadow: isPinned ? "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(124,58,237,0.3)" : "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(3,2,10,0.65)", pointerEvents: isPinned ? "auto" : "none", zIndex: 5, overflow: "visible" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 7 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                <span className="telemetry" style={{ color: "#f1eefc", fontWeight: 700, fontSize: 13 }}>Day {hover.day}</span>
+                <span style={{ color: "#8f88b8", fontSize: 10, fontWeight: 700 }}>{getDateLabel(year, monthIndex, hover.day)}</span>
+              </div>
+              {isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 999, padding: "2px 8px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>📌 Pinned — unpin</span>)}
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 9, padding: "3px 9px", borderRadius: 999, background: "rgba(196,181,253,0.1)", border: "1px solid rgba(196,181,253,0.3)" }}>
+              <span style={{ width: 12, height: 0, borderTop: "2.5px dashed #c4b5fd", display: "inline-block" }} />
+              <span style={{ color: "#c4b5fd", fontSize: 10.5, fontWeight: 700 }}>{targetLabel}: {fmt(hover.target)}</span>
+            </div>
+            {hoverMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>) : (hoverMembers.map((item, idx) => {
+              const ps = getPodiumStyle(idx);
+              const ahead = item.delta != null && item.delta >= 0;
+              const barPct = item.value == null || hover.target <= 0 ? null : Math.min(100, Math.max(0, (item.value / hover.target) * 100));
+              return (
+                <div key={item.name} style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                      <span className="telemetry" style={{ color: ps.color, textShadow: ps.textShadow, fontSize: 10, fontWeight: 700, minWidth: 16, textAlign: "right" }}>{item.value == null ? "·" : `P${idx + 1}`}</span>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0, boxShadow: `0 0 7px ${item.color}` }} />
+                      <span style={{ color: "#f1eefc", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</span>
+                    </div>
+                    <div style={{ textAlign: "right", display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ color: item.value == null ? "#6b7280" : "#f1eefc", fontWeight: 800 }}>{fmt(item.value)}</span>
+                      <span style={{ color: item.delta == null ? "#6b7280" : ahead ? "#34d399" : "#f87171", fontWeight: 700, fontSize: 10, background: item.delta == null ? "transparent" : ahead ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", border: item.delta == null ? "none" : `1px solid ${ahead ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)"}`, borderRadius: 999, padding: "1px 7px", minWidth: 58, display: "inline-block" }}>{fmtSigned(item.delta)}</span>
+                    </div>
+                  </div>
+                  {mode === "cumulative" && barPct != null && (
+                    <div style={{ marginTop: 3, marginLeft: 31, height: 3, borderRadius: 99, background: "rgba(167,139,250,0.12)", overflow: "hidden" }}>
+                      <div style={{ width: `${barPct}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg, ${item.color}, ${ahead ? "#34d399" : "#f87171"})` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            }))}
           </div>)}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />{targetLabel}</span>{drawnSeriesList.map((item) => (<span key={item.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: item.color, borderRadius: 99, display: "inline-block" }} />{item.name}</span>))}</div>
         </div>
@@ -1448,7 +1613,7 @@
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {gridVals.map((v) => { const y = yV(v); return (<g key={v}><line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={pad.left - 8} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{mode === "daily" ? `${v.toFixed(2)}%` : `${v}%`}</text></g>); })}
             <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-            {lines.map((l) => (<path key={l.name} className="chart-line" pathLength="1" d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {lines.map((l) => (<path key={`${l.name}-${mode}-${visibleDayCount}`} className="chart-line" pathLength="1" d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
             <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} />
             {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${l.clubColor})` }} />))}
             {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
@@ -1554,7 +1719,7 @@
         <div style={{ position: "relative" }}>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={getRankIconUrl(tb.tier, rankingConfig)} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
-            {clubLines.map((c) => (<path key={c.id} className="chart-line" pathLength="1" d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {clubLines.map((c) => (<path key={`${c.id}-${latestDay}`} className="chart-line" pathLength="1" d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
             {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" style={{ filter: `drop-shadow(0 0 4px ${c.clubColor})` }} /> : null; })}
             {hoverIdx != null && hoverIdx <= latestDay && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
             {hoverIdx != null && hoverIdx <= latestDay && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
@@ -2561,7 +2726,7 @@
       const currentWeek = findWeekForDay(monthWeeks, today);
 
       const S = {
-        root: { background: "transparent", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1240, margin: "0 auto" },
+        root: { background: "transparent", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1480, margin: "0 auto" },
         card: {
           background: "linear-gradient(168deg, rgba(34,29,66,0.66) 0%, rgba(18,15,38,0.86) 52%, rgba(13,11,29,0.92) 100%)",
           border: "1px solid rgba(167,139,250,0.16)",
@@ -2598,21 +2763,78 @@
 
       return (
         <div style={S.root}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                <span className="gate-badge">⬡</span>
-                <div>
-                  <div className="wordmark">Dominator Network</div>
-                  <div className="wordmark-sub">Umamusume · Circle Fan Tracker</div>
+          {/* ── Mobile top bar ── */}
+          <div className="mobile-topbar">
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+              <span className="gate-badge" style={{ width: 30, height: 30, borderRadius: 9, fontSize: 16 }}>⬡</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="wordmark" style={{ fontSize: 15 }}>Dominator Network</div>
+                <div style={{ color: "#8f88b8", fontSize: 9, fontWeight: 700 }}>Day {today}/{dim} · {daysLeft} left{isArchiveView ? ` · 📦 ${archiveMonth}` : ""}</div>
+              </div>
+            </div>
+            <div className="telemetry" style={{ flex: "0 0 auto", textAlign: "right" }}>
+              <div style={{ color: loading ? "#34d399" : "#8f88b8", fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em" }}>{loading ? "Refreshing…" : "Next refresh"}</div>
+              <div style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 700 }}>{nextRefreshCountdownLabel}</div>
+            </div>
+          </div>
+
+          <div className="app-shell">
+            {/* ── Paddock rail (desktop) ── */}
+            <aside className="rail">
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <span className="gate-badge">⬡</span>
+                  <div>
+                    <div className="wordmark" style={{ fontSize: 19 }}>Dominator Network</div>
+                    <div className="wordmark-sub">Umamusume · Fan Tracker</div>
+                  </div>
+                </div>
+                <div className="finish-ribbon" aria-hidden="true" style={{ margin: "12px 0 0" }}></div>
+                <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>{dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · <span style={{ color: "#c4b5fd", fontWeight: 700 }}>Day {today}/{dim}</span><br/>{daysLeft} days left · Chronogenesis{isArchiveView ? ` · 📦 ${archiveMonth}` : ""}</div>
+              </div>
+
+              <div style={{ ...S.card, marginBottom: 0, padding: "12px 13px" }}>
+                <div style={S.h2}>Navigation</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button style={{ ...S.btn(view === "home", "#7c3aed"), display: "flex", alignItems: "center", gap: 8, width: "100%" }} onClick={() => setView("home")}>🏠 Home</button>
+                  <button style={{ ...S.btn(view === "club", tc.bar), display: "flex", alignItems: "center", gap: 8, width: "100%" }} onClick={() => setView("club")}>🏇 Club Detail</button>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "6px 12px", fontSize: 11, fontWeight: 800, textAlign: "center" }}>Chronogenesis</span>
+                    <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 700, width: "100%" }}>
+                      <option value="">Live current month</option>
+                      {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
-              <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 7 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · <span style={{ color: "#c4b5fd", fontWeight: 700 }}>Day {today}/{dim}</span> · {daysLeft} days left · Source: Chronogenesis{isArchiveView ? ` archive ${archiveMonth}` : ""}</div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "rgba(11,9,24,0.72)", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
+
+              {view === "club" && (
+                <div style={{ ...S.card, marginBottom: 0, padding: "12px 13px" }}>
+                  <div style={S.h2}>Starting Gates</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {viewClubs.map((entry, index) => {
+                      const active = index === activeIdx;
+                      const hasData = entry.id && clubData[entry.id];
+                      return (
+                        <button key={entry.name} onClick={() => openClub(index)} className={`gate-btn${active ? " active" : ""}`} style={{ opacity: entry.id ? 1 : 0.6 }}>
+                          <span className="gate-num">{index + 1}</span>
+                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{entry.name}</span>
+                          {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0, marginLeft: "auto", boxShadow: "0 0 6px #34d399" }} />}
+                          {!entry.id && <span style={{ fontSize: 9, color: "#4b5563", marginLeft: "auto" }}>soon</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ minWidth: 0, background: "rgba(11,9,24,0.72)", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "10px 11px" }}>
                 <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
-                <div className="telemetry" style={{ color: "#e2e0f0", fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>{nextRefreshCountdownLabel}</div>
+                <div className="telemetry" style={{ color: "#e2e0f0", fontSize: 19, fontWeight: 700, lineHeight: 1.15 }}>{nextRefreshCountdownLabel}</div>
                 <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>{nextRefreshDateLabel}</div>
                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, padding: "6px 8px", borderRadius: 8, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
                   <div style={{ color: liveStatus.color, fontSize: 11, fontWeight: 800 }}>{liveStatus.label}</div>
@@ -2621,60 +2843,48 @@
                 {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 10, marginTop: 4, lineHeight: 1.3 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
                 <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming {refreshScheduleMeta.label}: {upcomingRefreshLabel || "—"}</div>
               </div>
-              {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
-                <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
-              </div>)}
-            </div>
-          </div>
+            </aside>
 
-          <div className="finish-ribbon" aria-hidden="true"></div>
-
-          <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <div>
-              <div style={S.h2}>Navigation</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button></div>
-              <div style={{ marginTop: 10 }}>
-                <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span>
-                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+            {/* ── Track (main content) ── */}
+            <main className="main">
+              <div className="mobile-only" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: view === "club" ? 10 : 0 }}>
+                  <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "6px 11px", fontSize: 11, fontWeight: 800 }}>Chronogenesis</span>
+                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ flex: 1, minWidth: 150, background: "rgba(11,9,24,0.85)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 700 }}>
                     <option value="">Live current month</option>
                     {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
                   </select>
                 </div>
+                {view === "club" && (
+                  <div className="gate-strip">
+                    {viewClubs.map((entry, index) => {
+                      const active = index === activeIdx;
+                      const hasData = entry.id && clubData[entry.id];
+                      return (
+                        <button key={entry.name} onClick={() => openClub(index)} className={`gate-btn${active ? " active" : ""}`} style={{ opacity: entry.id ? 1 : 0.6 }}>
+                          <span className="gate-num">{index + 1}</span>
+                          <TierIcon tier={entry.tier} size={15} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                          <span>{entry.name}</span>
+                          {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-            {view === "club" && (
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <div style={S.h2}>Select Club</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {viewClubs.map((entry, index) => {
-                    const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
-                    const active = index === activeIdx;
-                    const hasData = entry.id && clubData[entry.id];
-                    return (
-                      <button key={entry.name} onClick={() => openClub(index)} style={{ ...S.btn(active, "#7c3aed"), opacity: entry.id ? 1 : 0.65, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, minHeight: 18, flexShrink: 0 }}>
-                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} style={{ opacity: active ? 1 : 0.92 }} />
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: active ? "#e2e0f0" : "#6b7280" }}>{entry.name}</span>
-                        {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
-                        {!entry.id && <span style={{ fontSize: 9, color: "#4b5563" }}>soon</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
 
+              {view === "club" && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
+                  <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
+                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
+                </div>
+              )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
 
           {view === "home" && (<>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button></div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div className="tab-dock"><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button></div>
+            <div className="stat-strip">
               {[
                 { label: "Tracked Clubs", value: `${loadedClubCount}/${viewClubs.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
                 { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
@@ -2690,38 +2900,52 @@
             {homeTab === "directory" && (<>
               <div style={S.card}>
                 <div style={S.h2}>Club Directory</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Hover the pace bar for exact figures. The dot next to JSON shows load status.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {networkClubs.map((entry, index) => {
                     const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
+                    const monthPct = entry.hasData && entry.clubTarget > 0 ? Math.min(100, (entry.totalMonthly / entry.clubTarget) * 100) : 0;
+                    const planDelta = entry.hasData && hasComparisonData ? entry.totalMonthly - entry.totalExpected : null;
+                    const onPace = planDelta != null && planDelta >= 0;
                     return (
-                      <div key={entry.name} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
-                            <div><div style={{ fontWeight: 800, color: "#e2e0f0", fontSize: 15 }}>{entry.clubName}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div></div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div key={entry.name} className="dir-row" style={{ borderLeft: `3px solid ${entry.hasData ? ctc.border : "#1e1b35"}` }}>
+                        <div className="dir-id">
+                          <span className="gate-num" style={{ borderColor: entry.hasData ? ctc.border + "66" : undefined }}>{index + 1}</span>
+                          <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                        </div>
+                        <div className="dir-name">
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                            <span style={{ fontWeight: 800, color: "#f1eefc", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.clubName}</span>
                             {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
-                            <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open</button>
+                          </div>
+                          <div style={{ color: "#6b7280", fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.officer} · <span style={{ color: ctc.text, fontWeight: 700 }}>{fmt(entry.target)}</span>/member · {hasComparisonData ? `${entry.activeMembers}/${viewMaxMembers} active` : noComparisonLabel}</div>
+                        </div>
+                        <div className="dir-stats">
+                          <div>
+                            <div className="dir-stat-label">Monthly</div>
+                            <div style={{ color: entry.hasData && hasComparisonData ? "#f1eefc" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
+                            {planDelta != null && <div style={{ color: onPace ? "#34d399" : "#f87171", fontSize: 10, fontWeight: 700 }}>{fmtSigned(planDelta)} vs plan</div>}
+                          </div>
+                          <div>
+                            <div className="dir-stat-label">Daily</div>
+                            <div style={{ color: entry.hasData && entry.totalDaily != null ? "#cfcbe6" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</div>
+                            {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
+                          </div>
+                          <div>
+                            <div className="dir-stat-label">Prev Day</div>
+                            <div style={{ color: entry.hasData && entry.previousDaily != null ? "#c4b5fd" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && entry.previousDaily != null ? fmt(entry.previousDaily) : "—"}</div>
+                            {entry.hasData && today > 1 && <div style={{ color: "#5b5680", fontSize: 10 }}>Day {today - 1}</div>}
                           </div>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Fan Quota</div><div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}</div></div>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div><div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? `${entry.activeMembers}/${viewMaxMembers}` : "—"}</div>{!hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}</div>
-                          <div>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
-                            <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
-                            {entry.hasData && !hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Daily Fans</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-                              <span style={{ color: entry.hasData ? "#cfcbe6" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</span>
-                              {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
-                            </div>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Previous Day Fans</div>
-                            <div style={{ color: entry.hasData && entry.previousDaily != null ? "#c4b5fd" : "#9ca3af", fontWeight: 700, marginTop: 2 }}>{entry.hasData && entry.previousDaily != null ? fmt(entry.previousDaily) : "—"}</div>
-                            {entry.hasData && today > 1 && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>Day {today - 1} total fan gain</div>}
-                          </div>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div><div style={{ color: entry.jsonMeta.color, fontWeight: 700 }}>{entry.jsonMeta.label}</div><div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{entry.jsonMeta.sub}</div></div>
+                        <div className="dir-actions">
+                          <span title={entry.jsonMeta.sub} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: entry.jsonMeta.color, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 7, height: 7, borderRadius: 999, background: entry.jsonMeta.color, boxShadow: `0 0 6px ${entry.jsonMeta.color}`, flexShrink: 0 }} />JSON
+                          </span>
+                          <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open →</button>
+                        </div>
+                        <div className="dir-bar" title={entry.hasData && hasComparisonData ? `${fmtFull(entry.totalMonthly)} of ${fmtFull(entry.clubTarget)} club target (${monthPct.toFixed(1)}%)` : "No data yet"}>
+                          <div style={{ flex: 1 }}><ProgressBar pct={monthPct} color={onPace ? "#34d399" : entry.hasData && hasComparisonData ? "#f59e0b" : "#2a2540"} height={5} /></div>
+                          <span className="telemetry" style={{ color: entry.hasData && hasComparisonData ? (onPace ? "#34d399" : "#fbbf24") : "#5b5680", fontSize: 11, fontWeight: 700, minWidth: 44, textAlign: "right" }}>{entry.hasData && hasComparisonData ? `${monthPct.toFixed(1)}%` : "—"}</span>
                         </div>
                       </div>
                     );
@@ -2732,9 +2956,26 @@
               <div style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Top 10 Network Members</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
+                {hasComparisonData && topNetworkUsers.length > 0 && (
+                  <div className="podium">
+                    {topNetworkUsers.slice(0, 3).map((member, index) => {
+                      const ps = getPodiumStyle(index);
+                      const value = topNetworkMode === "daily" ? member.dailyGain : member.monthlyGain;
+                      return (
+                        <div key={`podium-${member.clubName}-${member.name}`} className={`podium-step podium-${index + 1}`}>
+                          <div className="podium-rank" style={{ color: ps.color, textShadow: ps.textShadow }}>{index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}</div>
+                          <div style={{ color: "#f1eefc", fontWeight: 800, fontSize: index === 0 ? 14 : 12, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 4, color: "#8f88b8", fontSize: 10, minWidth: 0 }}><TierBadge tier={member.clubTier} size={14} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.clubName}</span></div>
+                          <div className="telemetry" style={{ color: ps.color, fontWeight: 700, fontSize: index === 0 ? 18 : 15, marginTop: 7 }}>{value != null ? fmtSigned(value) : "—"}</div>
+                          <div style={{ color: "#6b7280", fontSize: 9, marginTop: 2 }}>{fmt(member.fans)} total fans</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Total Fans</th></tr></thead><tbody>
                   {!hasComparisonData ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>Load club JSON files to populate the network leaderboard.</td></tr>) : (
-                    topNetworkUsers.map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 1}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
+                    topNetworkUsers.slice(3).map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
                   )}
                 </tbody></table></div>
               </div>
@@ -2860,9 +3101,10 @@
           {view === "club" && !cid && (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 40, marginBottom: 10 }}>🔜</div><div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div></div>)}
 
           {view === "club" && cid && (<>
-            <div style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="club-banner" style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px", "--tier-c": tc.border }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span className="gate-plate">{String(activeIdx + 1).padStart(2, "0")}</span>
                   <TierBadge tier={club.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2881,7 +3123,7 @@
             </div>
 
             {!decoratedMembers.length ? (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, marginBottom: 10 }}>🏇</div><div style={{ color: "#6b7280", marginBottom: 16 }}>No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.</div><div style={{ display: "flex", justifyContent: "center", gap: 8 }}><button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>🔄 Refresh Data</button></div></div>) : (<>
-              <div style={{ display: "flex", gap: 5, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="tab-dock">
                 {[["dashboard", "📊 Overview"], ["members", "👥 Members"], ["pace", "📈 Pace"], ["debug", "🔧 Debug"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
               </div>
 
@@ -2988,6 +3230,18 @@
               )}
             </>)}
           </>)}
+            </main>
+          </div>
+
+          {/* ── Mobile dock ── */}
+          <div className="mobile-dock">
+            <button style={{ ...S.btn(view === "home", "#7c3aed"), flex: 1 }} onClick={() => setView("home")}>🏠 Home</button>
+            <button style={{ ...S.btn(view === "club", tc.bar), flex: 1 }} onClick={() => setView("club")}>🏇 Clubs</button>
+            <div className="telemetry" style={{ flex: "0 0 auto", textAlign: "center", padding: "0 8px" }}>
+              <div style={{ color: "#8f88b8", fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>Refresh</div>
+              <div style={{ color: "#e2e0f0", fontSize: 12, fontWeight: 700 }}>{nextRefreshCountdownLabel}</div>
+            </div>
+          </div>
         </div>
       );
     }
