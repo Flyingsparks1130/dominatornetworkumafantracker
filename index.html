@@ -168,6 +168,17 @@
       to   { opacity: 1; transform: none; }
     }
 
+    /* ── Chart flourishes ───────────────────────────────────────── */
+    .chart-line {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: line-draw 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+    @keyframes line-draw { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .chart-line { animation: none; stroke-dashoffset: 0; }
+    }
+
     /* ── Mobile polish ──────────────────────────────────────────── */
     @media (max-width: 640px) {
       #root > div { padding: 12px 10px !important; }
@@ -1362,9 +1373,9 @@
               {gridValues.map((value, index) => { const y = yForValue(value); return (<g key={index}><line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{fmt(value)}</text></g>); })}
               {weeks.filter((week) => week.startDay <= dayCount).map((week) => { const boundaryDay = Math.min(week.endDay, dayCount); const x = xForIndex(boundaryDay - 1); return (<g key={week.number}><line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" /><text x={Math.max(padding.left + 12, x - 4)} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">W{week.number}</text></g>); })}
               <path d={pathFor(fullTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-              {drawnSeriesList.map((item) => (<path key={item.name} d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
-              <g><circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" /></g>
-              {drawnSeriesList.map((item) => { const currentValue = item.series?.[visibleDayCount - 1] ?? 0; return (<g key={`${item.name}-current-dot`}><circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" /></g>); })}
+              {drawnSeriesList.map((item) => (<path key={item.name} className="chart-line" pathLength="1" d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
+              <g><circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} /></g>
+              {drawnSeriesList.map((item) => { const currentValue = item.series?.[visibleDayCount - 1] ?? 0; return (<g key={`${item.name}-current-dot`}><circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${item.color})` }} /></g>); })}
               {hover && (<><line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke={isPinned ? "#a78bfa" : "#7c3aed"} strokeWidth={isPinned ? "2" : "1"} strokeDasharray="2 4" /><circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />{hoverMembers.filter((item) => item.value != null).map((item) => (<circle key={item.name} cx={hover.x} cy={yForValue(item.value)} r="3" fill={item.color} stroke="#0a0912" strokeWidth="1" />))}</>)}
               {Array.from({ length: dayCount }, (_, index) => { const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2; const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2; return (<g key={index}><rect x={startX} y={padding.top} width={Math.max(10, endX - startX)} height={innerH} fill="transparent" style={{ cursor: "pointer" }} onMouseEnter={() => { if (!isPinned) setHoverIdx(index); }} onMouseLeave={() => { if (!isPinned) setHoverIdx(null); }} onClick={() => { if (isPinned && pinnedIdx === index) setPinnedIdx(null); else setPinnedIdx(index); }} />{(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (<text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{index + 1}</text>)}</g>); })}
             </svg>
@@ -1437,18 +1448,62 @@
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {gridVals.map((v) => { const y = yV(v); return (<g key={v}><line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={pad.left - 8} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{mode === "daily" ? `${v.toFixed(2)}%` : `${v}%`}</text></g>); })}
             <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-            {lines.map((l) => (<path key={l.name} d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
-            <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" />
-            {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
+            {lines.map((l) => (<path key={l.name} className="chart-line" pathLength="1" d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} />
+            {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${l.clubColor})` }} />))}
             {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return (<rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />); })}
             {hoverIdx != null && lines.filter((l) => hoverIdx < visibleDayCount).map((l) => (<circle key={l.name} cx={xI(hoverIdx)} cy={yV(l.series[hoverIdx] ?? 0)} r="4" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
             {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? (<text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text>) : null)}
           </svg>
-          {hoverIdx != null && (<div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 260, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}>
-            <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {hoverIdx + 1} · {targetLabel}: {mode === "daily" ? `${(targetSeries[hoverIdx] ?? 0).toFixed(2)}%` : `${Math.round(targetSeries[hoverIdx] ?? 0)}%`}</div>
-            {[...allLineSeries].sort((a, b) => ((hoverIdx < visibleDayCount ? (b.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY) - (hoverIdx < visibleDayCount ? (a.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY))).map((l) => { const pct = hoverIdx < visibleDayCount ? (l.series?.[hoverIdx] ?? null) : null; const target = targetSeries[hoverIdx] ?? 0; return (<div key={l.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0 }} />{l.clubName} <TierBadge tier={l.tier} /></div><div style={{ color: pct == null ? "#6b7280" : pct >= target ? "#34d399" : "#f87171", fontWeight: 700 }}>{pct == null ? "—" : (mode === "daily" ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`)}</div></div>); })}
-          </div>)}
+          {hoverIdx != null && (() => {
+            const isLive = hoverIdx < visibleDayCount;
+            const rows = [...allLineSeries]
+              .map((l) => {
+                const pct = isLive ? (l.series?.[hoverIdx] ?? null) : null;
+                const abs = isLive ? ((mode === "daily" ? l.clubDailySeries : l.clubCumSeries)?.[hoverIdx] ?? null) : null;
+                return { ...l, pct, abs };
+              })
+              .sort((a, b) => (b.pct ?? Number.NEGATIVE_INFINITY) - (a.pct ?? Number.NEGATIVE_INFINITY));
+            const target = targetSeries[hoverIdx] ?? 0;
+            const totalAbs = rows.reduce((s, r) => s + (r.abs ?? 0), 0);
+            const totalTarget = rows.reduce((s, r) => s + (Number(r.clubTarget) || 0), 0);
+            const totalPct = totalTarget > 0 ? (totalAbs / totalTarget) * 100 : null;
+            return (
+              <div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "linear-gradient(168deg, rgba(34,29,66,0.97), rgba(14,12,30,0.98))", border: "1px solid rgba(167,139,250,0.32)", borderRadius: 12, padding: "10px 12px", minWidth: 330, boxShadow: "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(3,2,10,0.65)", pointerEvents: "none", zIndex: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 7 }}>
+                  <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>Day {hoverIdx + 1}</div>
+                  <div style={{ color: "#c4b5fd", fontSize: 11, fontWeight: 700 }}>{targetLabel}: {mode === "daily" ? `${(target ?? 0).toFixed(2)}%` : `${Math.round(target ?? 0)}%`}</div>
+                </div>
+                {rows.map((l) => {
+                  const onPace = l.pct != null && l.pct >= target;
+                  return (
+                    <div key={l.name} style={{ marginBottom: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0", minWidth: 0 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0, boxShadow: `0 0 7px ${l.clubColor}` }} />{l.clubName} <TierBadge tier={l.tier} /></div>
+                        <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <span style={{ color: l.abs == null ? "#6b7280" : "#e2e0f0", fontWeight: 800 }} title={l.abs == null ? "" : `${fmtFull(l.abs)} fans ${mode === "daily" ? "gained this day" : "gained so far"}`}>{l.abs == null ? "—" : fmt(l.abs)}</span>
+                          <span style={{ color: l.pct == null ? "#6b7280" : onPace ? "#34d399" : "#f87171", fontWeight: 700, marginLeft: 7 }}>{l.pct == null ? "—" : (mode === "daily" ? `${l.pct.toFixed(2)}%` : `${l.pct.toFixed(1)}%`)}</span>
+                        </div>
+                      </div>
+                      {mode === "cumulative" && l.pct != null && (
+                        <div style={{ marginTop: 3, height: 3, borderRadius: 99, background: "rgba(167,139,250,0.12)", overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(100, Math.max(0, l.pct))}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg, ${l.clubColor}, ${onPace ? "#34d399" : "#f87171"})` }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginTop: 7, paddingTop: 7, borderTop: "1px solid rgba(167,139,250,0.22)" }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800 }}>⬡ Network total</div>
+                  <div style={{ whiteSpace: "nowrap" }}>
+                    <span style={{ color: "#e2e0f0", fontWeight: 800 }} title={`${fmtFull(totalAbs)} fans across all clubs`}>{isLive ? fmt(totalAbs) : "—"}</span>
+                    {totalPct != null && isLive && <span style={{ color: totalPct >= target ? "#34d399" : "#f87171", fontWeight: 700, marginLeft: 7 }}>{mode === "daily" ? `${totalPct.toFixed(2)}%` : `${totalPct.toFixed(1)}%`}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />{targetLabel}</span>{lines.map((l) => (<span key={l.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: l.clubColor, borderRadius: 99, display: "inline-block" }} />{l.clubName}</span>))}</div>
         </div>
       );
@@ -1499,8 +1554,8 @@
         <div style={{ position: "relative" }}>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={getRankIconUrl(tb.tier, rankingConfig)} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
-            {clubLines.map((c) => (<path key={c.id} d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
-            {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" /> : null; })}
+            {clubLines.map((c) => (<path key={c.id} className="chart-line" pathLength="1" d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" style={{ filter: `drop-shadow(0 0 4px ${c.clubColor})` }} /> : null; })}
             {hoverIdx != null && hoverIdx <= latestDay && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
             {hoverIdx != null && hoverIdx <= latestDay && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return <rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />; })}
@@ -2775,7 +2830,7 @@
                 )}
               </div>
               <div style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace. Hover a day to see each club's fan gain totals and % of target.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
                 <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} />
               </div>
               <div style={S.card}>
