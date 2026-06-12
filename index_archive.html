@@ -91,16 +91,17 @@
     }
 
     const CLUBS = [
-      { tier: "S",  name: "Dominator",  officer: "@mikufans.",     id: "114037107", target: 75_000_000 },
-      { tier: "S",  name: "Dominant H", officer: "@.stayk",        id: "278155676", target: 75_000_000 },
-      { tier: "S",  name: "Dominance",  officer: "@sialan",     id: "955490905", target: 75_000_000 },
-      { tier: "A+", name: "Dominate",   officer: "@reyovalt",      id: "147185239", target: 50_000_000 },
-      { tier: "A+", name: "Domineer",   officer: "@soraxd1010",      id: "961801794", target: 50_000_000 },
-      { tier: "A+", name: "Dominium",   officer: "@jkpokes",       id: "449007774", target: 50_000_000 },
-      { tier: "A",  name: "Dominion",   officer: "@virsia",        id: "510137721", target: 30_000_000 },
-      { tier: "A",  name: "Domical",    officer: "@mikufans.",     id: "754870359", target: 30_000_000 },
-      { tier: "B+", name: "Domicile",   officer: "@goofyahhclown", id: "387070372", target: 20_000_000 },
-      { tier: "B+", name: "Domichill",  officer: "@mikufans.",     id: "918879715", target: 20_000_000 },
+      { tier: "S+",  name: "Dominator",  officer: "@mikufans.",     id: "114037107", target: 90_000_000 },
+      { tier: "S",  name: "Dominant H", officer: "@.stayk",        id: "278155676", target: 70_000_000 },
+      { tier: "S",  name: "Dominance",  officer: "@.fabino",     id: "955490905", target: 70_000_000 },
+      { tier: "A+", name: "Dominate",   officer: "@reyovalt",      id: "147185239", target: 45_000_000 },
+      { tier: "A+", name: "Domineer",   officer: "@soraxd1010",      id: "961801794", target: 45_000_000 },
+      { tier: "A+", name: "Dominium",   officer: "@david",       id: "449007774", target: 45_000_000 },
+      { tier: "A",  name: "Dominion",   officer: "@jkpokes",        id: "510137721", target: 28_000_000 },
+      { tier: "A",  name: "Domical",    officer: "@grimizan",     id: "754870359", target: 28_000_000 },
+      { tier: "A",  name: "Glue Gals",    officer: "@xbunnx",     id: "570535790", target: 28_000_000 },
+      { tier: "B+", name: "Domicile",   officer: "@mikufans.", id: "387070372", target: 18_000_000 },
+      { tier: "B+", name: "Domichill",  officer: "@mikufans.",     id: "918879715", target: 18_000_000 },
     ];
 
     const MAX_MEMBERS = 30;
@@ -676,24 +677,53 @@
       if (!entry.id) return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
       if (!cdata) return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
       if (cdata.archiveMonthKey && cdata.sourceType === DATA_SOURCES.CHRONOGENESIS) return { label: "📦 Archive", color: "#c4b5fd", sub: `Snapshot month ${getMonthKeyLabel(cdata.archiveMonthKey)}` };
+
       const effectiveTimestamp = cdata.refreshedAt || cdata.sourceUpdatedAt || cdata.lastFetch || null;
       if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
       if (Number.isNaN(parsed.getTime())) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
 
-      const statusTimeZone = REFRESH_SCHEDULES[DATA_SOURCES.CHRONOGENESIS].timeZone;
+      const source = cdata.sourceType || DATA_SOURCES.UMA;
+      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
+      const scheduleMeta = getRefreshScheduleMeta(source, now);
+      const latestStarted = scheduleMeta.latestStarted;
+      const nextRefresh = scheduleMeta.next;
+      const lastUpdatedLabel = parsed.toLocaleString();
+
+      if (source === DATA_SOURCES.CHRONOGENESIS) {
+        // Chronogenesis only refreshes once per day at 5:15 PM UTC+7.
+        // Do not mark yesterday's 5:15 PM file as outdated just because the
+        // UTC+7 calendar date rolled over after midnight. It should stay
+        // fresh until the next 5:15 PM UTC+7 refresh slot has started.
+        const graceMs = 30 * 60 * 1000;
+        const latestRequiredAt = latestStarted?.date || null;
+        const isFreshForLatestRefreshCycle = latestRequiredAt
+          ? parsed.getTime() >= (latestRequiredAt.getTime() - graceMs)
+          : true;
+
+        if (isFreshForLatestRefreshCycle) {
+          const nextText = nextRefresh ? ` · next refresh ${formatRefreshDateLabel(nextRefresh.date, source)}` : "";
+          return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${lastUpdatedLabel} · current for latest 5:15 PM UTC+7 cycle${nextText}` };
+        }
+
+        const requiredLabel = latestRequiredAt ? formatRefreshDateLabel(latestRequiredAt, source) : "latest scheduled refresh";
+        return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${lastUpdatedLabel} · missing refresh after ${requiredLabel}` };
+      }
+
+      const statusTimeZone = schedule.timeZone;
       const nowParts = getTimeZoneParts(now, statusTimeZone);
       const parsedParts = getTimeZoneParts(parsed, statusTimeZone);
       const nowDateKey = `${nowParts.year}-${String(nowParts.month).padStart(2, "0")}-${String(nowParts.day).padStart(2, "0")}`;
       const parsedDateKey = `${parsedParts.year}-${String(parsedParts.month).padStart(2, "0")}-${String(parsedParts.day).padStart(2, "0")}`;
       const hasUpdatedToday = parsedDateKey === nowDateKey;
-      const isPastDailyDeadline = (nowParts.hour > 17) || (nowParts.hour === 17 && nowParts.minute >= 0);
+      const latestDeadline = latestStarted?.date || null;
+      const isPastDailyDeadline = latestDeadline ? now.getTime() >= latestDeadline.getTime() : false;
 
       if (hasUpdatedToday || !isPastDailyDeadline) {
-        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${parsed.toLocaleString()} · deadline 5:00 PM UTC+7` };
+        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${lastUpdatedLabel} · current for latest scheduled refresh` };
       }
 
-      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${parsed.toLocaleString()} · missing today’s 5:00 PM UTC+7 update` };
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${lastUpdatedLabel} · missing today’s scheduled update` };
     }
 
     function getPodiumStyle(index) {
@@ -837,9 +867,19 @@
         };
       });
 
-      const refreshedAt = null;
+      const refreshedAt = safeIso(
+        json?.refreshed_at ||
+        json?.fetched_at ||
+        json?.generated_at ||
+        json?.meta?.refreshed_at ||
+        json?.meta?.fetched_at ||
+        json?.meta?.generated_at ||
+        json?._meta?.refreshedAt ||
+        json?._meta?.refreshed_at ||
+        null
+      );
       const sourceUpdatedAt = safeIso(clubRoot?.updated_at);
-      const lastFetch = sourceUpdatedAt || null;
+      const lastFetch = refreshedAt || sourceUpdatedAt || null;
       const archiveConfig = getArchiveFrontendConfig(json);
       return {
         members,
@@ -931,6 +971,29 @@
         return { series: nextSeries, fromHistory: true };
       }
       return { series: Array.from({ length: dim }, (_, d) => decorated.reduce((s, m) => s + (m.dailyGainSeries[d] ?? 0), 0)), fromHistory: false };
+    }
+
+
+    function getMonthNumberKey(year, monthIndex) {
+      return (Number(year) * 100) + Number(monthIndex + 1);
+    }
+
+    function getClubMonthlyHistoryRow(cdata, year, monthIndex) {
+      const yearMonth = getMonthNumberKey(year, monthIndex);
+      const rows = Array.isArray(cdata?.clubMonthlyHistory) ? cdata.clubMonthlyHistory : [];
+      return rows.find((row) => Number(row?.year_month) === yearMonth) || null;
+    }
+
+    function getFinalClubMonthlyRank(cdata, year, monthIndex) {
+      const monthlyRow = getClubMonthlyHistoryRow(cdata, year, monthIndex);
+      const rank = Number(monthlyRow?.rank);
+      return Number.isFinite(rank) && rank > 0 ? rank : null;
+    }
+
+    function getFinalClubMonthlyFanGain(cdata, year, monthIndex) {
+      const monthlyRow = getClubMonthlyHistoryRow(cdata, year, monthIndex);
+      const gain = Number(monthlyRow?.monthly_fan_gain);
+      return Number.isFinite(gain) ? gain : null;
     }
 
     function buildClubDailyMetrics(cdata, decorated = [], dim = 0, today = 1) {
@@ -1488,6 +1551,11 @@
                   rank_gain: Number(row?.rank_gain ?? 0),
                 };
               });
+              const finalMonthlyRank = getFinalClubMonthlyRank(result, resolvedDataDate.getFullYear(), resolvedDataDate.getMonth());
+              const finalDayKey = formatDateKey(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1, daysInMonth(resolvedDataDate.getFullYear(), resolvedDataDate.getMonth() + 1));
+              if (finalMonthlyRank != null && !rankMap[finalDayKey]) {
+                rankMap[finalDayKey] = { rank: finalMonthlyRank, rank_gain: null, inferredFromMonthlyHistory: true };
+              }
               rankHistNext[clubId] = rankMap;
             }
           }
@@ -1678,14 +1746,42 @@
         const dailyTrendDelta = clubDailyMetrics.dailyTrendDelta;
         const clubCumSeries = historyDailySeries
           ? (() => {
-              const nextSeries = new Array(dim).fill(0);
+              const absoluteFanCountSeries = new Array(dim).fill(null);
               cdata.clubDailyHistory.forEach((row) => {
                 const actualDate = Number(row?.actual_date);
                 if (!Number.isFinite(actualDate) || actualDate < 1 || actualDate > dim) return;
-                nextSeries[actualDate - 1] = Number(row?.interpolated_fan_count ?? 0);
+                const fanCount = Number(row?.interpolated_fan_count);
+                if (Number.isFinite(fanCount) && fanCount > 0) absoluteFanCountSeries[actualDate - 1] = fanCount;
               });
-              const baseline = nextSeries.find((value) => value > 0) || 0;
-              return nextSeries.map((value) => Math.max(0, (value || 0) - baseline));
+
+              // Archive snapshots can have complete member data but miss the final club_daily_history row.
+              // Missing days should not be graphed as zero; carry forward the last known club count and
+              // use club_monthly_history.monthly_fan_gain as the month-end total when available.
+              const monthlyHistoryFinalGain = getFinalClubMonthlyFanGain(cdata, year, monthIndex);
+              const memberComputedFinalGain = decorated.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
+              const baseline = absoluteFanCountSeries.find((value) => value != null && value > 0) || 0;
+              let lastFanCount = null;
+              const cumulative = absoluteFanCountSeries.map((value) => {
+                if (value != null && value > 0) lastFanCount = value;
+                if (lastFanCount == null || baseline <= 0) return null;
+                return Math.max(0, lastFanCount - baseline);
+              });
+
+              // Some archived snapshots can contain a complete day-30 rank row while the
+              // archived club_monthly_history/monthly_fan_gain is stale or lower than the
+              // day-29 cumulative count. Never let the cumulative pace line move backward;
+              // use the strongest month-end total we can verify from club history or members.
+              const finalGainCandidates = [monthlyHistoryFinalGain, memberComputedFinalGain, cumulative[dim - 1]]
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value >= 0);
+              const bestFinalGain = finalGainCandidates.length ? Math.max(...finalGainCandidates) : null;
+              if (bestFinalGain != null) cumulative[dim - 1] = Math.max(bestFinalGain, cumulative[dim - 2] ?? 0);
+
+              for (let i = 1; i < cumulative.length; i++) {
+                if (cumulative[i] == null && cumulative[i - 1] != null) cumulative[i] = cumulative[i - 1];
+                if (cumulative[i] != null && cumulative[i - 1] != null && cumulative[i] < cumulative[i - 1]) cumulative[i] = cumulative[i - 1];
+              }
+              return cumulative.map((value) => value ?? 0);
             })()
           : buildCumulativeFromDailyGainSeries(clubDailySeries, dim);
         const clubPctSeries = clubTarget > 0 ? clubCumSeries.map((v) => (v / clubTarget) * 100) : [];
@@ -1734,7 +1830,7 @@
           .sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0))
           .slice(0, 15);
         const promotionCandidates = networkMembers
-          .filter((m) => m.clubTier !== "S" && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2)
+          .filter((m) => m.clubTier !== "S+" && m.plan.statusKey === "on-track" && (m.monthlyGain ?? 0) > m.clubTarget * 1.2)
           .map((m) => ({ ...m, projectedTier: getSuggestedTierForProjectedMonthly(m.projected ?? 0, viewClubs), expectedClubTier: getExpectedClubTier(m.clubTier, m.projected ?? 0, "promotion", viewClubs, viewClubTierOrder) }))
           .sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))
           .slice(0, 15);
@@ -2495,12 +2591,12 @@
               </div>
               <div style={S.card}>
                 <div style={S.h2}>Member Transfer Helper</div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S/A+ tiers (demotion candidates) and overperformers in A/B+ tiers (promotion candidates).</div>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S+ - B+ tiers (demotion candidates) and overperformers in S - B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
                   <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
