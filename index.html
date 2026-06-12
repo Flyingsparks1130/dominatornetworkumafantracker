@@ -5,18 +5,183 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dominator Network — Circle Tracker</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <style>
+    /* ───────────────────────────────────────────────────────────────
+       DOMINATOR NETWORK — "Night Race" design system
+       Theme: Umamusume Twinkle Series under floodlights.
+       Deep indigo night track · violet brand · uma pink + cyan glow
+       · turf-green = on-pace (matches existing status semantics).
+       ─────────────────────────────────────────────────────────────── */
+    :root {
+      --night-0: #07060f;
+      --night-1: #0d0b1d;
+      --violet:  #7c3aed;
+      --violet-soft: #a78bfa;
+      --uma-pink: #f472b6;
+      --uma-cyan: #22d3ee;
+      --turf:    #34d399;
+      --ink:     #e2e0f0;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: #0a0912; min-height: 100%; }
-    body { overflow-y: scroll; }
+    html, body { background: var(--night-0); min-height: 100%; }
+    body { overflow-y: scroll; overflow-x: hidden; font-variant-numeric: tabular-nums; }
     button { font-family: inherit; }
+    button:not(:disabled) { cursor: pointer; }
+    img { -webkit-user-drag: none; }
+
+    /* Accessible focus + selection */
     input:focus, textarea:focus, button:focus-visible, select:focus-visible {
-      outline: 2px solid #7c3aed;
+      outline: 2px solid var(--violet);
       outline-offset: 2px;
     }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0a0912; }
-    ::-webkit-scrollbar-thumb { background: #1e1b35; border-radius: 3px; }
+    ::selection { background: rgba(124,58,237,0.45); color: #fff; }
+
+    /* Scrollbars — track rail */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(13,11,29,0.6); }
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #3b2f6b, #241e45);
+      border-radius: 99px;
+      border: 2px solid rgba(7,6,15,0.8);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #5b46a8, #352b63); }
+
+    /* ── Ambient stage behind the app ───────────────────────────── */
+    .bg-stage { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .bg-sky {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(124,58,237,0.22), transparent 62%),
+        radial-gradient(900px 480px at 88% -4%, rgba(244,114,182,0.13), transparent 60%),
+        radial-gradient(1000px 700px at 50% 118%, rgba(34,211,238,0.10), transparent 58%),
+        linear-gradient(180deg, var(--night-1) 0%, var(--night-0) 46%, #050410 100%);
+    }
+    /* Floodlight aurora sweep */
+    .bg-aurora {
+      position: absolute; inset: -20%;
+      background:
+        conic-gradient(from 200deg at 30% 20%, transparent 0deg, rgba(167,139,250,0.07) 40deg, transparent 90deg),
+        conic-gradient(from 20deg at 75% 10%, transparent 0deg, rgba(244,114,182,0.06) 50deg, transparent 110deg);
+      animation: aurora-drift 26s ease-in-out infinite alternate;
+      filter: blur(2px);
+    }
+    /* Diagonal speed streaks — the track at full gallop */
+    .bg-streaks {
+      position: absolute; inset: -40% -10%;
+      background: repeating-linear-gradient(
+        118deg,
+        transparent 0px, transparent 140px,
+        rgba(167,139,250,0.045) 140px, rgba(167,139,250,0.045) 142px,
+        transparent 142px, transparent 260px,
+        rgba(34,211,238,0.035) 260px, rgba(34,211,238,0.035) 261px
+      );
+      animation: streak-run 60s linear infinite;
+    }
+    /* Fine grid — telemetry board texture */
+    .bg-grid {
+      position: absolute; inset: 0; opacity: 0.5;
+      background-image:
+        linear-gradient(rgba(167,139,250,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(167,139,250,0.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 100%);
+      -webkit-mask-image: radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 100%);
+    }
+    @keyframes aurora-drift {
+      from { transform: translate3d(-2%, -1%, 0) rotate(0deg); }
+      to   { transform: translate3d(2%, 1.5%, 0) rotate(2deg); }
+    }
+    @keyframes streak-run {
+      from { transform: translate3d(0, 0, 0); }
+      to   { transform: translate3d(-520px, 0, 0); }
+    }
+
+    /* ── Signature: checkered finish-line ribbon ────────────────── */
+    .finish-ribbon {
+      position: relative;
+      height: 10px;
+      border-radius: 99px;
+      overflow: hidden;
+      margin: 6px 0 14px;
+      background:
+        repeating-conic-gradient(rgba(226,224,240,0.85) 0% 25%, rgba(20,17,40,0.9) 0% 50%) 0 0 / 12px 12px;
+      box-shadow: 0 0 0 1px rgba(167,139,250,0.25), 0 4px 18px rgba(124,58,237,0.25);
+    }
+    .finish-ribbon::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(244,114,182,0.55), rgba(34,211,238,0.55), transparent);
+      transform: translateX(-100%);
+      animation: ribbon-shine 5.5s ease-in-out infinite;
+    }
+    @keyframes ribbon-shine {
+      0%, 55% { transform: translateX(-100%); }
+      85%, 100% { transform: translateX(100%); }
+    }
+
+    /* ── Wordmark / hero ────────────────────────────────────────── */
+    .gate-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
+      font-size: 20px; color: #fff;
+      background: linear-gradient(150deg, #8b5cf6, #6d28d9 55%, #4c1d95);
+      box-shadow: 0 0 0 1px rgba(196,181,253,0.45) inset, 0 6px 22px rgba(124,58,237,0.45), 0 0 28px rgba(124,58,237,0.3);
+    }
+    .wordmark {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      font-weight: 700; font-size: 24px; line-height: 1.05;
+      letter-spacing: 0.02em; text-transform: uppercase;
+      background: linear-gradient(92deg, #f5f3ff 0%, #c4b5fd 38%, var(--uma-pink) 72%, var(--uma-cyan) 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+      text-shadow: none;
+    }
+    .wordmark-sub {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      font-weight: 600; font-size: 10px; letter-spacing: 0.34em;
+      text-transform: uppercase; color: #8f88b8; margin-top: 3px;
+    }
+    .telemetry {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      letter-spacing: 0.02em;
+      text-shadow: 0 0 18px rgba(167,139,250,0.35);
+    }
+
+    /* ── Micro-interactions (CSS-only, safe with inline styles) ── */
+    button { transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, color 0.16s ease, border-color 0.16s ease; }
+    button:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.14) saturate(1.08); }
+    button:not(:disabled):active { transform: translateY(0) scale(0.985); filter: brightness(0.96); }
+
+    tbody tr { transition: background 0.14s ease; }
+    tbody tr:hover { background: rgba(167,139,250,0.055); }
+
+    select, input { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    select:hover, input:hover { border-color: rgba(167,139,250,0.5) !important; }
+
+    #root { position: relative; z-index: 1; animation: page-in 0.45s ease both; }
+    @keyframes page-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ── Mobile polish ──────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      #root > div { padding: 12px 10px !important; }
+      .wordmark { font-size: 19px; }
+      .gate-badge { width: 32px; height: 32px; border-radius: 9px; font-size: 17px; }
+      button { min-height: 34px; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bg-aurora, .bg-streaks, .finish-ribbon::after { animation: none !important; }
+      #root { animation: none; }
+      button, tbody tr { transition: none; }
+    }
 </style>
 
   <script>
@@ -29,6 +194,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
+  <div class="bg-stage" aria-hidden="true">
+    <div class="bg-sky"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-streaks"></div>
+    <div class="bg-aurora"></div>
+  </div>
   <div id="root"></div>
 
   
@@ -1185,7 +1356,7 @@
       const modeLabel = mode === "daily" ? "Daily gain" : "Cumulative gain";
       const targetLabel = mode === "daily" ? "Daily plan guideline" : "Cumulative plan guideline";
       return (
-        <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "#0a0912" }}>
+        <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "transparent" }}>
           <div style={{ overflowX: "auto", paddingBottom: 6 }}>
             <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} style={{ width: `${Math.max(100, zoom * 100)}%`, minWidth: `${Math.round(width * Math.max(1, zoom))}px`, height: "auto", display: "block" }}>
               {gridValues.map((value, index) => { const y = yForValue(value); return (<g key={index}><line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{fmt(value)}</text></g>); })}
@@ -2335,13 +2506,32 @@
       const currentWeek = findWeekForDay(monthWeeks, today);
 
       const S = {
-        root: { background: "#0a0912", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1240, margin: "0 auto" },
-        card: { background: "#111028", border: "1px solid #1e1b35", borderRadius: 14, padding: "16px 18px", marginBottom: 14 },
-        h2: { fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.12em", margin: "0 0 14px" },
-        btn: (active, col = "#7c3aed") => ({ background: active ? col : "#13112a", color: active ? "#fff" : "#6b7280", border: `1px solid ${active ? col : "#1e1b35"}`, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s" }),
-        input: { width: "100%", background: "#0f0d1a", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 11 },
-        th: { padding: "10px 8px", borderBottom: "1px solid #1e1b35", color: "#6b7280", fontSize: 11, whiteSpace: "nowrap" },
-        td: { padding: "10px 8px", borderBottom: "1px solid #1e1b35", fontSize: 12, verticalAlign: "middle" },
+        root: { background: "transparent", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1240, margin: "0 auto" },
+        card: {
+          background: "linear-gradient(168deg, rgba(34,29,66,0.66) 0%, rgba(18,15,38,0.86) 52%, rgba(13,11,29,0.92) 100%)",
+          border: "1px solid rgba(167,139,250,0.16)",
+          borderRadius: 16,
+          padding: "16px 18px",
+          marginBottom: 14,
+          boxShadow: "0 1px 0 rgba(226,224,240,0.05) inset, 0 14px 36px rgba(3,2,10,0.55), 0 0 0 0.5px rgba(124,58,237,0.06)",
+        },
+        h2: { fontSize: 11, fontWeight: 800, color: "#8f88b8", textTransform: "uppercase", letterSpacing: "0.16em", margin: "0 0 14px", paddingLeft: 10, borderLeft: "3px solid #7c3aed", lineHeight: 1.2 },
+        btn: (active, col = "#7c3aed") => ({
+          background: active ? `linear-gradient(150deg, ${col}, ${col}cc)` : "rgba(20,17,40,0.85)",
+          color: active ? "#fff" : "#8f88b8",
+          border: `1px solid ${active ? col : "rgba(167,139,250,0.18)"}`,
+          borderRadius: 999,
+          padding: "7px 15px",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.01em",
+          boxShadow: active ? `0 4px 16px ${col}55, 0 0 0 1px ${col}33 inset` : "none",
+          transition: "all 0.15s",
+        }),
+        input: { width: "100%", background: "rgba(11,9,24,0.85)", border: "1px solid rgba(167,139,250,0.22)", color: "#e2e0f0", borderRadius: 9, padding: "7px 9px", fontSize: 11 },
+        th: { padding: "10px 8px", borderBottom: "1px solid rgba(167,139,250,0.18)", color: "#8f88b8", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" },
+        td: { padding: "10px 8px", borderBottom: "1px solid rgba(30,27,53,0.85)", fontSize: 12, verticalAlign: "middle" },
       };
 
       const accent = view === "home" ? "#c4b5fd" : tc.text;
@@ -2355,13 +2545,19 @@
         <div style={S.root}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
-              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: Chronogenesis{isArchiveView ? ` archive ${archiveMonth}` : ""}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                <span className="gate-badge">⬡</span>
+                <div>
+                  <div className="wordmark">Dominator Network</div>
+                  <div className="wordmark-sub">Umamusume · Circle Fan Tracker</div>
+                </div>
+              </div>
+              <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 7 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · <span style={{ color: "#c4b5fd", fontWeight: 700 }}>Day {today}/{dim}</span> · {daysLeft} days left · Source: Chronogenesis{isArchiveView ? ` archive ${archiveMonth}` : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
+              <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "rgba(11,9,24,0.72)", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
                 <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
-                <div style={{ color: "#e2e0f0", fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>{nextRefreshCountdownLabel}</div>
+                <div className="telemetry" style={{ color: "#e2e0f0", fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>{nextRefreshCountdownLabel}</div>
                 <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>{nextRefreshDateLabel}</div>
                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, padding: "6px 8px", borderRadius: 8, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
                   <div style={{ color: liveStatus.color, fontSize: 11, fontWeight: 800 }}>{liveStatus.label}</div>
@@ -2378,6 +2574,8 @@
             </div>
           </div>
 
+          <div className="finish-ribbon" aria-hidden="true"></div>
+
           <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <div style={S.h2}>Navigation</div>
@@ -2386,7 +2584,7 @@
                 <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span>
-                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
                     <option value="">Live current month</option>
                     {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
                   </select>
@@ -2441,7 +2639,7 @@
                   {networkClubs.map((entry, index) => {
                     const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     return (
-                      <div key={entry.name} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
+                      <div key={entry.name} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                             <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
@@ -2493,7 +2691,7 @@
                   {networkClubs.filter((entry) => entry.id).map((entry) => {
                     const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     return (
-                      <div key={`top-five-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
+                      <div key={`top-five-${entry.name}`} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div></div>
                           <div style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</div>
@@ -2526,10 +2724,10 @@
               <div style={S.card}>
                 <div style={S.h2}>Club Health Scores</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
-                {!hasComparisonData ? (<div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
+                {!hasComparisonData ? (<div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
                     {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
-                      <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
+                      <div key={`hs-${entry.name}`} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                             <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
@@ -2593,10 +2791,10 @@
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S+ - B+ tiers (demotion candidates) and overperformers in S - B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
+                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
@@ -2651,9 +2849,9 @@
                   {overviewStatusFilter && (<div style={{ color: STATUS_META[overviewStatusFilter]?.color || "#9ca3af", fontSize: 12, marginBottom: 10 }}>Filtering overview to {STATUS_META[overviewStatusFilter]?.icon} {STATUS_META[overviewStatusFilter]?.label}. Click the same summary card again to clear.</div>)}
                   {!hasComparisonData && (<div style={{ color: "#6b7280", fontSize: 12, marginBottom: 10 }}>{noComparisonLabel}</div>)}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {overviewMembers.length === 0 && (<div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>No members match the current overview filter.</div>)}
+                    {overviewMembers.length === 0 && (<div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>No members match the current overview filter.</div>)}
                     {overviewMembers.map((member, index) => { const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0; const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0)); const statusMeta = getDisplayStatusMeta(member.plan.statusKey); const progressColor = statusMeta.color; return (
-                      <div key={`${member.name}-${index}`} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
+                      <div key={`${member.name}-${index}`} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, flexWrap: "wrap", gap: 4 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: "#4b5563", fontSize: 11, fontWeight: 700, minWidth: 20 }}>#{index + 1}</span><span style={{ fontWeight: 700, color: "#e2e0f0", fontSize: 13 }}>{member.name}</span><StatusBadge statusKey={getDisplayStatusKey(member.plan.statusKey)} /><StagnantBadge days={member.stagnantDays} /></div>
                           <div style={{ display: "flex", gap: 14, fontSize: 11, flexWrap: "wrap" }}><span style={{ color: "#6b7280" }}>Today: <b style={{ color: gainColor(member.dailyGain) }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</b></span><span style={{ color: "#6b7280" }}>Month: <b style={{ color: gainColor(member.monthlyGain) }}>{member.monthlyGain != null ? fmtSigned(member.monthlyGain) : "—"}</b></span><span style={{ color: "#6b7280" }}>Projected: <b style={{ color: "#c4b5fd" }}>{member.projected != null ? fmt(member.projected) : "—"}</b></span><span style={{ color: "#6b7280" }}>ETA: <b><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></b></span></div>
@@ -2689,7 +2887,7 @@
                 <div style={S.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}><div><div style={S.h2}>Member Pace</div><div style={{ color: "#6b7280", fontSize: 12 }}>Toggle between cumulative progress and daily gain. The chart only draws through the displayed data day, and inactive members are fully excluded.</div></div><div style={{ color: "#9ca3af", fontSize: 12 }}>{getWeekLabel(currentWeek, year, monthIndex)}</div></div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
-                    {[{ label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" }, { label: "Per-Member Target by Displayed Day", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" }, { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" }, { label: "Visible on Graph", value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" }].map((card) => (<div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>))}
+                    {[{ label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" }, { label: "Per-Member Target by Displayed Day", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" }, { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" }, { label: "Visible on Graph", value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" }].map((card) => (<div key={card.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>))}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ color: "#9ca3af", fontSize: 12 }}>Click on the graph to pin a tooltip, then export to include it in the image.{" "}{pacePinnedIdx != null && (<span style={{ color: "#a78bfa", fontWeight: 700 }}>📌 Tooltip pinned — export will capture it.</span>)}</div>
@@ -2697,7 +2895,7 @@
                   </div>
 {supportsMemberDailyFans ? <PaceChart seriesList={paceSeriesList} targetSeries={selectedPaceTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} svgRef={paceSvgRef} zoom={paceZoom} pinnedIdx={pacePinnedIdx} setPinnedIdx={setPacePinnedIdx} containerRef={paceContainerRef} currentDayIdx={Math.max(0, today - 1)} mode={paceChartMode} /> : <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>This source does not expose enough per-member daily history to render the pace chart.</div>}
                   <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                    {monthWeeks.map((week) => { const isFutureWeek = week.startDay > today; const measuredEndDay = Math.min(week.endDay, today); const elapsedDayCount = Math.max(0, measuredEndDay - week.startDay + 1); const fullWeekTarget = Math.round((club.target / Math.max(dim, 1)) * week.dayCount); const elapsedWeekTarget = Math.round((club.target / Math.max(dim, 1)) * elapsedDayCount); const checkpointTarget = week.endDay <= today ? fullWeekTarget : elapsedWeekTarget; const currentValues = isFutureWeek ? [] : allPaceSeriesList.map((item) => (item.dailySeries || []).slice(Math.max(0, week.startDay - 1), Math.max(0, measuredEndDay)).reduce((sum, value) => sum + (value || 0), 0)).sort((a, b) => b - a); const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : null; const medianDelta = medianValue == null ? null : medianValue - checkpointTarget; const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length; return (<div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div><div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Per-member weekly target: <b style={{ color: "#c4b5fd" }}>{fmt(week.endDay <= today ? fullWeekTarget : checkpointTarget)}</b></div>{!isFutureWeek && (<div style={{ color: "#6b7280", fontSize: 11 }}>Median member weekly actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}<span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span></div>)}<div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{isFutureWeek ? "Not started yet" : `${onPaceAtCheckpoint}/${allPaceSeriesList.length} on pace for the week`}</div></div>); })}
+                    {monthWeeks.map((week) => { const isFutureWeek = week.startDay > today; const measuredEndDay = Math.min(week.endDay, today); const elapsedDayCount = Math.max(0, measuredEndDay - week.startDay + 1); const fullWeekTarget = Math.round((club.target / Math.max(dim, 1)) * week.dayCount); const elapsedWeekTarget = Math.round((club.target / Math.max(dim, 1)) * elapsedDayCount); const checkpointTarget = week.endDay <= today ? fullWeekTarget : elapsedWeekTarget; const currentValues = isFutureWeek ? [] : allPaceSeriesList.map((item) => (item.dailySeries || []).slice(Math.max(0, week.startDay - 1), Math.max(0, measuredEndDay)).reduce((sum, value) => sum + (value || 0), 0)).sort((a, b) => b - a); const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : null; const medianDelta = medianValue == null ? null : medianValue - checkpointTarget; const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length; return (<div key={week.number} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div><div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Per-member weekly target: <b style={{ color: "#c4b5fd" }}>{fmt(week.endDay <= today ? fullWeekTarget : checkpointTarget)}</b></div>{!isFutureWeek && (<div style={{ color: "#6b7280", fontSize: 11 }}>Median member weekly actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}<span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span></div>)}<div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{isFutureWeek ? "Not started yet" : `${onPaceAtCheckpoint}/${allPaceSeriesList.length} on pace for the week`}</div></div>); })}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 16, marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ color: "#9ca3af", fontSize: 12 }}>Click cards to toggle visibility.</div><button style={S.btn(false)} onClick={() => setPaceCardsCollapsed((p) => !p)}>{paceCardsCollapsed ? "▼ Expand Cards" : "▲ Collapse Cards"}</button></div>
