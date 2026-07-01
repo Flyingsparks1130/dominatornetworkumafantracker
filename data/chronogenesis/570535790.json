@@ -41,13 +41,13 @@
         846114554535,
         668442565072
       ],
-      "daily_average": 25697520,
-      "monthly_average": 745334362,
-      "fan_count": 784675202,
+      "daily_average": 22634914,
+      "monthly_average": 749988574,
+      "fan_count": 801184906,
       "rank": 715,
-      "updated_at": "2026-06-30T19:01:37.778493",
+      "updated_at": "2026-07-02T00:03:36.837651",
       "is_active": true,
-      "rank_diff": 239,
+      "rank_diff": 0,
       "names": [
         "Dominante",
         "Glue Gals"
@@ -55,6 +55,13 @@
     }
   ],
   "club_daily_history": [
+    {
+      "rank": 715,
+      "rank_gain": 0,
+      "interpolated_fan_count": 801184906,
+      "interpolated_fan_gain": 16509704,
+      "actual_date": 30
+    },
     {
       "rank": 715,
       "rank_gain": 2,
@@ -261,6 +268,13 @@
   ],
   "club_monthly_history": [
     {
+      "rank": 715,
+      "rank_gain": -239,
+      "fan_count": 801184906,
+      "monthly_fan_gain": 19447674,
+      "year_month": 202606
+    },
+    {
       "rank": 954,
       "rank_gain": -320,
       "fan_count": 781737232,
@@ -382,26 +396,6 @@
       "updated_at": "2025-10-21T19:09:00.097580",
       "names": [
         "MZackyGHM"
-      ]
-    },
-    {
-      "friend_viewer_id": 869414280612,
-      "name": "Jnxi",
-      "leader_chara_id": 1019,
-      "membership": 1,
-      "daily_average": 556838,
-      "monthly_average": 0,
-      "join_time": "2026-06-12T07:27:57",
-      "fan_count": 348483165,
-      "honor_id": 105405,
-      "last_login_time": "2026-07-01T11:02:36",
-      "leader_chara_dress_id": 104,
-      "support_card_id": 30054,
-      "team_evaluation_point": 266327,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Jnxi",
-        "Pholihv"
       ]
     },
     {
@@ -557,31 +551,12 @@
       ]
     },
     {
-      "friend_viewer_id": 907064195185,
-      "name": "JorkinDepeanits",
-      "leader_chara_id": 1007,
-      "membership": 1,
-      "daily_average": 661906,
-      "monthly_average": 0,
-      "join_time": "2026-05-11T18:00:51",
-      "fan_count": 302332366,
-      "honor_id": 100622,
-      "last_login_time": "2026-06-30T15:17:48",
-      "leader_chara_dress_id": 101,
-      "support_card_id": 30077,
-      "team_evaluation_point": 258985,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "JorkinDepeanits"
-      ]
-    },
-    {
       "friend_viewer_id": 868258510072,
       "name": "WhiteFox1980",
       "leader_chara_id": 1015,
       "membership": 1,
       "daily_average": 358924,
-      "monthly_average": 0,
+      "monthly_average": 2432,
       "join_time": "2026-05-12T02:00:48",
       "fan_count": 67570602,
       "honor_id": 504101,
@@ -589,7 +564,7 @@
       "leader_chara_dress_id": 101501,
       "support_card_id": 30086,
       "team_evaluation_point": 191353,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "WhiteFox1980"
       ]
@@ -600,17 +575,93 @@
       "leader_chara_id": 1068,
       "membership": 1,
       "daily_average": 609548,
-      "monthly_average": 0,
+      "monthly_average": 455137,
       "join_time": "2026-06-15T06:08:21",
-      "fan_count": 256858515,
+      "fan_count": 257324341,
       "honor_id": 106405,
-      "last_login_time": "2026-06-30T20:13:45",
+      "last_login_time": "2026-07-01T12:34:57",
       "leader_chara_dress_id": 106801,
       "support_card_id": 30028,
       "team_evaluation_point": 274179,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "sky"
+      ]
+    },
+    {
+      "friend_viewer_id": 209720967387,
+      "name": "Smirgeli",
+      "leader_chara_id": 1017,
+      "membership": 1,
+      "daily_average": 1839398,
+      "monthly_average": 788472,
+      "join_time": "2025-08-01T07:51:03",
+      "fan_count": 547287241,
+      "honor_id": 100190,
+      "last_login_time": "2026-07-01T14:01:58",
+      "leader_chara_dress_id": 101701,
+      "support_card_id": 30078,
+      "team_evaluation_point": 271757,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Smirgeli"
+      ]
+    },
+    {
+      "friend_viewer_id": 825922928516,
+      "name": "McGee",
+      "leader_chara_id": 1058,
+      "membership": 1,
+      "daily_average": 3335888,
+      "monthly_average": 6931,
+      "join_time": "2026-06-05T03:51:35",
+      "fan_count": 241927018,
+      "honor_id": 412101,
+      "last_login_time": "2026-07-01T12:59:39",
+      "leader_chara_dress_id": 105801,
+      "support_card_id": 30036,
+      "team_evaluation_point": 257623,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "McGee"
+      ]
+    },
+    {
+      "friend_viewer_id": 357084005659,
+      "name": "Shikikan",
+      "leader_chara_id": 1009,
+      "membership": 1,
+      "daily_average": 586075,
+      "monthly_average": 2736,
+      "join_time": "2026-06-06T02:50:13",
+      "fan_count": 169051004,
+      "honor_id": 100104,
+      "last_login_time": "2026-07-01T11:07:16",
+      "leader_chara_dress_id": 100901,
+      "support_card_id": 30081,
+      "team_evaluation_point": 209635,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Shikikan"
+      ]
+    },
+    {
+      "friend_viewer_id": 805021432066,
+      "name": "Yumi",
+      "leader_chara_id": 1062,
+      "membership": 1,
+      "daily_average": 230015,
+      "monthly_average": 1425,
+      "join_time": "2026-06-03T03:14:22",
+      "fan_count": 115333564,
+      "honor_id": 401201,
+      "last_login_time": "2026-06-30T21:53:48",
+      "leader_chara_dress_id": 5,
+      "support_card_id": 30028,
+      "team_evaluation_point": 222330,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Yumi"
       ]
     },
     {
@@ -619,7 +670,7 @@
       "leader_chara_id": 1014,
       "membership": 1,
       "daily_average": 899529,
-      "monthly_average": 0,
+      "monthly_average": 838794,
       "join_time": "2026-05-11T23:02:26",
       "fan_count": 146199117,
       "honor_id": 100603,
@@ -627,7 +678,7 @@
       "leader_chara_dress_id": 101401,
       "support_card_id": 20041,
       "team_evaluation_point": 245592,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "DomadorDeYeguas"
       ]
@@ -638,15 +689,15 @@
       "leader_chara_id": 1022,
       "membership": 1,
       "daily_average": 306932,
-      "monthly_average": 0,
+      "monthly_average": 20008,
       "join_time": "2026-05-11T13:12:23",
-      "fan_count": 378374656,
+      "fan_count": 379078447,
       "honor_id": 403101,
-      "last_login_time": "2026-06-30T14:18:26",
+      "last_login_time": "2026-07-01T12:36:38",
       "leader_chara_dress_id": 102226,
       "support_card_id": 30078,
-      "team_evaluation_point": 265218,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "team_evaluation_point": 268885,
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Sebpon"
       ]
@@ -657,7 +708,7 @@
       "leader_chara_id": 1023,
       "membership": 1,
       "daily_average": 1178395,
-      "monthly_average": 0,
+      "monthly_average": 2151196,
       "join_time": "2026-06-06T03:05:47",
       "fan_count": 237944278,
       "honor_id": 103302,
@@ -665,11 +716,49 @@
       "leader_chara_dress_id": 5,
       "support_card_id": 30070,
       "team_evaluation_point": 263215,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "monday silence",
         "sunday si again",
         "ponytail"
+      ]
+    },
+    {
+      "friend_viewer_id": 204936180719,
+      "name": "Frosty",
+      "leader_chara_id": 1006,
+      "membership": 2,
+      "daily_average": 1222563,
+      "monthly_average": 1661936,
+      "join_time": "2025-09-03T04:03:55",
+      "fan_count": 602186596,
+      "honor_id": 100622,
+      "last_login_time": "2026-07-01T11:03:15",
+      "leader_chara_dress_id": 100646,
+      "support_card_id": 30010,
+      "team_evaluation_point": 270978,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Frosty"
+      ]
+    },
+    {
+      "friend_viewer_id": 519308799455,
+      "name": "Rkid",
+      "leader_chara_id": 1030,
+      "membership": 1,
+      "daily_average": 2103592,
+      "monthly_average": 1214747,
+      "join_time": "2026-06-03T03:07:26",
+      "fan_count": 573431514,
+      "honor_id": 103504,
+      "last_login_time": "2026-07-01T14:43:40",
+      "leader_chara_dress_id": 103001,
+      "support_card_id": 30086,
+      "team_evaluation_point": 283048,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Rkid"
       ]
     },
     {
@@ -678,15 +767,15 @@
       "leader_chara_id": 1003,
       "membership": 1,
       "daily_average": 826422,
-      "monthly_average": 0,
+      "monthly_average": 456762,
       "join_time": "2025-08-08T21:53:55",
-      "fan_count": 314828250,
+      "fan_count": 314844494,
       "honor_id": 100606,
-      "last_login_time": "2026-07-01T11:19:12",
+      "last_login_time": "2026-07-01T14:19:34",
       "leader_chara_dress_id": 100302,
       "support_card_id": 30078,
       "team_evaluation_point": 231750,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Yureka"
       ]
@@ -697,55 +786,36 @@
       "leader_chara_id": 1020,
       "membership": 3,
       "daily_average": 1845083,
-      "monthly_average": 0,
+      "monthly_average": 2110156,
       "join_time": "2025-08-03T07:49:36",
       "fan_count": 593009587,
       "honor_id": 408101,
-      "last_login_time": "2026-07-01T01:29:24",
+      "last_login_time": "2026-07-01T11:59:32",
       "leader_chara_dress_id": 102001,
       "support_card_id": 30078,
       "team_evaluation_point": 275183,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "bun"
       ]
     },
     {
-      "friend_viewer_id": 825922928516,
-      "name": "McGee",
-      "leader_chara_id": 1058,
+      "friend_viewer_id": 907064195185,
+      "name": "JorkinDepeanits",
+      "leader_chara_id": 1007,
       "membership": 1,
-      "daily_average": 3335888,
-      "monthly_average": 0,
-      "join_time": "2026-06-05T03:51:35",
-      "fan_count": 241543196,
-      "honor_id": 412101,
-      "last_login_time": "2026-06-30T23:23:55",
-      "leader_chara_dress_id": 105801,
-      "support_card_id": 30028,
-      "team_evaluation_point": 254349,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "daily_average": 661906,
+      "monthly_average": 380114,
+      "join_time": "2026-05-11T18:00:51",
+      "fan_count": 302332366,
+      "honor_id": 100622,
+      "last_login_time": "2026-06-30T15:17:48",
+      "leader_chara_dress_id": 101,
+      "support_card_id": 30077,
+      "team_evaluation_point": 258985,
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
-        "McGee"
-      ]
-    },
-    {
-      "friend_viewer_id": 805021432066,
-      "name": "Yumi",
-      "leader_chara_id": 1062,
-      "membership": 1,
-      "daily_average": 230015,
-      "monthly_average": 0,
-      "join_time": "2026-06-03T03:14:22",
-      "fan_count": 115333564,
-      "honor_id": 401201,
-      "last_login_time": "2026-06-30T21:53:48",
-      "leader_chara_dress_id": 5,
-      "support_card_id": 30028,
-      "team_evaluation_point": 222330,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Yumi"
+        "JorkinDepeanits"
       ]
     },
     {
@@ -754,15 +824,15 @@
       "leader_chara_id": 1052,
       "membership": 1,
       "daily_average": 1267507,
-      "monthly_average": 0,
+      "monthly_average": 1758218,
       "join_time": "2026-05-07T09:00:30",
       "fan_count": 304054574,
       "honor_id": 104102,
-      "last_login_time": "2026-07-01T00:44:01",
+      "last_login_time": "2026-07-01T11:28:34",
       "leader_chara_dress_id": 105210,
       "support_card_id": 30020,
       "team_evaluation_point": 244229,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Based＿God"
       ]
@@ -773,15 +843,15 @@
       "leader_chara_id": 1026,
       "membership": 1,
       "daily_average": 2225202,
-      "monthly_average": 0,
+      "monthly_average": 795869,
       "join_time": "2025-11-06T07:28:43",
-      "fan_count": 373650497,
+      "fan_count": 373653335,
       "honor_id": 412101,
-      "last_login_time": "2026-06-30T17:56:55",
+      "last_login_time": "2026-07-01T13:27:33",
       "leader_chara_dress_id": 102613,
       "support_card_id": 30010,
       "team_evaluation_point": 269358,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "hydramatrx"
       ]
@@ -792,7 +862,7 @@
       "leader_chara_id": 1060,
       "membership": 1,
       "daily_average": 285231,
-      "monthly_average": 0,
+      "monthly_average": 168835,
       "join_time": "2026-06-03T03:07:33",
       "fan_count": 190819112,
       "honor_id": 100942,
@@ -800,9 +870,29 @@
       "leader_chara_dress_id": 106050,
       "support_card_id": 30010,
       "team_evaluation_point": 260123,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "lolieimi"
+      ]
+    },
+    {
+      "friend_viewer_id": 869414280612,
+      "name": "Jnxi",
+      "leader_chara_id": 1019,
+      "membership": 1,
+      "daily_average": 556838,
+      "monthly_average": 3744,
+      "join_time": "2026-06-12T07:27:57",
+      "fan_count": 348828243,
+      "honor_id": 105405,
+      "last_login_time": "2026-07-01T11:02:36",
+      "leader_chara_dress_id": 104,
+      "support_card_id": 30054,
+      "team_evaluation_point": 266327,
+      "updated_at": "2026-07-02T00:04:04.731269",
+      "names": [
+        "Jnxi",
+        "Pholihv"
       ]
     },
     {
@@ -811,7 +901,7 @@
       "leader_chara_id": 1030,
       "membership": 1,
       "daily_average": 531393,
-      "monthly_average": 0,
+      "monthly_average": 3687,
       "join_time": "2026-06-05T00:28:41",
       "fan_count": 276998743,
       "honor_id": 402101,
@@ -819,7 +909,7 @@
       "leader_chara_dress_id": 103001,
       "support_card_id": 30097,
       "team_evaluation_point": 264711,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Shynkey"
       ]
@@ -830,7 +920,7 @@
       "leader_chara_id": 1030,
       "membership": 1,
       "daily_average": 394999,
-      "monthly_average": 0,
+      "monthly_average": 399290,
       "join_time": "2025-08-19T07:03:33",
       "fan_count": 355970814,
       "honor_id": 412101,
@@ -838,7 +928,7 @@
       "leader_chara_dress_id": 103040,
       "support_card_id": 30028,
       "team_evaluation_point": 256165,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Suyo"
       ]
@@ -849,7 +939,7 @@
       "leader_chara_id": 1007,
       "membership": 1,
       "daily_average": 784203,
-      "monthly_average": 0,
+      "monthly_average": 1088,
       "join_time": "2026-06-11T09:15:41",
       "fan_count": 186015528,
       "honor_id": 102103,
@@ -857,7 +947,7 @@
       "leader_chara_dress_id": 100701,
       "support_card_id": 30010,
       "team_evaluation_point": 239052,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Mori"
       ]
@@ -868,15 +958,15 @@
       "leader_chara_id": 1059,
       "membership": 1,
       "daily_average": 2508676,
-      "monthly_average": 0,
+      "monthly_average": 2928381,
       "join_time": "2026-06-08T16:56:43",
-      "fan_count": 228964562,
+      "fan_count": 230910373,
       "honor_id": 320002,
-      "last_login_time": "2026-06-30T14:33:18",
+      "last_login_time": "2026-07-01T12:02:34",
       "leader_chara_dress_id": 105901,
       "support_card_id": 30039,
       "team_evaluation_point": 269932,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Inky "
       ]
@@ -887,7 +977,7 @@
       "leader_chara_id": 1019,
       "membership": 1,
       "daily_average": 716153,
-      "monthly_average": 0,
+      "monthly_average": 648519,
       "join_time": "2025-08-08T22:02:25",
       "fan_count": 270286869,
       "honor_id": 100106,
@@ -895,66 +985,9 @@
       "leader_chara_dress_id": 101901,
       "support_card_id": 30010,
       "team_evaluation_point": 274439,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Jay"
-      ]
-    },
-    {
-      "friend_viewer_id": 209720967387,
-      "name": "Smirgeli",
-      "leader_chara_id": 1017,
-      "membership": 1,
-      "daily_average": 1839398,
-      "monthly_average": 0,
-      "join_time": "2025-08-01T07:51:03",
-      "fan_count": 547287241,
-      "honor_id": 100190,
-      "last_login_time": "2026-07-01T11:01:45",
-      "leader_chara_dress_id": 101701,
-      "support_card_id": 30078,
-      "team_evaluation_point": 271757,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Smirgeli"
-      ]
-    },
-    {
-      "friend_viewer_id": 204936180719,
-      "name": "Frosty",
-      "leader_chara_id": 1006,
-      "membership": 2,
-      "daily_average": 1222563,
-      "monthly_average": 0,
-      "join_time": "2025-09-03T04:03:55",
-      "fan_count": 601416161,
-      "honor_id": 100622,
-      "last_login_time": "2026-07-01T11:03:15",
-      "leader_chara_dress_id": 100646,
-      "support_card_id": 30010,
-      "team_evaluation_point": 270978,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Frosty"
-      ]
-    },
-    {
-      "friend_viewer_id": 357084005659,
-      "name": "Shikikan",
-      "leader_chara_id": 1009,
-      "membership": 1,
-      "daily_average": 586075,
-      "monthly_average": 0,
-      "join_time": "2026-06-06T02:50:13",
-      "fan_count": 169051004,
-      "honor_id": 100104,
-      "last_login_time": "2026-07-01T11:07:16",
-      "leader_chara_dress_id": 100901,
-      "support_card_id": 30081,
-      "team_evaluation_point": 209635,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Shikikan"
       ]
     },
     {
@@ -1330,7 +1363,7 @@
       "leader_chara_id": 1006,
       "membership": 1,
       "daily_average": 466015,
-      "monthly_average": 0,
+      "monthly_average": 1182386,
       "join_time": "2026-05-02T04:57:40",
       "fan_count": 131252517,
       "honor_id": 101201,
@@ -1338,28 +1371,9 @@
       "leader_chara_dress_id": 100601,
       "support_card_id": 30086,
       "team_evaluation_point": 249449,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "MomoInTheBox"
-      ]
-    },
-    {
-      "friend_viewer_id": 519308799455,
-      "name": "Rkid",
-      "leader_chara_id": 1030,
-      "membership": 1,
-      "daily_average": 2103592,
-      "monthly_average": 0,
-      "join_time": "2026-06-03T03:07:26",
-      "fan_count": 573427591,
-      "honor_id": 103504,
-      "last_login_time": "2026-07-01T00:35:40",
-      "leader_chara_dress_id": 103001,
-      "support_card_id": 30086,
-      "team_evaluation_point": 283048,
-      "updated_at": "2026-07-01T20:56:27.213411",
-      "names": [
-        "Rkid"
       ]
     },
     {
@@ -1376,7 +1390,7 @@
       "leader_chara_dress_id": 102501,
       "support_card_id": 30081,
       "team_evaluation_point": 218461,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Ren"
       ]
@@ -1387,15 +1401,15 @@
       "leader_chara_id": 1007,
       "membership": 1,
       "daily_average": 1214505,
-      "monthly_average": 0,
+      "monthly_average": 1637074,
       "join_time": "2025-08-08T21:37:19",
-      "fan_count": 349012475,
+      "fan_count": 349737382,
       "honor_id": 330201,
-      "last_login_time": "2026-06-30T22:18:57",
+      "last_login_time": "2026-07-01T11:48:41",
       "leader_chara_dress_id": 101,
       "support_card_id": 30007,
       "team_evaluation_point": 231991,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Jousk"
       ]
@@ -1406,7 +1420,7 @@
       "leader_chara_id": 1025,
       "membership": 1,
       "daily_average": 821164,
-      "monthly_average": 0,
+      "monthly_average": 440026,
       "join_time": "2026-06-13T13:17:50",
       "fan_count": 266471828,
       "honor_id": 105602,
@@ -1414,7 +1428,7 @@
       "leader_chara_dress_id": 102501,
       "support_card_id": 20012,
       "team_evaluation_point": 273006,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "JulieHoshino"
       ]
@@ -1425,7 +1439,7 @@
       "leader_chara_id": 1024,
       "membership": 1,
       "daily_average": 350522,
-      "monthly_average": 0,
+      "monthly_average": 341718,
       "join_time": "2025-11-06T04:31:58",
       "fan_count": 414990276,
       "honor_id": 103303,
@@ -1433,7 +1447,7 @@
       "leader_chara_dress_id": 102426,
       "support_card_id": 30086,
       "team_evaluation_point": 264254,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Skewer"
       ]
@@ -1444,15 +1458,15 @@
       "leader_chara_id": 1030,
       "membership": 1,
       "daily_average": 972976,
-      "monthly_average": 0,
+      "monthly_average": 1824372,
       "join_time": "2026-06-08T11:49:42",
-      "fan_count": 78793890,
+      "fan_count": 78808733,
       "honor_id": 406301,
-      "last_login_time": "2026-06-30T22:17:11",
+      "last_login_time": "2026-07-01T12:50:45",
       "leader_chara_dress_id": 103040,
       "support_card_id": 20031,
       "team_evaluation_point": 240254,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "Akur"
       ]
@@ -1463,15 +1477,15 @@
       "leader_chara_id": 1060,
       "membership": 1,
       "daily_average": 564213,
-      "monthly_average": 0,
+      "monthly_average": 2113,
       "join_time": "2025-12-22T12:50:32",
       "fan_count": 126265495,
       "honor_id": 402101,
-      "last_login_time": "2026-06-30T14:38:22",
+      "last_login_time": "2026-07-01T11:07:51",
       "leader_chara_dress_id": 106050,
       "support_card_id": 30036,
       "team_evaluation_point": 227149,
-      "updated_at": "2026-07-01T20:56:27.213411",
+      "updated_at": "2026-07-02T00:04:04.731269",
       "names": [
         "broncsman"
       ]
