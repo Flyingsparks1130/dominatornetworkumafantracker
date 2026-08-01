@@ -5,11 +5,12 @@
       "leader_viewer_id": 993598903888,
       "name": "Dominacion",
       "comment": "Dominator Family ｜Discord： ＠mikufans．",
-      "member_num": 2,
+      "member_num": 3,
       "join_style": 2,
       "policy": 10,
       "make_time": "2026-07-24T01:00:07",
       "circle_user_array": [
+        363418242439,
         993598903888,
         398889142329
       ],
@@ -17,7 +18,7 @@
       "monthly_average": 0,
       "fan_count": 0,
       "rank": 0,
-      "updated_at": "2026-07-30T19:44:56.112790",
+      "updated_at": "2026-07-31T19:33:28.985409",
       "is_active": true,
       "rank_diff": 0,
       "names": [
@@ -28,6 +29,13 @@
     }
   ],
   "club_daily_history": [
+    {
+      "rank": 0,
+      "rank_gain": 0,
+      "interpolated_fan_count": 0,
+      "interpolated_fan_gain": 0,
+      "actual_date": 30
+    },
     {
       "rank": 0,
       "rank_gain": 0,
@@ -89,6 +97,29 @@
   ],
   "club_friend_profile": [
     {
+      "friend_viewer_id": 363418242439,
+      "name": "duskydemise ",
+      "leader_chara_id": 1060,
+      "membership": 1,
+      "daily_average": 1129495,
+      "monthly_average": 20460080,
+      "join_time": "2026-07-31T12:12:27",
+      "fan_count": 199222504,
+      "honor_id": 100106,
+      "last_login_time": "2026-07-31T13:20:05",
+      "leader_chara_dress_id": 106050,
+      "support_card_id": 30086,
+      "team_evaluation_point": 307711,
+      "updated_at": "2026-07-31T19:33:28.985409",
+      "names": [
+        "duskydemise ",
+        "lily"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 0,
+      "last_month": 18038798
+    },
+    {
       "friend_viewer_id": 398889142329,
       "name": "AngelicVixen",
       "leader_chara_id": 1024,
@@ -96,18 +127,18 @@
       "daily_average": 0,
       "monthly_average": 0,
       "join_time": "2026-07-30T17:49:03",
-      "fan_count": 24627388,
+      "fan_count": 28756841,
       "honor_id": 100105,
-      "last_login_time": "2026-07-30T17:43:56",
+      "last_login_time": "2026-07-31T17:40:50",
       "leader_chara_dress_id": 102426,
       "support_card_id": 30107,
-      "team_evaluation_point": 258247,
-      "updated_at": "2026-07-30T19:44:56.112790",
+      "team_evaluation_point": 257985,
+      "updated_at": "2026-07-31T19:33:28.985409",
       "names": [
         "AngelicVixen"
       ],
       "daily_diff": 0,
-      "monthly_diff": 0,
+      "monthly_diff": 4129453,
       "last_month": 0
     },
     {
@@ -120,11 +151,11 @@
       "join_time": "2026-07-24T01:00:07",
       "fan_count": 566752,
       "honor_id": 100101,
-      "last_login_time": "2026-07-30T17:33:53",
+      "last_login_time": "2026-07-31T16:46:25",
       "leader_chara_dress_id": 101743,
       "support_card_id": 10032,
       "team_evaluation_point": 21765,
-      "updated_at": "2026-07-30T19:44:56.112790",
+      "updated_at": "2026-07-31T19:33:28.985409",
       "names": [
         "domi"
       ],
@@ -134,6 +165,22 @@
     }
   ],
   "club_friend_history": [
+    {
+      "friend_viewer_id": 363418242439,
+      "friend_name": "duskydemise ",
+      "actual_date": 30,
+      "interpolated_fan_count": 198946639,
+      "adjusted_interpolated_fan_gain": 11868633,
+      "adjusted_fan_gain_cumulative": 11868633
+    },
+    {
+      "friend_viewer_id": 398889142329,
+      "friend_name": "AngelicVixen",
+      "actual_date": 30,
+      "interpolated_fan_count": 28660099,
+      "adjusted_interpolated_fan_gain": 4032711,
+      "adjusted_fan_gain_cumulative": 4032711
+    },
     {
       "friend_viewer_id": 993598903888,
       "friend_name": "domi",
@@ -178,6 +225,14 @@
       "friend_viewer_id": 993598903888,
       "friend_name": "domi",
       "actual_date": 29,
+      "interpolated_fan_count": 566752,
+      "adjusted_interpolated_fan_gain": 0,
+      "adjusted_fan_gain_cumulative": 0
+    },
+    {
+      "friend_viewer_id": 993598903888,
+      "friend_name": "domi",
+      "actual_date": 30,
       "interpolated_fan_count": 566752,
       "adjusted_interpolated_fan_gain": 0,
       "adjusted_fan_gain_cumulative": 0
