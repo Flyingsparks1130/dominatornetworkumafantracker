@@ -1,0 +1,317 @@
+{
+  "schema": 1,
+  "source": "index.html",
+  "month": "2026-09",
+  "createdAt": "2026-09-01T10:00:26.308Z",
+  "timeZone": "Asia/Bangkok",
+  "maxMembers": 30,
+  "rankIconPath": "./data/rank_pics/",
+  "clubs": [
+    {
+      "tier": "S+",
+      "name": "Dominator",
+      "officer": "@mikufans.",
+      "id": "114037107",
+      "target": 300000000
+    },
+    {
+      "tier": "S",
+      "name": "Dominant H",
+      "officer": "@faiseeel",
+      "id": "278155676",
+      "target": 250000000
+    },
+    {
+      "tier": "S",
+      "name": "Dominance",
+      "officer": "@.fabino",
+      "id": "955490905",
+      "target": 250000000
+    },
+    {
+      "tier": "S",
+      "name": "Dominate",
+      "officer": "@reyovalt",
+      "id": "147185239",
+      "target": 250000000
+    },
+    {
+      "tier": "S",
+      "name": "Dominacion",
+      "officer": "@blibbledibble",
+      "id": "739453372",
+      "target": 250000000
+    },
+    {
+      "tier": "A+",
+      "name": "Domineer",
+      "officer": "@Stayk",
+      "id": "961801794",
+      "target": 90000000
+    },
+    {
+      "tier": "A+",
+      "name": "Dominium",
+      "officer": "@david",
+      "id": "449007774",
+      "target": 90000000
+    },
+    {
+      "tier": "A",
+      "name": "Dominion",
+      "officer": "@jkpokes",
+      "id": "510137721",
+      "target": 70000000
+    },
+    {
+      "tier": "A",
+      "name": "Domical",
+      "officer": "@grimizan",
+      "id": "754870359",
+      "target": 70000000
+    },
+    {
+      "tier": "A",
+      "name": "Dominante",
+      "officer": "@xbunnx",
+      "id": "570535790",
+      "target": 70000000
+    },
+    {
+      "tier": "B+",
+      "name": "Domicile",
+      "officer": "@mikufans.",
+      "id": "387070372",
+      "target": 30000000
+    },
+    {
+      "tier": "B+",
+      "name": "Domichill",
+      "officer": "@mikufans.",
+      "id": "918879715",
+      "target": 30000000
+    }
+  ],
+  "clubConfigById": {
+    "114037107": {
+      "tier": "S+",
+      "name": "Dominator",
+      "officer": "@mikufans.",
+      "id": "114037107",
+      "target": 300000000
+    },
+    "147185239": {
+      "tier": "S",
+      "name": "Dominate",
+      "officer": "@reyovalt",
+      "id": "147185239",
+      "target": 250000000
+    },
+    "278155676": {
+      "tier": "S",
+      "name": "Dominant H",
+      "officer": "@faiseeel",
+      "id": "278155676",
+      "target": 250000000
+    },
+    "387070372": {
+      "tier": "B+",
+      "name": "Domicile",
+      "officer": "@mikufans.",
+      "id": "387070372",
+      "target": 30000000
+    },
+    "449007774": {
+      "tier": "A+",
+      "name": "Dominium",
+      "officer": "@david",
+      "id": "449007774",
+      "target": 90000000
+    },
+    "510137721": {
+      "tier": "A",
+      "name": "Dominion",
+      "officer": "@jkpokes",
+      "id": "510137721",
+      "target": 70000000
+    },
+    "570535790": {
+      "tier": "A",
+      "name": "Dominante",
+      "officer": "@xbunnx",
+      "id": "570535790",
+      "target": 70000000
+    },
+    "739453372": {
+      "tier": "S",
+      "name": "Dominacion",
+      "officer": "@blibbledibble",
+      "id": "739453372",
+      "target": 250000000
+    },
+    "754870359": {
+      "tier": "A",
+      "name": "Domical",
+      "officer": "@grimizan",
+      "id": "754870359",
+      "target": 70000000
+    },
+    "918879715": {
+      "tier": "B+",
+      "name": "Domichill",
+      "officer": "@mikufans.",
+      "id": "918879715",
+      "target": 30000000
+    },
+    "955490905": {
+      "tier": "S",
+      "name": "Dominance",
+      "officer": "@.fabino",
+      "id": "955490905",
+      "target": 250000000
+    },
+    "961801794": {
+      "tier": "A+",
+      "name": "Domineer",
+      "officer": "@Stayk",
+      "id": "961801794",
+      "target": 90000000
+    }
+  },
+  "rankingConfig": [
+    {
+      "tier": "SS",
+      "min": 1,
+      "max": 10,
+      "icon": "utx_ico_circle_rank_11"
+    },
+    {
+      "tier": "S+",
+      "min": 11,
+      "max": 30,
+      "icon": "utx_ico_circle_rank_10"
+    },
+    {
+      "tier": "S",
+      "min": 31,
+      "max": 100,
+      "icon": "utx_ico_circle_rank_09"
+    },
+    {
+      "tier": "A+",
+      "min": 101,
+      "max": 500,
+      "icon": "utx_ico_circle_rank_08"
+    },
+    {
+      "tier": "A",
+      "min": 501,
+      "max": 1000,
+      "icon": "utx_ico_circle_rank_07"
+    },
+    {
+      "tier": "B+",
+      "min": 1001,
+      "max": 3000,
+      "icon": "utx_ico_circle_rank_06"
+    },
+    {
+      "tier": "B",
+      "min": 3001,
+      "max": 5000,
+      "icon": "utx_ico_circle_rank_05"
+    },
+    {
+      "tier": "C+",
+      "min": 5001,
+      "max": 7000,
+      "icon": "utx_ico_circle_rank_04"
+    },
+    {
+      "tier": "C",
+      "min": 7001,
+      "max": 10000,
+      "icon": "utx_ico_circle_rank_03"
+    },
+    {
+      "tier": "D+",
+      "min": 10001,
+      "max": 100000,
+      "icon": "utx_ico_circle_rank_02"
+    },
+    {
+      "tier": "D",
+      "min": 100001,
+      "max": null,
+      "icon": "utx_ico_circle_rank_01"
+    }
+  ],
+  "tierColors": {
+    "SS": {
+      "bg": "#ef444422",
+      "border": "#ef4444",
+      "text": "#f87171",
+      "bar": "#dc2626"
+    },
+    "S+": {
+      "bg": "#f59e0b22",
+      "border": "#f59e0b",
+      "text": "#fbbf24",
+      "bar": "#d97706"
+    },
+    "S": {
+      "bg": "#fbbf2422",
+      "border": "#fbbf24",
+      "text": "#fbbf24",
+      "bar": "#f59e0b"
+    },
+    "A+": {
+      "bg": "#a78bfa22",
+      "border": "#a78bfa",
+      "text": "#a78bfa",
+      "bar": "#7c3aed"
+    },
+    "A": {
+      "bg": "#34d39922",
+      "border": "#34d399",
+      "text": "#34d399",
+      "bar": "#059669"
+    },
+    "B+": {
+      "bg": "#60a5fa22",
+      "border": "#60a5fa",
+      "text": "#60a5fa",
+      "bar": "#2563eb"
+    },
+    "B": {
+      "bg": "#3b82f622",
+      "border": "#3b82f6",
+      "text": "#60a5fa",
+      "bar": "#2563eb"
+    },
+    "C+": {
+      "bg": "#2dd4bf22",
+      "border": "#2dd4bf",
+      "text": "#2dd4bf",
+      "bar": "#14b8a6"
+    },
+    "C": {
+      "bg": "#94a3b822",
+      "border": "#94a3b8",
+      "text": "#94a3b8",
+      "bar": "#64748b"
+    },
+    "D+": {
+      "bg": "#f9731622",
+      "border": "#f97316",
+      "text": "#f97316",
+      "bar": "#ea580c"
+    },
+    "D": {
+      "bg": "#6b728022",
+      "border": "#6b7280",
+      "text": "#9ca3af",
+      "bar": "#4b5563"
+    }
+  }
+}
