@@ -32,6 +32,8 @@ Edit `config/frontend.json`. Clubs inherit the target assigned to their tier:
 
 To give one club a temporary exception, add `"targetOverride": 123000000` to that club. Without an override, every club in the same tier automatically shares the tier target.
 
+The frontend currently defines 13 clubs. Dominarium (`674151584`) inherits the shared A+ target and will load automatically when `data/chronogenesis/674151584.json` is supplied by the external Chronogenesis process.
+
 ## Protected Chronogenesis boundary
 
 The following operational paths remain the existing source of truth and should not be casually refactored:
