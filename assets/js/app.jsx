@@ -1,54 +1,56 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dominator Network — Circle Tracker</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>"/>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: #0a0912; min-height: 100%; }
-    body { overflow-y: scroll; }
-    button { font-family: inherit; }
-    input:focus, textarea:focus, button:focus-visible, select:focus-visible {
-      outline: 2px solid #7c3aed;
-      outline-offset: 2px;
-    }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0a0912; }
-    ::-webkit-scrollbar-thumb { background: #1e1b35; border-radius: 3px; }
-</style>
+const { useState, useEffect, useRef } = React;
 
-  <script>
-    window.__ALLOW_APP__ = true;
-  </script>
+    const DATA_SOURCE = "chronogenesis";
+    const FRONTEND_CONFIG_PATHS = ["./config/frontend.json", "/config/frontend.json"];
+    const PAGE_MODE = document.body?.dataset?.page || "home";
+    let CURRENT_CLUBS = [];
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-</head>
-<body>
-  <div id="root"></div>
-
-  
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    const DATA_SOURCES = {
-      UMA: "uma",
-      CHRONOGENESIS: "chronogenesis",
-    };
-
-    function getDataCandidates(source, targetId, archiveMonth = "") {
-      if (source === DATA_SOURCES.CHRONOGENESIS) {
-        if (archiveMonth) {
-          const archiveName = `${targetId}_${archiveMonth}.json`;
-          return [`./data/chronogenesis/archive/${archiveName}`, `/data/chronogenesis/archive/${archiveName}`];
+    function applyTierTargets(config) {
+      const tierTargets = config?.tierTargets || {};
+      const clubs = Array.isArray(config?.clubs) ? config.clubs : [];
+      return clubs.map((club) => {
+        const configuredTarget = club.targetOverride ?? tierTargets[club.tier];
+        const target = Number(configuredTarget);
+        if (!Number.isFinite(target) || target <= 0) {
+          throw new Error(`Missing a valid target for ${club.name || club.id || "unknown club"} (${club.tier || "no tier"}).`);
         }
-        return [`./data/chronogenesis/${targetId}.json`, `/data/chronogenesis/${targetId}.json`];
+        return { ...club, id: String(club.id || ""), target };
+      });
+    }
+
+    async function loadFrontendConfig() {
+      const errors = [];
+      for (const url of FRONTEND_CONFIG_PATHS) {
+        try {
+          const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+          if (!response.ok) {
+            errors.push(`${url}: HTTP ${response.status}`);
+            continue;
+          }
+          const config = await response.json();
+          const clubs = applyTierTargets(config);
+          if (!clubs.length) throw new Error("No clubs were defined.");
+          return { config, clubs };
+        } catch (error) {
+          errors.push(`${url}: ${error.message}`);
+        }
       }
-      return [`./data/${targetId}.json`, `/data/${targetId}.json`];
+
+      const fallback = window.__SNAPSHOT_COMPAT__?.clubs;
+      if (Array.isArray(fallback) && fallback.length) {
+        console.warn("Frontend config could not be loaded; using the protected snapshot compatibility fallback.", errors);
+        return { config: window.__SNAPSHOT_COMPAT__, clubs: fallback.map((club) => ({ ...club, id: String(club.id || "") })) };
+      }
+
+      throw new Error(`Unable to load config/frontend.json. ${errors.join(" | ")}`);
+    }
+
+    function getDataCandidates(targetId, archiveMonth = "") {
+      if (archiveMonth) {
+        const archiveName = `${targetId}_${archiveMonth}.json`;
+        return [`./data/chronogenesis/archive/${archiveName}`, `/data/chronogenesis/archive/${archiveName}`];
+      }
+      return [`./data/chronogenesis/${targetId}.json`, `/data/chronogenesis/${targetId}.json`];
     }
 
     function safeIso(value) {
@@ -89,50 +91,6 @@
       const [year, month] = monthKey.split("-").map(Number);
       return new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
     }
-
-    const CLUBS = [
-      { tier: "S+",  name: "Dominator",  officer: "@mikufans.",     id: "114037107", target: 90_000_000 },
-      { tier: "S",  name: "Dominant H", officer: "@.stayk",        id: "278155676", target: 70_000_000 },
-      { tier: "S",  name: "Dominance",  officer: "@.fabino",     id: "955490905", target: 70_000_000 },
-      { tier: "A+", name: "Dominate",   officer: "@reyovalt",      id: "147185239", target: 45_000_000 },
-      { tier: "A+", name: "Domineer",   officer: "@soraxd1010",      id: "961801794", target: 45_000_000 },
-      { tier: "A+", name: "Dominium",   officer: "@david",       id: "449007774", target: 45_000_000 },
-      { tier: "A",  name: "Dominion",   officer: "@jkpokes",        id: "510137721", target: 28_000_000 },
-      { tier: "A",  name: "Domical",    officer: "@grimizan",     id: "754870359", target: 28_000_000 },
-      { tier: "A",  name: "Glue Gals",    officer: "@xbunnx",     id: "570535790", target: 28_000_000 },
-      { tier: "B+", name: "Domicile",   officer: "@mikufans.", id: "387070372", target: 18_000_000 },
-      { tier: "B+", name: "Domichill",  officer: "@mikufans.",     id: "918879715", target: 18_000_000 },
-    ];
-
-    const MAX_MEMBERS = 30;
-    const RANKING_CONFIG = [
-      { tier: "SS", min: 1,      max: 10,     icon: "utx_ico_circle_rank_11" },
-      { tier: "S+", min: 11,     max: 30,     icon: "utx_ico_circle_rank_10" },
-      { tier: "S",  min: 31,     max: 100,    icon: "utx_ico_circle_rank_09" },
-      { tier: "A+", min: 101,    max: 500,    icon: "utx_ico_circle_rank_08" },
-      { tier: "A",  min: 501,    max: 1000,   icon: "utx_ico_circle_rank_07" },
-      { tier: "B+", min: 1001,   max: 3000,   icon: "utx_ico_circle_rank_06" },
-      { tier: "B",  min: 3001,   max: 5000,   icon: "utx_ico_circle_rank_05" },
-      { tier: "C+", min: 5001,   max: 7000,   icon: "utx_ico_circle_rank_04" },
-      { tier: "C",  min: 7001,   max: 10000,  icon: "utx_ico_circle_rank_03" },
-      { tier: "D+", min: 10001,  max: 100000, icon: "utx_ico_circle_rank_02" },
-      { tier: "D",  min: 100001, max: null,   icon: "utx_ico_circle_rank_01" },
-    ];
-    const RANK_ICON_PATH = "./data/rank_pics/";
-
-    const TIER_COLORS = {
-      "SS": { bg: "#ef444422", border: "#ef4444", text: "#f87171", bar: "#dc2626" },
-      "S+": { bg: "#f59e0b22", border: "#f59e0b", text: "#fbbf24", bar: "#d97706" },
-      "S":  { bg: "#fbbf2422", border: "#fbbf24", text: "#fbbf24", bar: "#f59e0b" },
-      "A+": { bg: "#a78bfa22", border: "#a78bfa", text: "#a78bfa", bar: "#7c3aed" },
-      "A":  { bg: "#34d39922", border: "#34d399", text: "#34d399", bar: "#059669" },
-      "B+": { bg: "#60a5fa22", border: "#60a5fa", text: "#60a5fa", bar: "#2563eb" },
-      "B":  { bg: "#3b82f622", border: "#3b82f6", text: "#60a5fa", bar: "#2563eb" },
-      "C+": { bg: "#2dd4bf22", border: "#2dd4bf", text: "#2dd4bf", bar: "#14b8a6" },
-      "C":  { bg: "#94a3b822", border: "#94a3b8", text: "#94a3b8", bar: "#64748b" },
-      "D+": { bg: "#f9731622", border: "#f97316", text: "#f97316", bar: "#ea580c" },
-      "D":  { bg: "#6b728022", border: "#6b7280", text: "#9ca3af", bar: "#4b5563" },
-    };
 
     function getTierForRank(monthlyRank, rankingConfig = RANKING_CONFIG) {
       if (monthlyRank == null) return null;
@@ -225,7 +183,7 @@
     }
 
     function getViewClubs(archiveConfig) {
-      return archiveConfig?.clubs?.length ? archiveConfig.clubs : CLUBS;
+      return archiveConfig?.clubs?.length ? archiveConfig.clubs : CURRENT_CLUBS;
     }
 
     function getViewRankingConfig(archiveConfig) {
@@ -284,17 +242,17 @@
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
 
 
-    function getSuggestedTierForProjectedMonthly(projectedMonthly = 0, clubs = CLUBS) {
+    function getSuggestedTierForProjectedMonthly(projectedMonthly = 0, clubs = CURRENT_CLUBS) {
       const value = Math.max(0, Number(projectedMonthly) || 0);
-      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CLUBS;
+      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CURRENT_CLUBS;
       const ordered = [...sourceClubs].sort((a, b) => b.target - a.target);
       const match = ordered.find((club) => value >= club.target);
       return match ? match.tier : "B+";
     }
 
-    function getExpectedClubTier(currentTier, projectedMonthly = 0, direction = "promotion", clubs = CLUBS, clubTierOrder = CLUB_TIER_ORDER) {
+    function getExpectedClubTier(currentTier, projectedMonthly = 0, direction = "promotion", clubs = CURRENT_CLUBS, clubTierOrder = CLUB_TIER_ORDER) {
       const value = Math.max(0, Number(projectedMonthly) || 0);
-      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CLUBS;
+      const sourceClubs = Array.isArray(clubs) && clubs.length ? clubs : CURRENT_CLUBS;
       const tierOrder = Array.isArray(clubTierOrder) && clubTierOrder.length ? clubTierOrder : CLUB_TIER_ORDER;
       const minClubTarget = Math.min(...sourceClubs.map((club) => club.target));
       if (direction === "demotion" && value < minClubTarget) return "Remove";
@@ -357,54 +315,32 @@
       return (a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate());
     }
 
-    const GAME_RESET_LOCAL_HOUR = 11;
-    const REFRESH_SCHEDULES = {
-      [DATA_SOURCES.UMA]: {
-        timeZone: "America/New_York",
-        label: "ET",
-        slots: [
-          { hour: 0, minute: 0, label: "12:00 AM" },
-          { hour: 1, minute: 0, label: "1:00 AM" },
-          { hour: 5, minute: 0, label: "5:00 AM" },
-          { hour: 6, minute: 0, label: "6:00 AM" },
-          { hour: 14, minute: 0, label: "2:00 PM" },
-          { hour: 15, minute: 0, label: "3:00 PM" },
-          { hour: 19, minute: 0, label: "7:00 PM" },
-          { hour: 20, minute: 0, label: "8:00 PM" },
-        ],
-      },
-      [DATA_SOURCES.CHRONOGENESIS]: {
-        timeZone: "Asia/Bangkok",
-        label: "UTC+7",
-        slots: [
-          { hour: 17, minute: 15, label: "5:15 PM" },
-        ],
-      },
+    const REFRESH_SCHEDULE = {
+      timeZone: "Asia/Bangkok",
+      label: "UTC+7",
+      slots: [
+        { hour: 17, minute: 15, label: "5:15 PM" },
+      ],
     };
     const SCHEDULE_AUTO_REFRESH_WINDOW_MS = 8 * 60 * 1000;
     const SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS = [5_000, 20_000, 45_000, 90_000, 150_000];
-    const UNLOCK_POLL_INTERVAL_MS = 45 * 1000;
     const EFFECTIVE_DAY_STORAGE_KEY = "dominatorTrackerEffectiveGameDay";
-    const EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY = "dominatorTrackerEffectiveGameDayUnlockedLocalDay";
 
     function pad2(n) { return String(n).padStart(2, "0"); }
     function formatDateKey(year, month, day) { return `${year}-${pad2(month)}-${pad2(day)}`; }
     function formatLocalDateKey(date) { return formatDateKey(date.getFullYear(), date.getMonth() + 1, date.getDate()); }
     function isDateKey(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")); }
 
-    function shiftDateKey(key, deltaDays) {
+    function getPreviousDisplayKeyFromKey(key) {
+      if (!isDateKey(key)) return key;
       const [year, month, day] = String(key).split("-").map(Number);
-      const utc = new Date(Date.UTC(year, month - 1, day));
-      utc.setUTCDate(utc.getUTCDate() + deltaDays);
-      return formatDateKey(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+      const previous = new Date(Date.UTC(year, month - 1, day));
+      previous.setUTCDate(previous.getUTCDate() - 1);
+      const shifted = formatDateKey(previous.getUTCFullYear(), previous.getUTCMonth() + 1, previous.getUTCDate());
+      return shifted.slice(0, 7) === key.slice(0, 7) ? shifted : key;
     }
 
-    function getLocalTodayKey(now = new Date()) { return formatLocalDateKey(now); }
-    function getYesterdayKey(now = new Date()) { return shiftDateKey(getLocalTodayKey(now), -1); }
-    function isAfterResetHour(now = new Date()) { return now.getHours() >= GAME_RESET_LOCAL_HOUR; }
-    function getResetCycleKey(now = new Date()) { return isAfterResetHour(now) ? getLocalTodayKey(now) : getYesterdayKey(now); }
-
-    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
+    function getTimeZoneParts(date, timeZone = REFRESH_SCHEDULE.timeZone) {
       const parts = new Intl.DateTimeFormat("en-US", {
         timeZone,
         year: "numeric",
@@ -439,7 +375,7 @@
       return sign * ((hours * 60) + minutes);
     }
 
-    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
+    function getTimeZoneOffsetMinutes(date, timeZone = REFRESH_SCHEDULE.timeZone) {
       const tzNamePart = new Intl.DateTimeFormat("en-US", {
         timeZone,
         timeZoneName: "shortOffset",
@@ -448,7 +384,7 @@
       return parseShortOffsetToMinutes(tzNamePart?.value || "GMT");
     }
 
-    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULES[DATA_SOURCES.UMA].timeZone) {
+    function zonedTimeToUtc(parts, timeZone = REFRESH_SCHEDULE.timeZone) {
       const utcGuessMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0, 0);
       const initialOffset = getTimeZoneOffsetMinutes(new Date(utcGuessMs), timeZone);
       let resolved = new Date(utcGuessMs - initialOffset * 60 * 1000);
@@ -463,10 +399,9 @@
       return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
     }
 
-    function formatRefreshDateLabel(date, source = DATA_SOURCES.UMA) {
-      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
+    function formatRefreshDateLabel(date) {
       return new Intl.DateTimeFormat("en-US", {
-        timeZone: schedule.timeZone,
+        timeZone: REFRESH_SCHEDULE.timeZone,
         weekday: "short",
         hour: "numeric",
         minute: "2-digit",
@@ -484,16 +419,15 @@
       return `${seconds}s`;
     }
 
-    function buildRefreshScheduleEntries(source = DATA_SOURCES.UMA, now = new Date(), dayOffsets = [-1, 0, 1, 2]) {
-      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
-      const zonedNowParts = getTimeZoneParts(now, schedule.timeZone);
+    function buildRefreshScheduleEntries(now = new Date(), dayOffsets = [-1, 0, 1, 2]) {
+      const zonedNowParts = getTimeZoneParts(now, REFRESH_SCHEDULE.timeZone);
       const dayPartsList = dayOffsets.map((delta) => addDaysToParts(zonedNowParts, delta));
       const candidates = [];
       dayPartsList.forEach((dayParts) => {
-        schedule.slots.forEach((slot) => {
-          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, schedule.timeZone);
+        REFRESH_SCHEDULE.slots.forEach((slot) => {
+          const date = zonedTimeToUtc({ ...dayParts, hour: slot.hour, minute: slot.minute, second: 0 }, REFRESH_SCHEDULE.timeZone);
           candidates.push({
-            key: `${source}-${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
+            key: `${DATA_SOURCE}-${formatDateKey(dayParts.year, dayParts.month, dayParts.day)}-${pad2(slot.hour)}:${pad2(slot.minute)}`,
             date,
             slot,
             label: slot.label,
@@ -503,80 +437,36 @@
       return candidates.sort((a, b) => a.date - b.date);
     }
 
-    function getUpcomingRefreshSchedule(source = DATA_SOURCES.UMA, now = new Date(), count = 4) {
-      return buildRefreshScheduleEntries(source, now).filter((entry) => entry.date.getTime() > now.getTime() + 999).slice(0, count);
+    function getUpcomingRefreshSchedule(now = new Date(), count = 1) {
+      return buildRefreshScheduleEntries(now).filter((entry) => entry.date.getTime() > now.getTime() + 999).slice(0, count);
     }
 
-    function getLatestStartedRefresh(source = DATA_SOURCES.UMA, now = new Date()) {
-      const started = buildRefreshScheduleEntries(source, now).filter((entry) => entry.date.getTime() <= now.getTime() + 999);
+    function getLatestStartedRefresh(now = new Date()) {
+      const started = buildRefreshScheduleEntries(now).filter((entry) => entry.date.getTime() <= now.getTime() + 999);
       return started.length ? started[started.length - 1] : null;
     }
 
-    function getRefreshScheduleMeta(source = DATA_SOURCES.UMA, now = new Date()) {
-      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
-      const upcoming = getUpcomingRefreshSchedule(source, now, source === DATA_SOURCES.CHRONOGENESIS ? 1 : 4);
+    function getRefreshScheduleMeta(now = new Date()) {
+      const upcoming = getUpcomingRefreshSchedule(now, 1);
       const next = upcoming[0] || null;
-      const latestStarted = getLatestStartedRefresh(source, now);
-      const zonedNowParts = getTimeZoneParts(now, schedule.timeZone);
-      const zonedMinutesNow = (zonedNowParts.hour * 60) + zonedNowParts.minute;
-      const isNextRefreshForNextGameDay = source === DATA_SOURCES.UMA && Boolean(next && next.slot.hour === 14 && next.slot.minute === 0 && zonedMinutesNow >= (6 * 60));
+      const latestStarted = getLatestStartedRefresh(now);
       return {
         next,
         upcoming,
         latestStarted,
         countdownMs: next ? Math.max(0, next.date.getTime() - now.getTime()) : 0,
-        isNextRefreshForNextGameDay,
-        label: schedule.label,
-        timeZone: schedule.timeZone,
+        label: REFRESH_SCHEDULE.label,
+        timeZone: REFRESH_SCHEDULE.timeZone,
       };
     }
-
-    function shiftDateKeyWithinSameMonth(key, deltaDays) {
-      if (!isDateKey(key)) return key;
-      const shifted = shiftDateKey(key, deltaDays);
-      return shifted.slice(0, 7) === key.slice(0, 7) ? shifted : key;
-    }
-
-    function getPreviousDisplayKeyFromKey(key) { return shiftDateKeyWithinSameMonth(key, -1); }
-
-    function getEffectiveDayWindow(now = new Date()) {
-      const resetCycleKey = getResetCycleKey(now);
-      const latestDisplayKey = resetCycleKey;
-      const previousDisplayKey = getPreviousDisplayKeyFromKey(latestDisplayKey);
-      const resetBoundary = dateKeyToLocalDate(resetCycleKey);
-      resetBoundary.setHours(GAME_RESET_LOCAL_HOUR, 0, 0, 0);
-      return { resetCycleKey, latestDisplayKey, previousDisplayKey, resetBoundary };
-    }
-
-    function getDefaultDisplayKey(now = new Date()) { return getEffectiveDayWindow(now).latestDisplayKey; }
-    function getFallbackGameDayKey(now = new Date()) { return getEffectiveDayWindow(now).previousDisplayKey; }
 
     function dateKeyToLocalDate(key) {
       const [year, month, day] = String(key).split("-").map(Number);
       return new Date(year, month - 1, day);
     }
 
-    function getLocalDateKeyFromTimestamp(timestamp) {
-      if (!timestamp) return null;
-      const parsed = new Date(timestamp);
-      if (Number.isNaN(parsed.getTime())) return null;
-      return formatLocalDateKey(parsed);
-    }
-
-    function getGameDayKeyFromResult(result) {
-      return getLocalDateKeyFromTimestamp(result?.sourceUpdatedAt || null);
-    }
-
-    function getEffectiveRefreshTimestamp(result) {
-      const candidate = result?.refreshedAt || result?.sourceUpdatedAt || result?.lastFetch || null;
-      if (!candidate) return null;
-      const parsed = new Date(candidate);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-
     function getChronogenesisSharedActualDay(result) {
-      if (result?.sourceType !== DATA_SOURCES.CHRONOGENESIS) return null;
+      if (result?.sourceType !== DATA_SOURCE) return null;
       const explicitSharedDay = Number(result?.sharedActualDate ?? 0);
       return Number.isFinite(explicitSharedDay) && explicitSharedDay > 0 ? explicitSharedDay : null;
     }
@@ -589,82 +479,15 @@
       return formatDateKey(year, month, sharedDay);
     }
 
-    // ─── FIX: replaced hasUnlockedCurrentResetCycle ───────────────────────────
-    // Old version only checked timestamps, allowing the day to advance even when
-    // the scraped game data hadn't actually moved forward yet (same daily_fans
-    // values, just a newer refreshed_at). This caused plan deltas to silently
-    // shift by ~2.5 M per member on the first refresh after 11 am, flipping
-    // on-track members to "behind" with zero real change in their data.
-    //
-    // The candidateKey guard was removed because circle.last_updated is stored
-    // in JST, so it frequently reads as the next calendar day in UTC — e.g.
-    // "2026-04-09T00:25:02Z" for a refresh that actually happened on Apr 8 EST.
-    // That mismatch against latestDisplayKey ("2026-04-08") blocked the unlock
-    // even when the data was fully current. The timestamp + content guards below
-    // are sufficient on their own and don't depend on the timezone-sensitive
-    // last_updated field at all.
-    function hasNewDayDataUnlocked(result, now = new Date()) {
-      const { latestDisplayKey, resetBoundary } = getEffectiveDayWindow(now);
-      const refreshAt = getEffectiveRefreshTimestamp(result);
-      if (!refreshAt) return false;
-      if (refreshAt.getTime() < resetBoundary.getTime()) return false;
-
-      const members = Array.isArray(result?.members) ? result.members : [];
-      if (!members.length) return false;
-      const dataDate = dateKeyToLocalDate(latestDisplayKey);
-      const todayIdx = dataDate.getDate() - 1;
-
-      const newDayCount = members.filter((m) => {
-        if (Array.isArray(m.precomputedDailyGainSeries) && m.precomputedDailyGainSeries.length) return (m.precomputedDailyGainSeries[todayIdx] ?? 0) > 0;
-        if (Array.isArray(m.precomputedCumulativeSeries) && m.precomputedCumulativeSeries.length) return (m.precomputedCumulativeSeries[todayIdx] ?? 0) > 0;
-        return Array.isArray(m.dailyFans) && (m.dailyFans[todayIdx] ?? 0) > 0;
-      }).length;
-
-      const threshold = Math.min(3, members.length);
-      return newDayCount >= threshold;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-
-    function safeReadStoredUnlockCycleKey() {
-      try { const stored = localStorage.getItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
-    }
-    function safeWriteStoredUnlockCycleKey(key) {
-      try { if (isDateKey(key)) localStorage.setItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY, key); } catch (e) {}
-    }
-    function safeClearStoredUnlockCycleKey() {
-      try { localStorage.removeItem(EFFECTIVE_DAY_UNLOCK_CYCLE_KEY_STORAGE_KEY); } catch (e) {}
-    }
-
-    function getInitialEffectiveGameDayKey(now = new Date(), source = DATA_SOURCES.UMA) {
-      if (source === DATA_SOURCES.CHRONOGENESIS) {
-        const storedKey = safeReadStoredGameDayKey();
-        if (storedKey && storedKey.slice(0, 7) === formatDateKey(now.getFullYear(), now.getMonth() + 1, 1).slice(0, 7)) return storedKey;
-        return formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
-      }
-      const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
+    function getInitialEffectiveGameDayKey(now = new Date()) {
       const storedKey = safeReadStoredGameDayKey();
-      const unlockedCycleKey = safeReadStoredUnlockCycleKey();
-      if (unlockedCycleKey === resetCycleKey) return latestDisplayKey;
-      if (storedKey === previousDisplayKey) return previousDisplayKey;
-      if (storedKey === latestDisplayKey) return previousDisplayKey;
-      return previousDisplayKey;
+      if (storedKey && storedKey.slice(0, 7) === formatDateKey(now.getFullYear(), now.getMonth() + 1, 1).slice(0, 7)) return storedKey;
+      return formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
     }
 
-    // ─── FIX: call site 1 — resolveEffectiveGameDayKey ───────────────────────
-    function resolveEffectiveGameDayKey(currentKey, result, now = new Date(), source = DATA_SOURCES.UMA) {
-      if (source === DATA_SOURCES.CHRONOGENESIS || result?.sourceType === DATA_SOURCES.CHRONOGENESIS) {
-        return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
-      }
-      const { resetCycleKey, latestDisplayKey, previousDisplayKey } = getEffectiveDayWindow(now);
-      const unlockedCycleKey = safeReadStoredUnlockCycleKey();
-      // Was: hasUnlockedCurrentResetCycle(result, now)
-      if (hasNewDayDataUnlocked(result, now)) return latestDisplayKey;
-      if (unlockedCycleKey === resetCycleKey || currentKey === latestDisplayKey) return latestDisplayKey;
-      if (currentKey === previousDisplayKey) return previousDisplayKey;
-      return previousDisplayKey;
+    function resolveEffectiveGameDayKey(currentKey, result, now = new Date()) {
+      return getChronogenesisDisplayKey(result, now) || currentKey || formatDateKey(now.getFullYear(), now.getMonth() + 1, 1);
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     function safeReadStoredGameDayKey() {
       try { const stored = localStorage.getItem(EFFECTIVE_DAY_STORAGE_KEY); return isDateKey(stored) ? stored : null; } catch (e) { return null; }
@@ -676,54 +499,33 @@
     function getJsonLoadMeta(entry, cdata, now) {
       if (!entry.id) return { label: "⏳ Not Configured", color: "#6b7280", sub: "Club JSON not set up yet" };
       if (!cdata) return { label: "❌ No JSON", color: "#f87171", sub: "No JSON file loaded" };
-      if (cdata.archiveMonthKey && cdata.sourceType === DATA_SOURCES.CHRONOGENESIS) return { label: "📦 Archive", color: "#c4b5fd", sub: `Snapshot month ${getMonthKeyLabel(cdata.archiveMonthKey)}` };
+      if (cdata.archiveMonthKey && cdata.sourceType === DATA_SOURCE) return { label: "📦 Archive", color: "#c4b5fd", sub: `Snapshot month ${getMonthKeyLabel(cdata.archiveMonthKey)}` };
 
       const effectiveTimestamp = cdata.refreshedAt || cdata.sourceUpdatedAt || cdata.lastFetch || null;
       if (!effectiveTimestamp) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Missing refresh timestamp" };
       const parsed = new Date(effectiveTimestamp);
       if (Number.isNaN(parsed.getTime())) return { label: "⚠️ Outdated", color: "#fbbf24", sub: "Invalid refresh timestamp" };
 
-      const source = cdata.sourceType || DATA_SOURCES.UMA;
-      const schedule = REFRESH_SCHEDULES[source] || REFRESH_SCHEDULES[DATA_SOURCES.UMA];
-      const scheduleMeta = getRefreshScheduleMeta(source, now);
+      const scheduleMeta = getRefreshScheduleMeta(now);
       const latestStarted = scheduleMeta.latestStarted;
       const nextRefresh = scheduleMeta.next;
       const lastUpdatedLabel = parsed.toLocaleString();
 
-      if (source === DATA_SOURCES.CHRONOGENESIS) {
-        // Chronogenesis only refreshes once per day at 5:15 PM UTC+7.
-        // Do not mark yesterday's 5:15 PM file as outdated just because the
-        // UTC+7 calendar date rolled over after midnight. It should stay
-        // fresh until the next 5:15 PM UTC+7 refresh slot has started.
-        const graceMs = 30 * 60 * 1000;
-        const latestRequiredAt = latestStarted?.date || null;
-        const isFreshForLatestRefreshCycle = latestRequiredAt
-          ? parsed.getTime() >= (latestRequiredAt.getTime() - graceMs)
-          : true;
+      // Chronogenesis only refreshes once per day at 5:15 PM UTC+7. Yesterday's
+      // file remains current until the next refresh slot has actually started.
+      const graceMs = 30 * 60 * 1000;
+      const latestRequiredAt = latestStarted?.date || null;
+      const isFreshForLatestRefreshCycle = latestRequiredAt
+        ? parsed.getTime() >= (latestRequiredAt.getTime() - graceMs)
+        : true;
 
-        if (isFreshForLatestRefreshCycle) {
-          const nextText = nextRefresh ? ` · next refresh ${formatRefreshDateLabel(nextRefresh.date, source)}` : "";
-          return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${lastUpdatedLabel} · current for latest 5:15 PM UTC+7 cycle${nextText}` };
-        }
-
-        const requiredLabel = latestRequiredAt ? formatRefreshDateLabel(latestRequiredAt, source) : "latest scheduled refresh";
-        return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${lastUpdatedLabel} · missing refresh after ${requiredLabel}` };
+      if (isFreshForLatestRefreshCycle) {
+        const nextText = nextRefresh ? ` · next refresh ${formatRefreshDateLabel(nextRefresh.date)}` : "";
+        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${lastUpdatedLabel} · current for latest 5:15 PM UTC+7 cycle${nextText}` };
       }
 
-      const statusTimeZone = schedule.timeZone;
-      const nowParts = getTimeZoneParts(now, statusTimeZone);
-      const parsedParts = getTimeZoneParts(parsed, statusTimeZone);
-      const nowDateKey = `${nowParts.year}-${String(nowParts.month).padStart(2, "0")}-${String(nowParts.day).padStart(2, "0")}`;
-      const parsedDateKey = `${parsedParts.year}-${String(parsedParts.month).padStart(2, "0")}-${String(parsedParts.day).padStart(2, "0")}`;
-      const hasUpdatedToday = parsedDateKey === nowDateKey;
-      const latestDeadline = latestStarted?.date || null;
-      const isPastDailyDeadline = latestDeadline ? now.getTime() >= latestDeadline.getTime() : false;
-
-      if (hasUpdatedToday || !isPastDailyDeadline) {
-        return { label: "✅ JSON Loaded", color: "#34d399", sub: `Last updated ${lastUpdatedLabel} · current for latest scheduled refresh` };
-      }
-
-      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${lastUpdatedLabel} · missing today’s scheduled update` };
+      const requiredLabel = latestRequiredAt ? formatRefreshDateLabel(latestRequiredAt) : "latest scheduled refresh";
+      return { label: "⚠️ Outdated", color: "#fbbf24", sub: `Last updated ${lastUpdatedLabel} · missing refresh after ${requiredLabel}` };
     }
 
     function getPodiumStyle(index) {
@@ -735,57 +537,6 @@
     }
 
     function getLineColor(index) { return `hsl(${(index * 47) % 360}, 72%, 62%)`; }
-
-    function parseUmaJson(json, dataDateOverride = null) {
-      const membersArr = Array.isArray(json) ? json : Array.isArray(json.members) ? json.members : Array.isArray(json.data?.members) ? json.data.members : null;
-      if (!membersArr || membersArr.length === 0) return { error: "No members array found. Keys in JSON: " + Object.keys(json).join(", ") };
-      const effectiveDataDate = dataDateOverride instanceof Date && !Number.isNaN(dataDateOverride.getTime()) ? new Date(dataDateOverride) : dateKeyToLocalDate(getFallbackGameDayKey(new Date()));
-      const today = effectiveDataDate.getDate();
-      const dim = daysInMonth(effectiveDataDate.getFullYear(), effectiveDataDate.getMonth() + 1);
-      const members = membersArr.map((m) => {
-        if (m.fan_count != null) {
-          return {
-            name: m.name || m.trainer_name || "Unknown",
-            fans: m.fan_count,
-            dailyGain: m.daily_gain ?? null,
-            monthlyGain: m.monthly_gain ?? null,
-            projected: m.projected_monthly ?? null,
-            isActive: m.isActive !== false,
-            dailyFans: Array.isArray(m.daily_fans) ? m.daily_fans : [],
-            precomputedCumulativeSeries: null,
-            precomputedDailyGainSeries: null,
-          };
-        }
-        const df = Array.isArray(m.daily_fans) ? m.daily_fans : [];
-        const todayIdx = Math.min(today - 1, df.length - 1);
-        let currentFans = 0, latestIdx = -1;
-        for (let i = todayIdx; i >= 0; i--) { if (df[i] > 0) { currentFans = df[i]; latestIdx = i; break; } }
-        let dailyGain = null;
-        if (latestIdx >= 1) { for (let i = latestIdx - 1; i >= 0; i--) { if (df[i] > 0) { dailyGain = currentFans - df[i]; break; } } }
-        const firstNZ = df.find((v) => v > 0);
-        const monthlyGain = firstNZ != null && currentFans > 0 ? currentFans - firstNZ : null;
-        const daysWithData = df.slice(0, todayIdx + 1).filter((v) => v > 0).length;
-        let projected = null;
-        if (monthlyGain !== null && daysWithData > 0) { projected = Math.round((monthlyGain / Math.max(daysWithData, 1)) * dim); } else if (dailyGain !== null) { projected = Math.round(dailyGain * dim); }
-        return {
-          name: m.trainer_name || m.name || "Unknown",
-          fans: currentFans,
-          dailyGain,
-          monthlyGain,
-          projected,
-          isActive: m.isActive !== false,
-          dailyFans: df,
-          precomputedCumulativeSeries: null,
-          precomputedDailyGainSeries: null,
-        };
-      });
-      const clubName = json?.circle?.name || json?.name || "Unknown";
-      const refreshedAt = json?.refreshed_at || json?.meta?.refreshed_at || null;
-      const sourceUpdatedAt = json?.circle?.last_updated || json?.circle?.yesterday_updated || null;
-      const lastFetch = refreshedAt || sourceUpdatedAt || null;
-      const clubDailyHistory = Array.isArray(json?.history) ? json.history : [];
-      return { members, clubName, lastFetch, refreshedAt, sourceUpdatedAt, sourceType: DATA_SOURCES.UMA, clubDailyHistory, clubMonthlyHistory: [] };
-    }
 
     function parseChronogenesisJson(json, dataDateOverride = null) {
       const clubRoot = Array.isArray(json?.club) ? json.club[0] : null;
@@ -887,7 +638,7 @@
         lastFetch,
         refreshedAt,
         sourceUpdatedAt,
-        sourceType: DATA_SOURCES.CHRONOGENESIS,
+        sourceType: DATA_SOURCE,
         archiveConfig,
         sharedActualDate,
         dataYear: datasetMonth.year,
@@ -899,10 +650,10 @@
       };
     }
 
-    function parseJSON(raw, dataDateOverride = null, source = DATA_SOURCES.UMA) {
+    function parseJSON(raw, dataDateOverride = null) {
       let json;
       try { json = typeof raw === "string" ? JSON.parse(raw.trim()) : raw; } catch (e) { return { error: "Invalid JSON: " + e.message }; }
-      return source === DATA_SOURCES.CHRONOGENESIS ? parseChronogenesisJson(json, dataDateOverride) : parseUmaJson(json, dataDateOverride);
+      return parseChronogenesisJson(json, dataDateOverride);
     }
 
     function buildCumulativeSeries(dailyFans, dim) {
@@ -1154,7 +905,7 @@
       const min = Math.min(...vals); const max = Math.max(...vals); const range = max - min || 1; const step = width / (vals.length - 1);
       const pts = vals.map((v, i) => `${i * step},${height - ((v - min) / range) * (height - 4) - 2}`).join(" ");
       const lx = (vals.length - 1) * step; const ly = height - ((vals[vals.length - 1] - min) / range) * (height - 4) - 2;
-      return (<svg width={width} height={height}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" /><circle cx={lx} cy={ly} r={2.5} fill={color} opacity={0.8} /></svg>);
+      return (<svg width={width} height={height}><polyline className="chart-line" pathLength="1" points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" /><circle cx={lx} cy={ly} r={2.5} fill={color} opacity={0.8} /></svg>);
     }
 
     function PaceChart({ seriesList = [], targetSeries = [], weeks = [], year, monthIndex, svgRef, zoom = 1, pinnedIdx, setPinnedIdx, containerRef, currentDayIdx = 0, mode = "cumulative" }) {
@@ -1185,23 +936,56 @@
       const modeLabel = mode === "daily" ? "Daily gain" : "Cumulative gain";
       const targetLabel = mode === "daily" ? "Daily plan guideline" : "Cumulative plan guideline";
       return (
-        <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "#0a0912" }}>
+        <div ref={containerRef} style={{ position: "relative", overflow: "visible", background: "transparent" }}>
           <div style={{ overflowX: "auto", paddingBottom: 6 }}>
             <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} style={{ width: `${Math.max(100, zoom * 100)}%`, minWidth: `${Math.round(width * Math.max(1, zoom))}px`, height: "auto", display: "block" }}>
               {gridValues.map((value, index) => { const y = yForValue(value); return (<g key={index}><line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{fmt(value)}</text></g>); })}
               {weeks.filter((week) => week.startDay <= dayCount).map((week) => { const boundaryDay = Math.min(week.endDay, dayCount); const x = xForIndex(boundaryDay - 1); return (<g key={week.number}><line x1={x} x2={x} y1={padding.top} y2={height - padding.bottom} stroke="#2a2540" strokeDasharray="3 5" /><text x={Math.max(padding.left + 12, x - 4)} y={padding.top + 12} textAnchor="end" fill="#6b7280" fontSize="10">W{week.number}</text></g>); })}
               <path d={pathFor(fullTargetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-              {drawnSeriesList.map((item) => (<path key={item.name} d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
-              <g><circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" /></g>
-              {drawnSeriesList.map((item) => { const currentValue = item.series?.[visibleDayCount - 1] ?? 0; return (<g key={`${item.name}-current-dot`}><circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" /></g>); })}
+              {drawnSeriesList.map((item) => (<path key={`${item.name}-${mode}-${visibleDayCount}`} className="chart-line" pathLength="1" d={pathFor(item.series)} fill="none" stroke={item.color} strokeWidth="2" opacity="0.9" />))}
+              <g><circle cx={currentX} cy={yForValue(fullTargetSeries[visibleDayCount - 1] ?? 0)} r="3.8" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} /></g>
+              {drawnSeriesList.map((item) => { const currentValue = item.series?.[visibleDayCount - 1] ?? 0; return (<g key={`${item.name}-current-dot`}><circle cx={currentX} cy={yForValue(currentValue)} r="3.2" fill={item.color} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${item.color})` }} /></g>); })}
               {hover && (<><line x1={hover.x} x2={hover.x} y1={padding.top} y2={height - padding.bottom} stroke={isPinned ? "#a78bfa" : "#7c3aed"} strokeWidth={isPinned ? "2" : "1"} strokeDasharray="2 4" /><circle cx={hover.x} cy={hover.yTarget} r="4" fill="#c4b5fd" />{hoverMembers.filter((item) => item.value != null).map((item) => (<circle key={item.name} cx={hover.x} cy={yForValue(item.value)} r="3" fill={item.color} stroke="#0a0912" strokeWidth="1" />))}</>)}
               {Array.from({ length: dayCount }, (_, index) => { const startX = index === 0 ? padding.left : (xForIndex(index - 1) + xForIndex(index)) / 2; const endX = index === dayCount - 1 ? width - padding.right : (xForIndex(index) + xForIndex(index + 1)) / 2; return (<g key={index}><rect x={startX} y={padding.top} width={Math.max(10, endX - startX)} height={innerH} fill="transparent" style={{ cursor: "pointer" }} onMouseEnter={() => { if (!isPinned) setHoverIdx(index); }} onMouseLeave={() => { if (!isPinned) setHoverIdx(null); }} onClick={() => { if (isPinned && pinnedIdx === index) setPinnedIdx(null); else setPinnedIdx(index); }} />{(index === 0 || index === dayCount - 1 || ((index + 1) % 5 === 0)) && (<text x={xForIndex(index)} y={height - padding.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{index + 1}</text>)}</g>); })}
             </svg>
           </div>
-          {hover && (<div style={{ position: "absolute", left: `${tooltipLeftPct}%`, top: 8, transform: `translateX(${tooltipTranslateX})`, background: "#111028", border: `1px solid ${isPinned ? "#a78bfa" : "#2a2540"}`, borderRadius: 10, padding: "10px 12px", minWidth: 320, width: "max-content", maxWidth: "min(92vw, 620px)", boxShadow: isPinned ? "0 16px 40px rgba(124,58,237,0.25)" : "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: isPinned ? "auto" : "none", zIndex: 5, overflow: "visible" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12 }}>{getDateLabel(year, monthIndex, hover.day)}</div>{isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 6, padding: "2px 7px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>📌 Pinned — click to unpin</span>)}</div>
-            <div style={{ color: "#c4b5fd", fontSize: 12, marginBottom: 8 }}>{targetLabel}: {fmt(hover.target)}</div>
-            {hoverMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>) : (hoverMembers.map((item) => (<div key={item.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, marginBottom: 4, whiteSpace: "nowrap" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0 }} /><span>{item.name}</span></div><div style={{ textAlign: "right", color: item.color, fontWeight: 700 }}>{fmt(item.value)} <span style={{ color: gainColor(item.delta), fontWeight: 600 }}>({fmtSigned(item.delta)})</span></div></div>)))}
+          {hover && (<div style={{ position: "absolute", left: `${tooltipLeftPct}%`, top: 8, transform: `translateX(${tooltipTranslateX})`, background: "linear-gradient(168deg, rgba(34,29,66,0.97), rgba(14,12,30,0.98))", border: `1px solid ${isPinned ? "#a78bfa" : "rgba(167,139,250,0.32)"}`, borderRadius: 12, padding: "11px 13px", minWidth: 330, width: "max-content", maxWidth: "min(92vw, 620px)", boxShadow: isPinned ? "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(124,58,237,0.3)" : "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(3,2,10,0.65)", pointerEvents: isPinned ? "auto" : "none", zIndex: 5, overflow: "visible" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 7 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                <span className="telemetry" style={{ color: "#f1eefc", fontWeight: 700, fontSize: 13 }}>Day {hover.day}</span>
+                <span style={{ color: "#8f88b8", fontSize: 10, fontWeight: 700 }}>{getDateLabel(year, monthIndex, hover.day)}</span>
+              </div>
+              {isPinned && (<span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4, background: "#a78bfa22", border: "1px solid #a78bfa44", borderRadius: 999, padding: "2px 8px", cursor: "pointer" }} onClick={() => setPinnedIdx(null)}>📌 Pinned — unpin</span>)}
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 9, padding: "3px 9px", borderRadius: 999, background: "rgba(196,181,253,0.1)", border: "1px solid rgba(196,181,253,0.3)" }}>
+              <span style={{ width: 12, height: 0, borderTop: "2.5px dashed #c4b5fd", display: "inline-block" }} />
+              <span style={{ color: "#c4b5fd", fontSize: 10.5, fontWeight: 700 }}>{targetLabel}: {fmt(hover.target)}</span>
+            </div>
+            {hoverMembers.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 11 }}>Turn on at least one member card to compare lines against the plan.</div>) : (hoverMembers.map((item, idx) => {
+              const ps = getPodiumStyle(idx);
+              const ahead = item.delta != null && item.delta >= 0;
+              const barPct = item.value == null || hover.target <= 0 ? null : Math.min(100, Math.max(0, (item.value / hover.target) * 100));
+              return (
+                <div key={item.name} style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", fontSize: 11, whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                      <span className="telemetry" style={{ color: ps.color, textShadow: ps.textShadow, fontSize: 10, fontWeight: 700, minWidth: 16, textAlign: "right" }}>{item.value == null ? "·" : `P${idx + 1}`}</span>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color, flexShrink: 0, boxShadow: `0 0 7px ${item.color}` }} />
+                      <span style={{ color: "#f1eefc", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</span>
+                    </div>
+                    <div style={{ textAlign: "right", display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ color: item.value == null ? "#6b7280" : "#f1eefc", fontWeight: 800 }}>{fmt(item.value)}</span>
+                      <span style={{ color: item.delta == null ? "#6b7280" : ahead ? "#34d399" : "#f87171", fontWeight: 700, fontSize: 10, background: item.delta == null ? "transparent" : ahead ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", border: item.delta == null ? "none" : `1px solid ${ahead ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)"}`, borderRadius: 999, padding: "1px 7px", minWidth: 58, display: "inline-block" }}>{fmtSigned(item.delta)}</span>
+                    </div>
+                  </div>
+                  {mode === "cumulative" && barPct != null && (
+                    <div style={{ marginTop: 3, marginLeft: 31, height: 3, borderRadius: 99, background: "rgba(167,139,250,0.12)", overflow: "hidden" }}>
+                      <div style={{ width: `${barPct}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg, ${item.color}, ${ahead ? "#34d399" : "#f87171"})` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            }))}
           </div>)}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />{targetLabel}</span>{drawnSeriesList.map((item) => (<span key={item.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: item.color, borderRadius: 99, display: "inline-block" }} />{item.name}</span>))}</div>
         </div>
@@ -1266,18 +1050,62 @@
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {gridVals.map((v) => { const y = yV(v); return (<g key={v}><line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke="#1e1b35" strokeDasharray="4 4" /><text x={pad.left - 8} y={y + 4} textAnchor="end" fill="#6b7280" fontSize="10">{mode === "daily" ? `${v.toFixed(2)}%` : `${v}%`}</text></g>); })}
             <path d={pathFor(targetSeries)} fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeDasharray="7 6" />
-            {lines.map((l) => (<path key={l.name} d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
-            <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" />
-            {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
+            {lines.map((l) => (<path key={`${l.name}-${mode}-${visibleDayCount}`} className="chart-line" pathLength="1" d={pathFor(l.series)} fill="none" stroke={l.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            <circle cx={currentX} cy={yV(targetSeries[visibleDayCount - 1] ?? 0)} r="4" fill="#c4b5fd" style={{ filter: "drop-shadow(0 0 5px rgba(196,181,253,0.9))" }} />
+            {lines.map((l) => (<circle key={`${l.name}-current`} cx={currentX} cy={yV(l.series[visibleDayCount - 1] ?? 0)} r="3.5" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" style={{ filter: `drop-shadow(0 0 4px ${l.clubColor})` }} />))}
             {hoverIdx != null && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return (<rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />); })}
             {hoverIdx != null && lines.filter((l) => hoverIdx < visibleDayCount).map((l) => (<circle key={l.name} cx={xI(hoverIdx)} cy={yV(l.series[hoverIdx] ?? 0)} r="4" fill={l.clubColor} stroke="#0a0912" strokeWidth="1" />))}
             {Array.from({ length: dim }, (_, i) => (i === 0 || i === dim - 1 || ((i + 1) % 5 === 0)) ? (<text key={i} x={xI(i)} y={H - pad.bottom + 18} textAnchor="middle" fill="#6b7280" fontSize="10">{i + 1}</text>) : null)}
           </svg>
-          {hoverIdx != null && (<div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "#111028", border: "1px solid #2a2540", borderRadius: 10, padding: "10px 12px", minWidth: 260, boxShadow: "0 16px 40px rgba(0,0,0,0.35)", pointerEvents: "none", zIndex: 5 }}>
-            <div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Day {hoverIdx + 1} · {targetLabel}: {mode === "daily" ? `${(targetSeries[hoverIdx] ?? 0).toFixed(2)}%` : `${Math.round(targetSeries[hoverIdx] ?? 0)}%`}</div>
-            {[...allLineSeries].sort((a, b) => ((hoverIdx < visibleDayCount ? (b.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY) - (hoverIdx < visibleDayCount ? (a.series?.[hoverIdx] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY))).map((l) => { const pct = hoverIdx < visibleDayCount ? (l.series?.[hoverIdx] ?? null) : null; const target = targetSeries[hoverIdx] ?? 0; return (<div key={l.name} style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginBottom: 3 }}><div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0 }} />{l.clubName} <TierBadge tier={l.tier} /></div><div style={{ color: pct == null ? "#6b7280" : pct >= target ? "#34d399" : "#f87171", fontWeight: 700 }}>{pct == null ? "—" : (mode === "daily" ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`)}</div></div>); })}
-          </div>)}
+          {hoverIdx != null && (() => {
+            const isLive = hoverIdx < visibleDayCount;
+            const rows = [...allLineSeries]
+              .map((l) => {
+                const pct = isLive ? (l.series?.[hoverIdx] ?? null) : null;
+                const abs = isLive ? ((mode === "daily" ? l.clubDailySeries : l.clubCumSeries)?.[hoverIdx] ?? null) : null;
+                return { ...l, pct, abs };
+              })
+              .sort((a, b) => (b.pct ?? Number.NEGATIVE_INFINITY) - (a.pct ?? Number.NEGATIVE_INFINITY));
+            const target = targetSeries[hoverIdx] ?? 0;
+            const totalAbs = rows.reduce((s, r) => s + (r.abs ?? 0), 0);
+            const totalTarget = rows.reduce((s, r) => s + (Number(r.clubTarget) || 0), 0);
+            const totalPct = totalTarget > 0 ? (totalAbs / totalTarget) * 100 : null;
+            return (
+              <div style={{ position: "absolute", left: `${Math.max(14, Math.min(86, (xI(hoverIdx) / W) * 100))}%`, top: 8, transform: "translateX(-50%)", background: "linear-gradient(168deg, rgba(34,29,66,0.97), rgba(14,12,30,0.98))", border: "1px solid rgba(167,139,250,0.32)", borderRadius: 12, padding: "10px 12px", minWidth: 330, boxShadow: "0 1px 0 rgba(226,224,240,0.06) inset, 0 18px 44px rgba(3,2,10,0.65)", pointerEvents: "none", zIndex: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 7 }}>
+                  <div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>Day {hoverIdx + 1}</div>
+                  <div style={{ color: "#c4b5fd", fontSize: 11, fontWeight: 700 }}>{targetLabel}: {mode === "daily" ? `${(target ?? 0).toFixed(2)}%` : `${Math.round(target ?? 0)}%`}</div>
+                </div>
+                {rows.map((l) => {
+                  const onPace = l.pct != null && l.pct >= target;
+                  return (
+                    <div key={l.name} style={{ marginBottom: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#e2e0f0", minWidth: 0 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: l.clubColor, flexShrink: 0, boxShadow: `0 0 7px ${l.clubColor}` }} />{l.clubName} <TierBadge tier={l.tier} /></div>
+                        <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <span style={{ color: l.abs == null ? "#6b7280" : "#e2e0f0", fontWeight: 800 }} title={l.abs == null ? "" : `${fmtFull(l.abs)} fans ${mode === "daily" ? "gained this day" : "gained so far"}`}>{l.abs == null ? "—" : fmt(l.abs)}</span>
+                          <span style={{ color: l.pct == null ? "#6b7280" : onPace ? "#34d399" : "#f87171", fontWeight: 700, marginLeft: 7 }}>{l.pct == null ? "—" : (mode === "daily" ? `${l.pct.toFixed(2)}%` : `${l.pct.toFixed(1)}%`)}</span>
+                        </div>
+                      </div>
+                      {mode === "cumulative" && l.pct != null && (
+                        <div style={{ marginTop: 3, height: 3, borderRadius: 99, background: "rgba(167,139,250,0.12)", overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(100, Math.max(0, l.pct))}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg, ${l.clubColor}, ${onPace ? "#34d399" : "#f87171"})` }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 11, marginTop: 7, paddingTop: 7, borderTop: "1px solid rgba(167,139,250,0.22)" }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800 }}>⬡ Network total</div>
+                  <div style={{ whiteSpace: "nowrap" }}>
+                    <span style={{ color: "#e2e0f0", fontWeight: 800 }} title={`${fmtFull(totalAbs)} fans across all clubs`}>{isLive ? fmt(totalAbs) : "—"}</span>
+                    {totalPct != null && isLive && <span style={{ color: totalPct >= target ? "#34d399" : "#f87171", fontWeight: 700, marginLeft: 7 }}>{mode === "daily" ? `${totalPct.toFixed(2)}%` : `${totalPct.toFixed(1)}%`}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "#9ca3af", fontSize: 11 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: "#c4b5fd", borderRadius: 99, display: "inline-block" }} />{targetLabel}</span>{lines.map((l) => (<span key={l.name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, background: l.clubColor, borderRadius: 99, display: "inline-block" }} />{l.clubName}</span>))}</div>
         </div>
       );
@@ -1328,8 +1156,8 @@
         <div style={{ position: "relative" }}>
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
             {tierBounds.map((tb) => (<g key={tb.tier}><line x1={pad.left} x2={W - pad.right} y1={tb.y} y2={tb.y} stroke="#1e1b35" strokeDasharray="4 4" /><image href={getRankIconUrl(tb.tier, rankingConfig)} x={4} y={tb.y - 10} width="20" height="20" /><text x={28} y={tb.y + 4} fill="#6b7280" fontSize="10" textAnchor="start">{tb.tier}</text><text x={pad.left - 6} y={tb.y + 4} fill="#4b5563" fontSize="9" textAnchor="end">#{tb.rank.toLocaleString()}</text></g>))}
-            {clubLines.map((c) => (<path key={c.id} d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
-            {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" /> : null; })}
+            {clubLines.map((c) => (<path key={`${c.id}-${latestDay}`} className="chart-line" pathLength="1" d={buildPath(c.rankSeries)} fill="none" stroke={c.clubColor} strokeWidth="2.5" opacity="0.85" />))}
+            {clubLines.map((c) => { const r = c.rankSeries[latestDay]; return r != null ? <circle key={`${c.id}-d`} cx={xI(latestDay)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1.5" style={{ filter: `drop-shadow(0 0 4px ${c.clubColor})` }} /> : null; })}
             {hoverIdx != null && hoverIdx <= latestDay && (<line x1={xI(hoverIdx)} x2={xI(hoverIdx)} y1={pad.top} y2={H - pad.bottom} stroke="#7c3aed" strokeDasharray="2 4" />)}
             {hoverIdx != null && hoverIdx <= latestDay && clubLines.map((c) => { const r = c.rankSeries[hoverIdx]; return r != null ? <circle key={`${c.id}-h`} cx={xI(hoverIdx)} cy={yV(r)} r="4" fill={c.clubColor} stroke="#0a0912" strokeWidth="1" /> : null; })}
             {Array.from({ length: dim }, (_, i) => { const sx = i === 0 ? pad.left : (xI(i - 1) + xI(i)) / 2; const ex = i === dim - 1 ? W - pad.right : (xI(i) + xI(i + 1)) / 2; return <rect key={i} x={sx} y={pad.top} width={Math.max(10, ex - sx)} height={innerH} fill="transparent" onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(null)} />; })}
@@ -1341,13 +1169,52 @@
       );
     }
 
+    function RefreshCountdown({ onCycleStart = null, style = {}, className = "telemetry" }) {
+      const [nowMs, setNowMs] = useState(() => Date.now());
+      const notifiedCycleRef = useRef(null);
+
+      useEffect(() => {
+        const tick = setInterval(() => setNowMs(Date.now()), 1000);
+        return () => clearInterval(tick);
+      }, []);
+
+      const now = new Date(nowMs);
+      const meta = getRefreshScheduleMeta(now);
+      const latestStarted = meta.latestStarted;
+
+      useEffect(() => {
+        if (!onCycleStart || !latestStarted) return;
+        const elapsedMs = nowMs - latestStarted.date.getTime();
+        if (elapsedMs < 0 || elapsedMs > SCHEDULE_AUTO_REFRESH_WINDOW_MS) return;
+        if (notifiedCycleRef.current === latestStarted.key) return;
+        notifiedCycleRef.current = latestStarted.key;
+        onCycleStart(latestStarted);
+      }, [latestStarted?.key, nowMs, onCycleStart]);
+
+      return <span className={className} style={style}>{meta.next ? formatCountdown(meta.countdownMs) : "—"}</span>;
+    }
+
+    function getInitialRouteState() {
+      const params = new URLSearchParams(window.location.search);
+      const requestedClubId = params.get("id");
+      const activeIndex = requestedClubId ? CURRENT_CLUBS.findIndex((club) => String(club.id) === requestedClubId) : 0;
+      return {
+        view: PAGE_MODE === "club" ? "club" : "home",
+        homeTab: PAGE_MODE === "rankings" ? "network" : "directory",
+        archiveMonth: params.get("month") || "",
+        activeIndex: activeIndex >= 0 ? activeIndex : 0,
+      };
+    }
+
     function CircleTracker() {
-      const [view, setView] = useState("home");
-      const [dataSource, setDataSource] = useState(DATA_SOURCES.CHRONOGENESIS);
-      const [archiveMonth, setArchiveMonth] = useState("");
+      const initialRouteRef = useRef(null);
+      if (!initialRouteRef.current) initialRouteRef.current = getInitialRouteState();
+      const initialRoute = initialRouteRef.current;
+      const [view, setView] = useState(initialRoute.view);
+      const [archiveMonth, setArchiveMonth] = useState(initialRoute.archiveMonth);
       const [archiveManifest, setArchiveManifest] = useState(null);
-      const [activeIdx, setActiveIdx] = useState(0);
-      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date(), DATA_SOURCES.CHRONOGENESIS));
+      const [activeIdx, setActiveIdx] = useState(initialRoute.activeIndex);
+      const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
@@ -1368,22 +1235,20 @@
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
       const [criticalVisibleCount, setCriticalVisibleCount] = useState(10);
       const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
-      const [homeTab, setHomeTab] = useState("directory");
+      const [homeTab, setHomeTab] = useState(initialRoute.homeTab);
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(false);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
       const [demotionVisibleCount, setDemotionVisibleCount] = useState(10);
       const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
-      const [now, setNow] = useState(() => new Date());
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
       const scheduledRefreshCycleRef = useRef(null);
-      const unlockPollTimeoutRef = useRef(null);
+      const scheduledRefreshTimeoutsRef = useRef([]);
 
-      const effectiveDayWindow = getEffectiveDayWindow(now);
-      const refreshScheduleMeta = getRefreshScheduleMeta(dataSource, now);
-      const isChronogenesisSource = dataSource === DATA_SOURCES.CHRONOGENESIS;
-      const isArchiveView = isChronogenesisSource && Boolean(archiveMonth);
+      const now = new Date();
+      const refreshScheduleMeta = getRefreshScheduleMeta(now);
+      const isArchiveView = Boolean(archiveMonth);
       const archiveMonths = Array.isArray(archiveManifest?.months) ? archiveManifest.months : [];
       const archivedFrontendConfig = isArchiveView
         ? normalizeArchiveFrontendConfig(Object.values(clubData || {}).find((entry) => entry?.archiveConfig)?.archiveConfig || null)
@@ -1394,14 +1259,11 @@
       const viewRankIconPath = getViewRankIconPath(archivedFrontendConfig);
       const viewTierColors = getViewTierColors(archivedFrontendConfig);
       const viewMaxMembers = Number(archivedFrontendConfig?.maxMembers || MAX_MEMBERS);
-      const isDiscordExportsEnabled = isChronogenesisSource;
-      const isAwaitingFirstScheduledRefresh = isChronogenesisSource ? false : (effectiveGameDayKey !== effectiveDayWindow.latestDisplayKey);
-      const resetWindowBlocksExports = isAwaitingFirstScheduledRefresh;
+      const isDiscordExportsEnabled = true;
+      const resetWindowBlocksExports = false;
       const nextRefresh = refreshScheduleMeta.next;
-      const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatRefreshDateLabel(entry.date, dataSource)).join(" · ");
-      const nextRefreshCountdownLabel = nextRefresh ? formatCountdown(refreshScheduleMeta.countdownMs) : "—";
-      const nextRefreshDateLabel = nextRefresh ? formatRefreshDateLabel(nextRefresh.date, dataSource) : "No upcoming refresh scheduled";
-      const isCurrentDayLive = isChronogenesisSource ? true : !isAwaitingFirstScheduledRefresh;
+      const upcomingRefreshLabel = refreshScheduleMeta.upcoming.map((entry) => formatRefreshDateLabel(entry.date)).join(" · ");
+      const nextRefreshDateLabel = nextRefresh ? formatRefreshDateLabel(nextRefresh.date) : "No upcoming refresh scheduled";
       const liveStatus = isArchiveView
         ? {
             label: "📦 Archive view",
@@ -1410,28 +1272,12 @@
             bg: "#7c3aed18",
             border: "#7c3aed55",
           }
-        : isChronogenesisSource
-        ? {
+        : {
             label: "🟢 Live from shared Chronogenesis actual_date",
             sub: "Chronogenesis uses the highest actual_date shared by all active members, and refreshes once daily at 5:15 PM UTC+7.",
             color: "#34d399",
             bg: "#34d39918",
             border: "#34d39955",
-          }
-        : isCurrentDayLive
-        ? {
-            label: "🟢 Live for current game day",
-            sub: "Current in-game day data is live and will keep updating automatically on each scheduled JSON refresh.",
-            color: "#34d399",
-            bg: "#34d39918",
-            border: "#34d39955",
-          }
-        : {
-            label: "🟡 Waiting for first day-start refresh",
-            sub: "The tracker is holding on the last confirmed in-game day until the first scheduled JSON refresh for the new day finishes. After 11 AM ET, it will keep polling automatically until that JSON lands. Weekly Comparison, Under Plan Reminder, and Discord export unlock as soon as the new-day JSON is confirmed.",
-            color: "#fbbf24",
-            bg: "#fbbf2418",
-            border: "#f59e0b55",
           };
       const dataDate = dateKeyToLocalDate(effectiveGameDayKey);
       const year = dataDate.getFullYear();
@@ -1446,7 +1292,7 @@
       const daysLeft = dim - today;
       const monthWeeks = getMonthWeeks(year, monthIndex);
 
-      const club = viewClubs[activeIdx] || viewClubs[0] || CLUBS[0];
+      const club = viewClubs[activeIdx] || viewClubs[0] || CURRENT_CLUBS[0];
       const cid = club.id;
       const data = cid ? (clubData[cid] || null) : null;
       const allMembers = data?.members || [];
@@ -1455,7 +1301,7 @@
       const clubName = data?.clubName || club.name;
       const supportsMemberDailyFans = activeMembers.some((m) => (Array.isArray(m.dailyFans) && m.dailyFans.length) || (Array.isArray(m.precomputedDailyGainSeries) && m.precomputedDailyGainSeries.length));
       const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
-      const displayFetchLabel = data?.sourceType === DATA_SOURCES.CHRONOGENESIS ? "Updated" : (data?.refreshedAt ? "Refreshed" : "Source updated");
+      const displayFetchLabel = "Updated";
 
       function buildClubDataEntry(result) {
         return {
@@ -1464,7 +1310,7 @@
           lastFetch: result.lastFetch || null,
           refreshedAt: result.refreshedAt || null,
           sourceUpdatedAt: result.sourceUpdatedAt || null,
-          sourceType: result.sourceType || dataSource,
+          sourceType: result.sourceType || DATA_SOURCE,
           archiveConfig: result.archiveConfig || null,
           sharedActualDate: result.sharedActualDate ?? null,
           dataYear: result.dataYear ?? null,
@@ -1476,53 +1322,52 @@
         };
       }
 
-      async function fetchData(idOverride = null, silent = false, sourceOverride = null) {
+      async function fetchData(idOverride = null, silent = false) {
         const targetId = idOverride || cid;
-        const effectiveSource = sourceOverride || dataSource;
         if (!targetId) return;
         if (!silent) { setLoading(true); setErr(""); }
         const log = [];
-        const candidates = getDataCandidates(effectiveSource, targetId, effectiveSource === DATA_SOURCES.CHRONOGENESIS ? archiveMonth : "");
+        const candidates = getDataCandidates(targetId, archiveMonth);
         for (const url of candidates) {
           try {
             const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-            log.push(`${res.ok ? "✓" : "✗"} [${effectiveSource}] ${url} → ${res.status}`);
+            log.push(`${res.ok ? "✓" : "✗"} [${DATA_SOURCE}] ${url} → ${res.status}`);
             if (!res.ok) continue;
             const text = await res.text();
-            const preview = parseJSON(text, null, effectiveSource);
+            const preview = parseJSON(text, null);
             if (preview.error) { log.push("  ↳ " + preview.error); continue; }
-            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date(), effectiveSource);
+            const nextGameDayKey = resolveEffectiveGameDayKey(effectiveGameDayKey, preview, new Date());
             if (nextGameDayKey !== effectiveGameDayKey) { await loadAllData(); return; }
-            const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey), effectiveSource);
+            const result = parseJSON(text, dateKeyToLocalDate(nextGameDayKey));
             if (result.error) { log.push("  ↳ " + result.error); continue; }
             setClubData((prev) => ({ ...prev, [targetId]: buildClubDataEntry(result) }));
             setDebugLog(log);
             if (!silent) setLoading(false);
             return;
-          } catch (e) { log.push(`✗ [${effectiveSource}] ${url} → ${e.message}`); }
+          } catch (e) { log.push(`✗ [${DATA_SOURCE}] ${url} → ${e.message}`); }
         }
         setDebugLog(log);
-        if (!silent) { setErr(`Failed to load ${effectiveSource} JSON for ${targetId}. Make sure the matching file exists.`); setLoading(false); }
+        if (!silent) { setErr(`Failed to load Chronogenesis JSON for ${targetId}. Make sure the matching file exists.`); setLoading(false); }
       }
 
       async function loadAllData() {
         setLoading(true); setErr("");
         const allLogs = []; const rawById = {};
-        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date(), dataSource);
+        let resolvedGameDayKey = effectiveGameDayKey || getInitialEffectiveGameDayKey(new Date());
         for (const c of viewClubs) {
           if (!c.id) continue;
-          const candidates = getDataCandidates(dataSource, c.id, dataSource === DATA_SOURCES.CHRONOGENESIS ? archiveMonth : "");
+          const candidates = getDataCandidates(c.id, archiveMonth);
           let loaded = false;
           for (const url of candidates) {
             try {
               const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-              allLogs.push(`${res.ok ? "✓" : "✗"} [${dataSource}] ${url} → ${res.status}`);
+              allLogs.push(`${res.ok ? "✓" : "✗"} [${DATA_SOURCE}] ${url} → ${res.status}`);
               if (!res.ok) continue;
               const text = await res.text();
-              const preview = parseJSON(text, null, dataSource);
+              const preview = parseJSON(text, null);
               if (preview.error) { allLogs.push(`  ↳ ${c.id}: ${preview.error}`); continue; }
               rawById[c.id] = text;
-              resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date(), dataSource);
+              resolvedGameDayKey = resolveEffectiveGameDayKey(resolvedGameDayKey, preview, new Date());
               loaded = true; break;
             } catch (e) { allLogs.push(`✗ ${url} → ${e.message}`); }
           }
@@ -1533,9 +1378,8 @@
         const next = {};
 
         const rankHistNext = {};
-        if (dataSource === DATA_SOURCES.CHRONOGENESIS) {
-          for (const [clubId, rawText] of Object.entries(rawById)) {
-            const result = parseJSON(rawText, resolvedDataDate, dataSource);
+        for (const [clubId, rawText] of Object.entries(rawById)) {
+            const result = parseJSON(rawText, resolvedDataDate);
             if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
             next[clubId] = buildClubDataEntry(result);
             const history = Array.isArray(result.clubDailyHistory) ? result.clubDailyHistory : [];
@@ -1558,38 +1402,26 @@
               }
               rankHistNext[clubId] = rankMap;
             }
-          }
-        } else {
-          // Load rank history for each club from data/club_rank_history/
-          for (const c of viewClubs) {
-            if (!c.id) continue;
-            for (const base of ["./data/club_rank_history/", "/data/club_rank_history/"]) {
-              try {
-                const res = await fetch(base + c.id + ".json", { cache: "no-store" });
-                if (!res.ok) continue;
-                const h = await res.json();
-                if (h?.history) rankHistNext[c.id] = h.history;
-                break;
-              } catch (e) {}
-            }
-          }
-
-          for (const [clubId, rawText] of Object.entries(rawById)) {
-            const result = parseJSON(rawText, resolvedDataDate, dataSource);
-            if (result.error) { allLogs.push(`  ↳ ${clubId}: ${result.error}`); continue; }
-            next[clubId] = buildClubDataEntry(result);
-          }
         }
         setRankHistory(rankHistNext);
         setEffectiveGameDayKey(resolvedGameDayKey);
         setClubData(next); setDebugLog(allLogs); setLoading(false);
       }
 
-      useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date(), dataSource)); loadAllData(); }, [dataSource, archiveMonth]);
+      function handleScheduledRefreshCycle(latestStarted) {
+        if (isArchiveView || !latestStarted) return;
+        if (scheduledRefreshCycleRef.current === latestStarted.key) return;
+        scheduledRefreshCycleRef.current = latestStarted.key;
+        scheduledRefreshTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+        scheduledRefreshTimeoutsRef.current = SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS.map((delayMs) =>
+          setTimeout(() => loadAllData(), delayMs)
+        );
+      }
+
+      useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date())); loadAllData(); }, [archiveMonth]);
       useEffect(() => { if (activeIdx >= viewClubs.length) setActiveIdx(0); }, [activeIdx, viewClubs.length]);
 
       useEffect(() => {
-        if (dataSource !== DATA_SOURCES.CHRONOGENESIS) return;
         let cancelled = false;
         const loadArchiveManifest = async () => {
           for (const url of ["./data/chronogenesis/archive/manifest.json", "/data/chronogenesis/archive/manifest.json"]) {
@@ -1605,66 +1437,21 @@
         };
         loadArchiveManifest();
         return () => { cancelled = true; };
-      }, [dataSource]);
-
-      useEffect(() => {
-        const tick = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(tick);
       }, []);
 
       useEffect(() => {
-        if (isArchiveView) return;
-        const latestStarted = refreshScheduleMeta.latestStarted;
-        if (!latestStarted) return;
-        const elapsedMs = now.getTime() - latestStarted.date.getTime();
-        if (elapsedMs < 0 || elapsedMs > SCHEDULE_AUTO_REFRESH_WINDOW_MS) return;
-        if (scheduledRefreshCycleRef.current === latestStarted.key) return;
-        scheduledRefreshCycleRef.current = latestStarted.key;
-        const timeouts = SCHEDULE_AUTO_REFRESH_RETRY_DELAYS_MS.map((delayMs) => setTimeout(() => loadAllData(), delayMs));
-        return () => timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-      }, [refreshScheduleMeta.latestStarted?.key, archiveMonth]);
-
-      useEffect(() => {
-        if (isArchiveView) return;
-        if (unlockPollTimeoutRef.current) {
-          clearTimeout(unlockPollTimeoutRef.current);
-          unlockPollTimeoutRef.current = null;
-        }
-        if (!isAwaitingFirstScheduledRefresh) return;
-        if (!isAfterResetHour(now)) return;
-
-        let cancelled = false;
-        const pollForUnlockedDay = async () => {
-          if (cancelled) return;
-          await loadAllData();
-          if (cancelled) return;
-          unlockPollTimeoutRef.current = setTimeout(pollForUnlockedDay, UNLOCK_POLL_INTERVAL_MS);
-        };
-
-        unlockPollTimeoutRef.current = setTimeout(pollForUnlockedDay, UNLOCK_POLL_INTERVAL_MS);
         return () => {
-          cancelled = true;
-          if (unlockPollTimeoutRef.current) {
-            clearTimeout(unlockPollTimeoutRef.current);
-            unlockPollTimeoutRef.current = null;
-          }
+          scheduledRefreshTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+          scheduledRefreshTimeoutsRef.current = [];
         };
-      }, [isAwaitingFirstScheduledRefresh, effectiveDayWindow.resetCycleKey, archiveMonth]);
+      }, [archiveMonth]);
 
       useEffect(() => {
         if (isArchiveView) return;
-        const currentNow = new Date();
-        const { resetCycleKey, latestDisplayKey } = getEffectiveDayWindow(currentNow);
         safeWriteStoredGameDayKey(effectiveGameDayKey);
-        if (dataSource === DATA_SOURCES.CHRONOGENESIS) {
-          safeClearStoredUnlockCycleKey();
-          return;
-        }
-        if (effectiveGameDayKey === latestDisplayKey) safeWriteStoredUnlockCycleKey(resetCycleKey);
-        else if (safeReadStoredUnlockCycleKey() === resetCycleKey) safeClearStoredUnlockCycleKey();
-      }, [effectiveGameDayKey, dataSource, archiveMonth]);
+      }, [effectiveGameDayKey, archiveMonth]);
 
-      useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true, dataSource); }, [activeIdx, dataSource, archiveMonth]);
+      useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true); }, [activeIdx, archiveMonth]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
       useEffect(() => { setPaceHiddenMembers({}); setOverviewStatusFilter(""); setPaceZoom(1); setPacePinnedIdx(null); }, [cid]);
       useEffect(() => { if (!hasComparisonData) { setOverviewStatusFilter(""); setMemberFilters((prev) => (prev.status ? { ...prev, status: "" } : prev)); } }, [hasComparisonData, cid]);
@@ -1841,7 +1628,7 @@
       function criticalSortLabel(key) { if (criticalSort.key !== key || criticalSort.direction === "off") return "OFF"; return criticalSort.direction === "asc" ? "ASC" : "DESC"; }
 
       function getSourceLabel() {
-        return dataSource === DATA_SOURCES.CHRONOGENESIS ? "Chronogenesis" : "uma.moe";
+        return "Chronogenesis";
       }
 
       function getDiscordPingLabel() {
@@ -2313,7 +2100,32 @@
         try { let blob = null; if (pacePinnedIdx != null && container) blob = await captureContainerAsPng(container, 2); if (!blob && svg) blob = await svgToPngBlob(svg, 2); if (blob) downloadBlob(blob, `${safeFilename(clubName)}-pace-chart.png`); } finally { setPaceExporting(false); }
       }
 
-      function openClub(index) { setActiveIdx(index); setErr(""); setTab("dashboard"); setView("club"); }
+      function handleArchiveChange(nextMonth) {
+        setArchiveMonth(nextMonth);
+        const params = new URLSearchParams(window.location.search);
+        if (nextMonth) params.set("month", nextMonth);
+        else params.delete("month");
+        const query = params.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+      }
+
+      function openClub(index) {
+        const selectedClub = viewClubs[index];
+        if (!selectedClub?.id) return;
+        if (PAGE_MODE !== "club") {
+          const params = new URLSearchParams({ id: String(selectedClub.id) });
+          if (archiveMonth) params.set("month", archiveMonth);
+          window.location.assign(`./club.html?${params.toString()}`);
+          return;
+        }
+        setActiveIdx(index);
+        setErr("");
+        setTab("dashboard");
+        setView("club");
+        const params = new URLSearchParams({ id: String(selectedClub.id) });
+        if (archiveMonth) params.set("month", archiveMonth);
+        window.history.replaceState({}, "", `./club.html?${params.toString()}`);
+      }
       function toggleOverviewStatusFilter(statusKey) { setOverviewStatusFilter((prev) => prev === statusKey ? "" : statusKey); }
       function togglePaceMember(name) { setPaceHiddenMembers((prev) => ({ ...prev, [name]: !prev[name] })); }
       function showAllPaceMembers() { setPaceHiddenMembers({}); }
@@ -2335,93 +2147,171 @@
       const currentWeek = findWeekForDay(monthWeeks, today);
 
       const S = {
-        root: { background: "#0a0912", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1240, margin: "0 auto" },
-        card: { background: "#111028", border: "1px solid #1e1b35", borderRadius: 14, padding: "16px 18px", marginBottom: 14 },
-        h2: { fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.12em", margin: "0 0 14px" },
-        btn: (active, col = "#7c3aed") => ({ background: active ? col : "#13112a", color: active ? "#fff" : "#6b7280", border: `1px solid ${active ? col : "#1e1b35"}`, borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s" }),
-        input: { width: "100%", background: "#0f0d1a", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 11 },
-        th: { padding: "10px 8px", borderBottom: "1px solid #1e1b35", color: "#6b7280", fontSize: 11, whiteSpace: "nowrap" },
-        td: { padding: "10px 8px", borderBottom: "1px solid #1e1b35", fontSize: 12, verticalAlign: "middle" },
+        root: { background: "transparent", minHeight: "100vh", color: "#e2e0f0", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1480, margin: "0 auto" },
+        card: {
+          background: "linear-gradient(168deg, rgba(34,29,66,0.66) 0%, rgba(18,15,38,0.86) 52%, rgba(13,11,29,0.92) 100%)",
+          border: "1px solid rgba(167,139,250,0.16)",
+          borderRadius: 16,
+          padding: "16px 18px",
+          marginBottom: 14,
+          boxShadow: "0 1px 0 rgba(226,224,240,0.05) inset, 0 14px 36px rgba(3,2,10,0.55), 0 0 0 0.5px rgba(124,58,237,0.06)",
+        },
+        h2: { fontSize: 11, fontWeight: 800, color: "#8f88b8", textTransform: "uppercase", letterSpacing: "0.16em", margin: "0 0 14px", paddingLeft: 10, borderLeft: "3px solid #7c3aed", lineHeight: 1.2 },
+        btn: (active, col = "#7c3aed") => ({
+          background: active ? `linear-gradient(150deg, ${col}, ${col}cc)` : "rgba(20,17,40,0.85)",
+          color: active ? "#fff" : "#8f88b8",
+          border: `1px solid ${active ? col : "rgba(167,139,250,0.18)"}`,
+          borderRadius: 999,
+          padding: "7px 15px",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.01em",
+          boxShadow: active ? `0 4px 16px ${col}55, 0 0 0 1px ${col}33 inset` : "none",
+          transition: "all 0.15s",
+        }),
+        input: { width: "100%", background: "rgba(11,9,24,0.85)", border: "1px solid rgba(167,139,250,0.22)", color: "#e2e0f0", borderRadius: 9, padding: "7px 9px", fontSize: 11 },
+        th: { padding: "10px 8px", borderBottom: "1px solid rgba(167,139,250,0.18)", color: "#8f88b8", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" },
+        td: { padding: "10px 8px", borderBottom: "1px solid rgba(30,27,53,0.85)", fontSize: 12, verticalAlign: "middle" },
       };
 
       const accent = view === "home" ? "#c4b5fd" : tc.text;
-      const discordActionsBlocked = !isDiscordExportsEnabled;
+      const discordActionsBlocked = false;
       const actionButtonDisabledStyle = (resetWindowBlocksExports || discordActionsBlocked) ? { opacity: 0.45, cursor: "not-allowed", filter: "saturate(0.5)" } : null;
-      const actionButtonTitle = discordActionsBlocked
-        ? "Discord copy/export actions are disabled for uma.moe and only enabled for Chronogenesis."
-        : (resetWindowBlocksExports ? "Available after the first scheduled JSON refresh for the new in-game day finishes." : "");
+      const actionButtonTitle = resetWindowBlocksExports ? "Available after the current Chronogenesis day is confirmed." : "";
+      const clubDetailParams = new URLSearchParams();
+      if (cid) clubDetailParams.set("id", String(cid));
+      if (archiveMonth) clubDetailParams.set("month", archiveMonth);
+      const clubDetailHref = `./club.html${clubDetailParams.toString() ? `?${clubDetailParams.toString()}` : ""}`;
+      const archivesHref = `./archives.html${archiveMonth ? `?month=${encodeURIComponent(archiveMonth)}` : ""}`;
+      const navLinkStyle = (active, color) => ({ ...S.btn(active, color), display: "flex", alignItems: "center", gap: 8, width: "100%", textDecoration: "none" });
 
       return (
         <div style={S.root}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: accent }}>⬡</span> Dominator Network<span style={{ color: "#4b5563", fontSize: 13, fontWeight: 400 }}>Fan Tracker</span></div>
-              <div style={{ color: "#4b5563", fontSize: 11, marginTop: 2 }}>Data as of {dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Day {today}/{dim} · {daysLeft} days left · Source: Chronogenesis{isArchiveView ? ` archive ${archiveMonth}` : ""}</div>
+          {/* ── Mobile top bar ── */}
+          <div className="mobile-topbar">
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+              <span className="gate-badge" style={{ width: 30, height: 30, borderRadius: 9, fontSize: 16 }}>⬡</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="wordmark" style={{ fontSize: 15 }}>Dominator Network</div>
+                <div style={{ color: "#8f88b8", fontSize: 9, fontWeight: 700 }}>Day {today}/{dim} · {daysLeft} left{isArchiveView ? ` · 📦 ${archiveMonth}` : ""}</div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "stretch" }}>
-              <div style={{ minWidth: 220, maxWidth: 280, flex: "0 1 240px", background: "#0f0d1a", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "8px 10px" }}>
+            <div className="telemetry" style={{ flex: "0 0 auto", textAlign: "right" }}>
+              <div style={{ color: loading ? "#34d399" : "#8f88b8", fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em" }}>{loading ? "Refreshing…" : "Next refresh"}</div>
+              <RefreshCountdown style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 700 }} />
+            </div>
+          </div>
+
+          <div className="app-shell">
+            {/* ── Paddock rail (desktop) ── */}
+            <aside className="rail">
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <span className="gate-badge">⬡</span>
+                  <div>
+                    <div className="wordmark" style={{ fontSize: 19 }}>Dominator Network</div>
+                    <div className="wordmark-sub">Umamusume · Fan Tracker</div>
+                  </div>
+                </div>
+                <div className="finish-ribbon" aria-hidden="true" style={{ margin: "12px 0 0" }}></div>
+                <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>{dataDate.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric" })} · <span style={{ color: "#c4b5fd", fontWeight: 700 }}>Day {today}/{dim}</span><br/>{daysLeft} days left · Chronogenesis{isArchiveView ? ` · 📦 ${archiveMonth}` : ""}</div>
+              </div>
+
+              <div style={{ ...S.card, marginBottom: 0, padding: "12px 13px" }}>
+                <div style={S.h2}>Navigation</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <a href="./index.html" style={navLinkStyle(PAGE_MODE === "home", "#7c3aed")}>🏠 Home</a>
+                  <a href="./clubs.html" style={navLinkStyle(PAGE_MODE === "clubs", "#7c3aed")}>📋 Clubs</a>
+                  <a href="./rankings.html" style={navLinkStyle(PAGE_MODE === "rankings", "#2563eb")}>🌐 Rankings</a>
+                  <a href={archivesHref} style={navLinkStyle(PAGE_MODE === "archives", "#a78bfa")}>📦 Archives</a>
+                  <a href={clubDetailHref} style={navLinkStyle(PAGE_MODE === "club", tc.bar)}>🏇 Club Detail</a>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "6px 12px", fontSize: 11, fontWeight: 800, textAlign: "center" }}>Chronogenesis</span>
+                    <select value={archiveMonth} onChange={(e) => handleArchiveChange(e.target.value)} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 700, width: "100%" }}>
+                      <option value="">Live current month</option>
+                      {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {view === "club" && (
+                <div style={{ ...S.card, marginBottom: 0, padding: "12px 13px" }}>
+                  <div style={S.h2}>Starting Gates</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {viewClubs.map((entry, index) => {
+                      const active = index === activeIdx;
+                      const hasData = entry.id && clubData[entry.id];
+                      return (
+                        <button key={entry.name} onClick={() => openClub(index)} className={`gate-btn${active ? " active" : ""}`} style={{ opacity: entry.id ? 1 : 0.6 }}>
+                          <span className="gate-num">{index + 1}</span>
+                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{entry.name}</span>
+                          {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0, marginLeft: "auto", boxShadow: "0 0 6px #34d399" }} />}
+                          {!entry.id && <span style={{ fontSize: 9, color: "#4b5563", marginLeft: "auto" }}>soon</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ minWidth: 0, background: "rgba(11,9,24,0.72)", border: `1px solid ${loading ? "#34d39955" : liveStatus.border}`, borderRadius: 12, padding: "10px 11px" }}>
                 <div style={{ color: loading ? "#34d399" : "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>{loading ? "Refreshing scheduled JSON…" : "Next scheduled refresh"}</div>
-                <div style={{ color: "#e2e0f0", fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>{nextRefreshCountdownLabel}</div>
+                <RefreshCountdown onCycleStart={handleScheduledRefreshCycle} style={{ color: "#e2e0f0", fontSize: 19, fontWeight: 700, lineHeight: 1.15 }} />
                 <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>{nextRefreshDateLabel}</div>
                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, padding: "6px 8px", borderRadius: 8, border: `1px solid ${liveStatus.border}`, background: liveStatus.bg }}>
                   <div style={{ color: liveStatus.color, fontSize: 11, fontWeight: 800 }}>{liveStatus.label}</div>
                   <div style={{ color: "#cfcbe6", fontSize: 9, lineHeight: 1.3 }}>{liveStatus.sub}</div>
                 </div>
-                {refreshScheduleMeta.isNextRefreshForNextGameDay && (<div style={{ color: "#fbbf24", fontSize: 10, marginTop: 4, lineHeight: 1.3 }}>After the 6:00 AM ET refresh, the next scheduled run starts the next in-game day.</div>)}
                 <div style={{ color: "#6b7280", fontSize: 10, marginTop: 5, lineHeight: 1.25 }}>Upcoming {refreshScheduleMeta.label}: {upcomingRefreshLabel || "—"}</div>
               </div>
-              {view === "club" && (<div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
-                <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
-                <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
-                <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
-              </div>)}
-            </div>
-          </div>
+            </aside>
 
-          <div style={{ ...S.card, padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <div>
-              <div style={S.h2}>Navigation</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(view === "home", "#7c3aed")} onClick={() => setView("home")}>🏠 Home</button><button style={S.btn(view === "club", tc.bar)} onClick={() => setView("club")}>🏇 Club Detail</button></div>
-              <div style={{ marginTop: 10 }}>
-                <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>Chronogenesis</span>
-                  <select value={archiveMonth} onChange={(e) => setArchiveMonth(e.target.value)} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+            {/* ── Track (main content) ── */}
+            <main className="main">
+              <div className="mobile-only" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: view === "club" ? 10 : 0 }}>
+                  <span style={{ background: "#1d4ed8", color: "#ffffff", border: "1px solid #3b82f6", borderRadius: 999, padding: "6px 11px", fontSize: 11, fontWeight: 800 }}>Chronogenesis</span>
+                  <select value={archiveMonth} onChange={(e) => handleArchiveChange(e.target.value)} style={{ flex: 1, minWidth: 150, background: "rgba(11,9,24,0.85)", border: "1px solid #1e1b35", color: "#e2e0f0", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 700 }}>
                     <option value="">Live current month</option>
                     {archiveMonths.map((month) => <option key={month.key || month} value={month.key || month}>Archive: {month.label || getMonthKeyLabel(month.key || month)}</option>)}
                   </select>
                 </div>
+                {view === "club" && (
+                  <div className="gate-strip">
+                    {viewClubs.map((entry, index) => {
+                      const active = index === activeIdx;
+                      const hasData = entry.id && clubData[entry.id];
+                      return (
+                        <button key={entry.name} onClick={() => openClub(index)} className={`gate-btn${active ? " active" : ""}`} style={{ opacity: entry.id ? 1 : 0.6 }}>
+                          <span className="gate-num">{index + 1}</span>
+                          <TierIcon tier={entry.tier} size={15} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                          <span>{entry.name}</span>
+                          {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-            {view === "club" && (
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <div style={S.h2}>Select Club</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {viewClubs.map((entry, index) => {
-                    const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
-                    const active = index === activeIdx;
-                    const hasData = entry.id && clubData[entry.id];
-                    return (
-                      <button key={entry.name} onClick={() => openClub(index)} style={{ ...S.btn(active, "#7c3aed"), opacity: entry.id ? 1 : 0.65, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, minHeight: 18, flexShrink: 0 }}>
-                          <TierIcon tier={entry.tier} size={16} title={`${entry.tier} tier`} showFallbackText={true} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} style={{ opacity: active ? 1 : 0.92 }} />
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: active ? "#e2e0f0" : "#6b7280" }}>{entry.name}</span>
-                        {hasData && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#34d399", flexShrink: 0 }} />}
-                        {!entry.id && <span style={{ fontSize: 9, color: "#4b5563" }}>soon</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
 
+              {view === "club" && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
+                  <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
+                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
+                </div>
+              )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
 
           {view === "home" && (<>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><button style={S.btn(homeTab === "directory", "#7c3aed")} onClick={() => setHomeTab("directory")}>📋 Directory</button><button style={S.btn(homeTab === "network", "#7c3aed")} onClick={() => setHomeTab("network")}>🌐 Network Analysis</button></div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div className="tab-dock"><a href="./clubs.html" style={{ ...S.btn(homeTab === "directory", "#7c3aed"), textDecoration: "none" }}>📋 Directory</a><a href="./rankings.html" style={{ ...S.btn(homeTab === "network", "#7c3aed"), textDecoration: "none" }}>🌐 Network Analysis</a></div>
+            <div className="stat-strip">
               {[
                 { label: "Tracked Clubs", value: `${loadedClubCount}/${viewClubs.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
                 { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
@@ -2437,38 +2327,52 @@
             {homeTab === "directory" && (<>
               <div style={S.card}>
                 <div style={S.h2}>Club Directory</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Hover the pace bar for exact figures. The dot next to JSON shows load status.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {networkClubs.map((entry, index) => {
                     const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
+                    const monthPct = entry.hasData && entry.clubTarget > 0 ? Math.min(100, (entry.totalMonthly / entry.clubTarget) * 100) : 0;
+                    const planDelta = entry.hasData && hasComparisonData ? entry.totalMonthly - entry.totalExpected : null;
+                    const onPace = planDelta != null && planDelta >= 0;
                     return (
-                      <div key={entry.name} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "14px 14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
-                            <div><div style={{ fontWeight: 800, color: "#e2e0f0", fontSize: 15 }}>{entry.clubName}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Officer: {entry.officer}</div></div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div key={entry.name} className="dir-row" style={{ borderLeft: `3px solid ${entry.hasData ? ctc.border : "#1e1b35"}` }}>
+                        <div className="dir-id">
+                          <span className="gate-num" style={{ borderColor: entry.hasData ? ctc.border + "66" : undefined }}>{index + 1}</span>
+                          <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                        </div>
+                        <div className="dir-name">
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                            <span style={{ fontWeight: 800, color: "#f1eefc", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.clubName}</span>
                             {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} size="small" rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
-                            <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open</button>
+                          </div>
+                          <div style={{ color: "#6b7280", fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.officer} · <span style={{ color: ctc.text, fontWeight: 700 }}>{fmt(entry.target)}</span>/member · {hasComparisonData ? `${entry.activeMembers}/${viewMaxMembers} active` : noComparisonLabel}</div>
+                        </div>
+                        <div className="dir-stats">
+                          <div>
+                            <div className="dir-stat-label">Monthly</div>
+                            <div style={{ color: entry.hasData && hasComparisonData ? "#f1eefc" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
+                            {planDelta != null && <div style={{ color: onPace ? "#34d399" : "#f87171", fontSize: 10, fontWeight: 700 }}>{fmtSigned(planDelta)} vs plan</div>}
+                          </div>
+                          <div>
+                            <div className="dir-stat-label">Daily</div>
+                            <div style={{ color: entry.hasData && entry.totalDaily != null ? "#cfcbe6" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</div>
+                            {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
+                          </div>
+                          <div>
+                            <div className="dir-stat-label">Prev Day</div>
+                            <div style={{ color: entry.hasData && entry.previousDaily != null ? "#c4b5fd" : "#9ca3af", fontWeight: 800, fontSize: 13 }}>{entry.hasData && entry.previousDaily != null ? fmt(entry.previousDaily) : "—"}</div>
+                            {entry.hasData && today > 1 && <div style={{ color: "#5b5680", fontSize: 10 }}>Day {today - 1}</div>}
                           </div>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Fan Quota</div><div style={{ color: ctc.text, fontWeight: 800 }}>{fmt(entry.target)}</div></div>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Members</div><div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? `${entry.activeMembers}/${viewMaxMembers}` : "—"}</div>{!hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}</div>
-                          <div>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Monthly Fans</div>
-                            <div style={{ color: hasComparisonData ? "#e2e0f0" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div>
-                            {entry.hasData && !hasComparisonData && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{noComparisonLabel}</div>}
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Daily Fans</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-                              <span style={{ color: entry.hasData ? "#cfcbe6" : "#9ca3af", fontWeight: 700 }}>{entry.hasData && entry.totalDaily != null ? fmt(entry.totalDaily) : "—"}</span>
-                              {entry.hasData && hasComparisonData ? <DailyTrendIndicator delta={entry.dailyTrendDelta} /> : null}
-                            </div>
-                            <div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 10 }}>Previous Day Fans</div>
-                            <div style={{ color: entry.hasData && entry.previousDaily != null ? "#c4b5fd" : "#9ca3af", fontWeight: 700, marginTop: 2 }}>{entry.hasData && entry.previousDaily != null ? fmt(entry.previousDaily) : "—"}</div>
-                            {entry.hasData && today > 1 && <div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>Day {today - 1} total fan gain</div>}
-                          </div>
-                          <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>JSON Status</div><div style={{ color: entry.jsonMeta.color, fontWeight: 700 }}>{entry.jsonMeta.label}</div><div style={{ color: "#6b7280", fontSize: 10, marginTop: 3 }}>{entry.jsonMeta.sub}</div></div>
+                        <div className="dir-actions">
+                          <span title={entry.jsonMeta.sub} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: entry.jsonMeta.color, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 7, height: 7, borderRadius: 999, background: entry.jsonMeta.color, boxShadow: `0 0 6px ${entry.jsonMeta.color}`, flexShrink: 0 }} />JSON
+                          </span>
+                          <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open →</button>
+                        </div>
+                        <div className="dir-bar" title={entry.hasData && hasComparisonData ? `${fmtFull(entry.totalMonthly)} of ${fmtFull(entry.clubTarget)} club target (${monthPct.toFixed(1)}%)` : "No data yet"}>
+                          <div style={{ flex: 1 }}><ProgressBar pct={monthPct} color={onPace ? "#34d399" : entry.hasData && hasComparisonData ? "#f59e0b" : "#2a2540"} height={5} /></div>
+                          <span className="telemetry" style={{ color: entry.hasData && hasComparisonData ? (onPace ? "#34d399" : "#fbbf24") : "#5b5680", fontSize: 11, fontWeight: 700, minWidth: 44, textAlign: "right" }}>{entry.hasData && hasComparisonData ? `${monthPct.toFixed(1)}%` : "—"}</span>
                         </div>
                       </div>
                     );
@@ -2479,9 +2383,26 @@
               <div style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Top 10 Network Members</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
+                {hasComparisonData && topNetworkUsers.length > 0 && (
+                  <div className="podium">
+                    {topNetworkUsers.slice(0, 3).map((member, index) => {
+                      const ps = getPodiumStyle(index);
+                      const value = topNetworkMode === "daily" ? member.dailyGain : member.monthlyGain;
+                      return (
+                        <div key={`podium-${member.clubName}-${member.name}`} className={`podium-step podium-${index + 1}`}>
+                          <div className="podium-rank" style={{ color: ps.color, textShadow: ps.textShadow }}>{index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}</div>
+                          <div style={{ color: "#f1eefc", fontWeight: 800, fontSize: index === 0 ? 14 : 12, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 4, color: "#8f88b8", fontSize: 10, minWidth: 0 }}><TierBadge tier={member.clubTier} size={14} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.clubName}</span></div>
+                          <div className="telemetry" style={{ color: ps.color, fontWeight: 700, fontSize: index === 0 ? 18 : 15, marginTop: 7 }}>{value != null ? fmtSigned(value) : "—"}</div>
+                          <div style={{ color: "#6b7280", fontSize: 9, marginTop: 2 }}>{fmt(member.fans)} total fans</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Total Fans</th></tr></thead><tbody>
                   {!hasComparisonData ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>Load club JSON files to populate the network leaderboard.</td></tr>) : (
-                    topNetworkUsers.map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 1}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
+                    topNetworkUsers.slice(3).map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
                   )}
                 </tbody></table></div>
               </div>
@@ -2493,7 +2414,7 @@
                   {networkClubs.filter((entry) => entry.id).map((entry) => {
                     const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                     return (
-                      <div key={`top-five-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
+                      <div key={`top-five-${entry.name}`} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.hasData ? ctc.border + "55" : "#1e1b35"}`, borderRadius: 12, padding: "13px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 14 }}>{entry.clubName}</div></div>
                           <div style={{ color: "#6b7280", fontSize: 10 }}>{hasComparisonData ? `${entry.activeMembers} active` : noComparisonLabel}</div>
@@ -2526,10 +2447,10 @@
               <div style={S.card}>
                 <div style={S.h2}>Club Health Scores</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
-                {!hasComparisonData ? (<div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
+                {!hasComparisonData ? (<div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
                     {networkClubs.filter((e) => e.hasData).sort((a, b) => b.health.score - a.health.score).map((entry) => (
-                      <div key={`hs-${entry.name}`} style={{ background: "#0f0d1a", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
+                      <div key={`hs-${entry.name}`} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${entry.health.color}44`, borderRadius: 12, padding: "14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                             <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
@@ -2577,7 +2498,7 @@
                 )}
               </div>
               <div style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace. Hover a day to see each club's fan gain totals and % of target.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
                 <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} />
               </div>
               <div style={S.card}>
@@ -2593,10 +2514,10 @@
                 <div style={S.h2}>Member Transfer Helper</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S+ - B+ tiers (demotion candidates) and overperformers in S - B+ tiers (promotion candidates).</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
+                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
                     {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
                   </div>
-                  <div style={{ background: "#0f0d1a", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
+                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
                     {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
                   </div>
                 </div>
@@ -2607,9 +2528,10 @@
           {view === "club" && !cid && (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 40, marginBottom: 10 }}>🔜</div><div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div></div>)}
 
           {view === "club" && cid && (<>
-            <div style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="club-banner" style={{ ...S.card, background: tc.bg, border: `1px solid ${tc.border}`, padding: "14px 18px", "--tier-c": tc.border }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span className="gate-plate">{String(activeIdx + 1).padStart(2, "0")}</span>
                   <TierBadge tier={club.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e0f0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2628,7 +2550,7 @@
             </div>
 
             {!decoratedMembers.length ? (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, marginBottom: 10 }}>🏇</div><div style={{ color: "#6b7280", marginBottom: 16 }}>No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.</div><div style={{ display: "flex", justifyContent: "center", gap: 8 }}><button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>🔄 Refresh Data</button></div></div>) : (<>
-              <div style={{ display: "flex", gap: 5, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="tab-dock">
                 {[["dashboard", "📊 Overview"], ["members", "👥 Members"], ["pace", "📈 Pace"], ["debug", "🔧 Debug"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
               </div>
 
@@ -2651,9 +2573,9 @@
                   {overviewStatusFilter && (<div style={{ color: STATUS_META[overviewStatusFilter]?.color || "#9ca3af", fontSize: 12, marginBottom: 10 }}>Filtering overview to {STATUS_META[overviewStatusFilter]?.icon} {STATUS_META[overviewStatusFilter]?.label}. Click the same summary card again to clear.</div>)}
                   {!hasComparisonData && (<div style={{ color: "#6b7280", fontSize: 12, marginBottom: 10 }}>{noComparisonLabel}</div>)}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {overviewMembers.length === 0 && (<div style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>No members match the current overview filter.</div>)}
+                    {overviewMembers.length === 0 && (<div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 10, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>No members match the current overview filter.</div>)}
                     {overviewMembers.map((member, index) => { const monthPct = club.target > 0 ? Math.min(100, ((member.monthlyGain ?? 0) / club.target) * 100) : 0; const stillNeed = Math.max(0, club.target - (member.monthlyGain ?? 0)); const statusMeta = getDisplayStatusMeta(member.plan.statusKey); const progressColor = statusMeta.color; return (
-                      <div key={`${member.name}-${index}`} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
+                      <div key={`${member.name}-${index}`} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 10, padding: "12px 14px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, flexWrap: "wrap", gap: 4 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: "#4b5563", fontSize: 11, fontWeight: 700, minWidth: 20 }}>#{index + 1}</span><span style={{ fontWeight: 700, color: "#e2e0f0", fontSize: 13 }}>{member.name}</span><StatusBadge statusKey={getDisplayStatusKey(member.plan.statusKey)} /><StagnantBadge days={member.stagnantDays} /></div>
                           <div style={{ display: "flex", gap: 14, fontSize: 11, flexWrap: "wrap" }}><span style={{ color: "#6b7280" }}>Today: <b style={{ color: gainColor(member.dailyGain) }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</b></span><span style={{ color: "#6b7280" }}>Month: <b style={{ color: gainColor(member.monthlyGain) }}>{member.monthlyGain != null ? fmtSigned(member.monthlyGain) : "—"}</b></span><span style={{ color: "#6b7280" }}>Projected: <b style={{ color: "#c4b5fd" }}>{member.projected != null ? fmt(member.projected) : "—"}</b></span><span style={{ color: "#6b7280" }}>ETA: <b><DaysToTargetBadge days={member.daysToTarget} daysLeft={daysLeft} /></b></span></div>
@@ -2689,7 +2611,7 @@
                 <div style={S.card}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}><div><div style={S.h2}>Member Pace</div><div style={{ color: "#6b7280", fontSize: 12 }}>Toggle between cumulative progress and daily gain. The chart only draws through the displayed data day, and inactive members are fully excluded.</div></div><div style={{ color: "#9ca3af", fontSize: 12 }}>{getWeekLabel(currentWeek, year, monthIndex)}</div></div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
-                    {[{ label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" }, { label: "Per-Member Target by Displayed Day", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" }, { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" }, { label: "Visible on Graph", value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" }].map((card) => (<div key={card.label} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>))}
+                    {[{ label: "Current Week", value: `Week ${currentWeek?.number || 1}`, sub: getWeekLabel(currentWeek, year, monthIndex), col: "#e2e0f0" }, { label: "Per-Member Target by Displayed Day", value: hasComparisonData ? fmt(decoratedMembers[0]?.plan.expectedToDate ?? 0) : "—", sub: hasComparisonData ? `${fmt(club.target)} monthly quota` : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" }, { label: "Current Week Target", value: fmt(decoratedMembers[0]?.plan.currentWeekTarget ?? 0), sub: getWeekLabel(currentWeek, year, monthIndex), col: "#34d399" }, { label: "Visible on Graph", value: `${paceSeriesList.length}/${allPaceSeriesList.length}`, sub: hasComparisonData ? `${statusCounts["on-track"]} on track · ${statusCounts["critical"]} critical` : noComparisonLabel, col: "#e2e0f0" }].map((card) => (<div key={card.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "11px 14px" }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{card.label}</div><div style={{ color: card.col, fontSize: 18, fontWeight: 700 }}>{card.value}</div><div style={{ color: "#4b5563", fontSize: 10, marginTop: 2 }}>{card.sub}</div></div>))}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ color: "#9ca3af", fontSize: 12 }}>Click on the graph to pin a tooltip, then export to include it in the image.{" "}{pacePinnedIdx != null && (<span style={{ color: "#a78bfa", fontWeight: 700 }}>📌 Tooltip pinned — export will capture it.</span>)}</div>
@@ -2697,7 +2619,7 @@
                   </div>
 {supportsMemberDailyFans ? <PaceChart seriesList={paceSeriesList} targetSeries={selectedPaceTargetSeries} weeks={monthWeeks} year={year} monthIndex={monthIndex} svgRef={paceSvgRef} zoom={paceZoom} pinnedIdx={pacePinnedIdx} setPinnedIdx={setPacePinnedIdx} containerRef={paceContainerRef} currentDayIdx={Math.max(0, today - 1)} mode={paceChartMode} /> : <div style={{ color: "#6b7280", fontSize: 12, padding: "18px 0" }}>This source does not expose enough per-member daily history to render the pace chart.</div>}
                   <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                    {monthWeeks.map((week) => { const isFutureWeek = week.startDay > today; const measuredEndDay = Math.min(week.endDay, today); const elapsedDayCount = Math.max(0, measuredEndDay - week.startDay + 1); const fullWeekTarget = Math.round((club.target / Math.max(dim, 1)) * week.dayCount); const elapsedWeekTarget = Math.round((club.target / Math.max(dim, 1)) * elapsedDayCount); const checkpointTarget = week.endDay <= today ? fullWeekTarget : elapsedWeekTarget; const currentValues = isFutureWeek ? [] : allPaceSeriesList.map((item) => (item.dailySeries || []).slice(Math.max(0, week.startDay - 1), Math.max(0, measuredEndDay)).reduce((sum, value) => sum + (value || 0), 0)).sort((a, b) => b - a); const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : null; const medianDelta = medianValue == null ? null : medianValue - checkpointTarget; const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length; return (<div key={week.number} style={{ background: "#0f0d1a", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div><div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Per-member weekly target: <b style={{ color: "#c4b5fd" }}>{fmt(week.endDay <= today ? fullWeekTarget : checkpointTarget)}</b></div>{!isFutureWeek && (<div style={{ color: "#6b7280", fontSize: 11 }}>Median member weekly actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}<span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span></div>)}<div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{isFutureWeek ? "Not started yet" : `${onPaceAtCheckpoint}/${allPaceSeriesList.length} on pace for the week`}</div></div>); })}
+                    {monthWeeks.map((week) => { const isFutureWeek = week.startDay > today; const measuredEndDay = Math.min(week.endDay, today); const elapsedDayCount = Math.max(0, measuredEndDay - week.startDay + 1); const fullWeekTarget = Math.round((club.target / Math.max(dim, 1)) * week.dayCount); const elapsedWeekTarget = Math.round((club.target / Math.max(dim, 1)) * elapsedDayCount); const checkpointTarget = week.endDay <= today ? fullWeekTarget : elapsedWeekTarget; const currentValues = isFutureWeek ? [] : allPaceSeriesList.map((item) => (item.dailySeries || []).slice(Math.max(0, week.startDay - 1), Math.max(0, measuredEndDay)).reduce((sum, value) => sum + (value || 0), 0)).sort((a, b) => b - a); const medianValue = currentValues.length ? currentValues[Math.floor(currentValues.length / 2)] : null; const medianDelta = medianValue == null ? null : medianValue - checkpointTarget; const onPaceAtCheckpoint = currentValues.filter((value) => value >= checkpointTarget).length; return (<div key={week.number} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "12px 13px" }}><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Week {week.number}</div><div style={{ color: "#6b7280", fontSize: 11, marginBottom: 8 }}>{getWeekLabel(week, year, monthIndex)}</div><div style={{ color: "#6b7280", fontSize: 11 }}>Per-member weekly target: <b style={{ color: "#c4b5fd" }}>{fmt(week.endDay <= today ? fullWeekTarget : checkpointTarget)}</b></div>{!isFutureWeek && (<div style={{ color: "#6b7280", fontSize: 11 }}>Median member weekly actual: <b style={{ color: "#fbbf24" }}>{fmt(medianValue)}</b>{" "}<span style={{ color: gainColor(medianDelta), fontWeight: 700 }}>({fmtSigned(medianDelta)})</span></div>)}<div style={{ color: "#9ca3af", fontSize: 11, fontWeight: 700, marginTop: 5 }}>{isFutureWeek ? "Not started yet" : `${onPaceAtCheckpoint}/${allPaceSeriesList.length} on pace for the week`}</div></div>); })}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 16, marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ color: "#9ca3af", fontSize: 12 }}>Click cards to toggle visibility.</div><button style={S.btn(false)} onClick={() => setPaceCardsCollapsed((p) => !p)}>{paceCardsCollapsed ? "▼ Expand Cards" : "▲ Collapse Cards"}</button></div>
@@ -2735,14 +2657,32 @@
               )}
             </>)}
           </>)}
+            </main>
+          </div>
+
+          {/* ── Mobile dock ── */}
+          <div className="mobile-dock">
+            <a href="./index.html" style={{ ...S.btn(PAGE_MODE === "home", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>🏠 Home</a>
+            <a href="./clubs.html" style={{ ...S.btn(PAGE_MODE === "clubs", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>📋 Clubs</a>
+            <a href="./rankings.html" style={{ ...S.btn(PAGE_MODE === "rankings", "#2563eb"), flex: 1, textDecoration: "none", textAlign: "center" }}>🌐 Ranks</a>
+            <a href={archivesHref} style={{ ...S.btn(PAGE_MODE === "archives", "#a78bfa"), flex: 1, textDecoration: "none", textAlign: "center" }}>📦 Archive</a>
+          </div>
         </div>
       );
     }
 
-    if (window.__ALLOW_APP__) {
+    async function startApp() {
+      const { clubs } = await loadFrontendConfig();
+      CURRENT_CLUBS = clubs;
       ReactDOM.createRoot(document.getElementById("root")).render(<AppErrorBoundary><CircleTracker /></AppErrorBoundary>);
     }
-  </script>
 
-</body>
-</html>
+    if (window.__ALLOW_APP__) {
+      startApp().catch((error) => {
+        console.error(error);
+        const root = document.getElementById("root");
+        if (root) {
+          root.innerHTML = `<div style="max-width:760px;margin:48px auto;padding:24px;border:1px solid #7f1d1d;border-radius:16px;background:#220b18;color:#fca5a5;font-family:Inter,system-ui,sans-serif"><h1 style="font-size:20px;margin-bottom:10px">Tracker configuration failed to load</h1><p style="line-height:1.6">${String(error.message || error)}</p></div>`;
+        }
+      });
+    }

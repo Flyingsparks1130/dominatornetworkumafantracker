@@ -1,116 +1,59 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import process from "node:process";
+# Dominator Network Umamusume Fan Tracker
 
-const repoRoot = process.cwd();
-const dataDir = path.join(repoRoot, "data");
-const configPath = path.join(repoRoot, "scripts", "clubs.config.json");
+A static GitHub Pages tracker for the Dominator Network. The frontend reads the current and archived Chronogenesis JSON already stored in this repository.
 
-function nowInNewYork() {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+## Frontend structure
 
-  const parts = Object.fromEntries(
-    formatter.formatToParts(new Date()).filter(p => p.type !== "literal").map(p => [p.type, p.value])
-  );
+- `index.html` — network home
+- `clubs.html` — club directory
+- `club.html?id=<club-id>` — reusable individual-club dashboard
+- `rankings.html` — network analysis and rankings
+- `archives.html?month=YYYY-MM` — archive entry point
+- `assets/css/app.css` — shared styling
+- `assets/js/app.jsx` — shared React application
+- `assets/js/snapshot-compat.js` — runtime fallback for the existing archive snapshot contract
+- `config/frontend.json` — live frontend clubs and tier targets
 
-  return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-    second: Number(parts.second),
-  };
+## Change club targets
+
+Edit `config/frontend.json`. Clubs inherit the target assigned to their tier:
+
+```json
+"tierTargets": {
+  "S+": 300000000,
+  "S": 250000000,
+  "A+": 90000000,
+  "A": 70000000,
+  "B+": 30000000
 }
+```
 
-function shouldRunAtNoonET() {
-  if (process.env.SKIP_TIME_GATE === "1") return true;
-  const ny = nowInNewYork();
-  return ny.hour === 12;
-}
+To give one club a temporary exception, add `"targetOverride": 123000000` to that club. Without an override, every club in the same tier automatically shares the tier target.
 
-async function readConfig() {
-  const raw = await fs.readFile(configPath, "utf8");
-  return JSON.parse(raw);
-}
+## Protected Chronogenesis boundary
 
-async function fetchJson(url) {
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json,text/plain;q=0.9,*/*;q=0.8",
-      ...(process.env.DOWNLOAD_AUTH_HEADER
-        ? { Authorization: process.env.DOWNLOAD_AUTH_HEADER }
-        : {}),
-      ...(process.env.DOWNLOAD_COOKIE
-        ? { Cookie: process.env.DOWNLOAD_COOKIE }
-        : {}),
-    },
-  });
+The following operational paths remain the existing source of truth and should not be casually refactored:
 
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
-  }
+- `data/chronogenesis/**`
+- `.github/workflows/archive-chronogenesis.yml`
+- `.github/workflows/refresh-chronogenesis-json.yml`
+- `scripts/archive-chronogenesis-complete-month.mjs`
+- `scripts/chronogenesis.clubs.config.json`
+- `scripts/snapshot-chronogenesis-config.mjs`
+- `scripts/update-chronogenesis.mjs`
 
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Response was not valid JSON. ${error.message}`);
-  }
-}
+`index.html` intentionally retains a non-executing `chronogenesis-snapshot-compat` block because the existing snapshot script parses those declarations. The browser uses `config/frontend.json` for the live site.
 
-async function writeClubFile(id, payload) {
-  const outPath = path.join(dataDir, `${id}.json`);
-  await fs.writeFile(outPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
-  return outPath;
-}
+## Local preview
 
-async function main() {
-  if (!shouldRunAtNoonET()) {
-    console.log("Skipping run because it is not 12:xx PM in America/New_York.");
-    return;
-  }
+Because the app fetches JSON, preview it through a local HTTP server rather than opening the HTML with a `file://` URL:
 
-  const clubs = await readConfig();
-  const refreshed = [];
-  const skipped = [];
+```bash
+python -m http.server 8000
+```
 
-  for (const club of clubs) {
-    const url = process.env[club.sourceEnv];
-    if (!url) {
-      skipped.push(`${club.name} (${club.id}) - missing env ${club.sourceEnv}`);
-      continue;
-    }
+Then open `http://localhost:8000/`.
 
-    console.log(`Fetching ${club.name} from ${club.sourceEnv}...`);
-    const payload = await fetchJson(url);
-    const outPath = await writeClubFile(club.id, payload);
-    refreshed.push(`${club.name} -> ${path.relative(repoRoot, outPath)}`);
-  }
+## Data architecture
 
-  if (skipped.length) {
-    console.log("Skipped clubs:");
-    for (const item of skipped) console.log(`- ${item}`);
-  }
-
-  if (!refreshed.length) {
-    throw new Error("No club files were refreshed. Add at least one source URL secret.");
-  }
-
-  console.log("Refreshed files:");
-  for (const item of refreshed) console.log(`- ${item}`);
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+The retired uma.moe/Playwright updater, root UMA JSON, and separate UMA rank-history files have been removed. The frontend now reads only Chronogenesis current and archive data.

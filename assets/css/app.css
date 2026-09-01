@@ -1,0 +1,317 @@
+/* ───────────────────────────────────────────────────────────────
+       DOMINATOR NETWORK — "Night Race" design system
+       Theme: Umamusume Twinkle Series under floodlights.
+       Deep indigo night track · violet brand · uma pink + cyan glow
+       · turf-green = on-pace (matches existing status semantics).
+       ─────────────────────────────────────────────────────────────── */
+    :root {
+      --night-0: #07060f;
+      --night-1: #0d0b1d;
+      --violet:  #7c3aed;
+      --violet-soft: #a78bfa;
+      --uma-pink: #f472b6;
+      --uma-cyan: #22d3ee;
+      --turf:    #34d399;
+      --ink:     #e2e0f0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--night-0); min-height: 100%; }
+    body { overflow-y: scroll; overflow-x: clip; font-variant-numeric: tabular-nums; }
+    button { font-family: inherit; }
+    button:not(:disabled) { cursor: pointer; }
+    img { -webkit-user-drag: none; }
+
+    /* Accessible focus + selection */
+    input:focus, textarea:focus, button:focus-visible, select:focus-visible {
+      outline: 2px solid var(--violet);
+      outline-offset: 2px;
+    }
+    ::selection { background: rgba(124,58,237,0.45); color: #fff; }
+
+    /* Scrollbars — track rail */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(13,11,29,0.6); }
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #3b2f6b, #241e45);
+      border-radius: 99px;
+      border: 2px solid rgba(7,6,15,0.8);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #5b46a8, #352b63); }
+
+    /* ── Ambient stage behind the app ───────────────────────────── */
+    .bg-stage { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .bg-sky {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(124,58,237,0.22), transparent 62%),
+        radial-gradient(900px 480px at 88% -4%, rgba(244,114,182,0.13), transparent 60%),
+        radial-gradient(1000px 700px at 50% 118%, rgba(34,211,238,0.10), transparent 58%),
+        linear-gradient(180deg, var(--night-1) 0%, var(--night-0) 46%, #050410 100%);
+    }
+    /* Floodlight aurora sweep */
+    .bg-aurora {
+      position: absolute; inset: -20%;
+      background:
+        conic-gradient(from 200deg at 30% 20%, transparent 0deg, rgba(167,139,250,0.07) 40deg, transparent 90deg),
+        conic-gradient(from 20deg at 75% 10%, transparent 0deg, rgba(244,114,182,0.06) 50deg, transparent 110deg);
+      animation: aurora-drift 26s ease-in-out infinite alternate;
+      filter: blur(2px);
+    }
+    /* Diagonal speed streaks — the track at full gallop */
+    .bg-streaks {
+      position: absolute; inset: -40% -10%;
+      background: repeating-linear-gradient(
+        118deg,
+        transparent 0px, transparent 140px,
+        rgba(167,139,250,0.045) 140px, rgba(167,139,250,0.045) 142px,
+        transparent 142px, transparent 260px,
+        rgba(34,211,238,0.035) 260px, rgba(34,211,238,0.035) 261px
+      );
+      animation: streak-run 60s linear infinite;
+    }
+    /* Fine grid — telemetry board texture */
+    .bg-grid {
+      position: absolute; inset: 0; opacity: 0.5;
+      background-image:
+        linear-gradient(rgba(167,139,250,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(167,139,250,0.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 100%);
+      -webkit-mask-image: radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 100%);
+    }
+    @keyframes aurora-drift {
+      from { transform: translate3d(-2%, -1%, 0) rotate(0deg); }
+      to   { transform: translate3d(2%, 1.5%, 0) rotate(2deg); }
+    }
+    @keyframes streak-run {
+      from { transform: translate3d(0, 0, 0); }
+      to   { transform: translate3d(-520px, 0, 0); }
+    }
+
+    /* ── Signature: checkered finish-line ribbon ────────────────── */
+    .finish-ribbon {
+      position: relative;
+      height: 10px;
+      border-radius: 99px;
+      overflow: hidden;
+      margin: 6px 0 14px;
+      background:
+        repeating-conic-gradient(rgba(226,224,240,0.85) 0% 25%, rgba(20,17,40,0.9) 0% 50%) 0 0 / 12px 12px;
+      box-shadow: 0 0 0 1px rgba(167,139,250,0.25), 0 4px 18px rgba(124,58,237,0.25);
+    }
+    .finish-ribbon::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(244,114,182,0.55), rgba(34,211,238,0.55), transparent);
+      transform: translateX(-100%);
+      animation: ribbon-shine 5.5s ease-in-out infinite;
+    }
+    @keyframes ribbon-shine {
+      0%, 55% { transform: translateX(-100%); }
+      85%, 100% { transform: translateX(100%); }
+    }
+
+    /* ── Wordmark / hero ────────────────────────────────────────── */
+    .gate-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
+      font-size: 20px; color: #fff;
+      background: linear-gradient(150deg, #8b5cf6, #6d28d9 55%, #4c1d95);
+      box-shadow: 0 0 0 1px rgba(196,181,253,0.45) inset, 0 6px 22px rgba(124,58,237,0.45), 0 0 28px rgba(124,58,237,0.3);
+    }
+    .wordmark {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      font-weight: 700; font-size: 24px; line-height: 1.05;
+      letter-spacing: 0.02em; text-transform: uppercase;
+      background: linear-gradient(92deg, #f5f3ff 0%, #c4b5fd 38%, var(--uma-pink) 72%, var(--uma-cyan) 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+      text-shadow: none;
+    }
+    .wordmark-sub {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      font-weight: 600; font-size: 10px; letter-spacing: 0.34em;
+      text-transform: uppercase; color: #8f88b8; margin-top: 3px;
+    }
+    .telemetry {
+      font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+      letter-spacing: 0.02em;
+      text-shadow: 0 0 18px rgba(167,139,250,0.35);
+    }
+
+    /* ── Micro-interactions (CSS-only, safe with inline styles) ── */
+    button { transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, color 0.16s ease, border-color 0.16s ease; }
+    button:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.14) saturate(1.08); }
+    button:not(:disabled):active { transform: translateY(0) scale(0.985); filter: brightness(0.96); }
+
+    tbody tr { transition: background 0.14s ease; }
+    tbody tr:hover { background: rgba(167,139,250,0.055); }
+
+    select, input { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    select:hover, input:hover { border-color: rgba(167,139,250,0.5) !important; }
+
+    #root { position: relative; z-index: 1; animation: page-in 0.45s ease both; }
+    @keyframes page-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ── Chart flourishes ───────────────────────────────────────── */
+    .chart-line {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: line-draw 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+    @keyframes line-draw { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .chart-line { animation: none; stroke-dashoffset: 0; }
+    }
+
+    /* ── Structure: "Paddock & Track" shell ─────────────────────── */
+    .app-shell { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .rail {
+      position: sticky; top: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+      max-height: calc(100vh - 28px); overflow-y: auto;
+      padding-right: 2px;
+      scrollbar-width: thin;
+    }
+    .main { min-width: 0; }
+    .mobile-only { display: none; }
+    .mobile-topbar { display: none; }
+    .mobile-dock { display: none; }
+
+    /* Starting-gate club buttons (rail = vertical, strip = horizontal) */
+    .gate-btn {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      text-align: left; border-radius: 12px; padding: 8px 10px;
+      background: rgba(20,17,40,0.7); border: 1px solid rgba(167,139,250,0.14);
+      color: #8f88b8; font-size: 12px; font-weight: 700;
+    }
+    .gate-btn.active {
+      background: linear-gradient(150deg, rgba(124,58,237,0.45), rgba(124,58,237,0.18));
+      border-color: rgba(167,139,250,0.55); color: #f1eefc;
+      box-shadow: 0 4px 18px rgba(124,58,237,0.3);
+    }
+    .gate-num {
+      font-family: "Chakra Petch", monospace; font-weight: 700; font-size: 11px;
+      min-width: 24px; height: 24px; border-radius: 7px; flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(11,9,24,0.9); border: 1px solid rgba(167,139,250,0.3);
+      color: #c4b5fd;
+    }
+    .gate-btn.active .gate-num { background: #fff; color: #4c1d95; border-color: #fff; }
+    .gate-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
+    .gate-strip .gate-btn { width: auto; flex: 0 0 auto; scroll-snap-align: start; white-space: nowrap; }
+
+    /* Telemetry ticker — stat cards become a snap-scroll strip on mobile */
+    .stat-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 980px) {
+      .stat-strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+      .stat-strip > * { min-width: 172px; flex: 0 0 auto; scroll-snap-align: start; }
+    }
+
+    /* Sticky tab dock inside views */
+    .tab-dock {
+      position: sticky; top: 10px; z-index: 8;
+      display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 14px; padding: 8px;
+      border-radius: 999px;
+      background: rgba(13,11,29,0.82);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(167,139,250,0.18);
+      box-shadow: 0 10px 30px rgba(3,2,10,0.45);
+      width: fit-content; max-width: 100%;
+    }
+
+    /* Podium for top network members */
+    .podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; margin-bottom: 14px; }
+    .podium-step { border-radius: 14px; padding: 14px 12px 12px; text-align: center; position: relative; overflow: hidden; }
+    .podium-step::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,0.05), transparent 40%); }
+    .podium-1 { order: 2; min-height: 150px; background: linear-gradient(170deg, rgba(251,191,36,0.16), rgba(13,11,29,0.9)); border: 1px solid rgba(251,191,36,0.45); box-shadow: 0 0 34px rgba(251,191,36,0.12); }
+    .podium-2 { order: 1; min-height: 120px; background: linear-gradient(170deg, rgba(209,213,219,0.12), rgba(13,11,29,0.9)); border: 1px solid rgba(209,213,219,0.35); }
+    .podium-3 { order: 3; min-height: 104px; background: linear-gradient(170deg, rgba(217,119,6,0.13), rgba(13,11,29,0.9)); border: 1px solid rgba(217,119,6,0.4); }
+    .podium-rank { font-family: "Chakra Petch", monospace; font-weight: 700; font-size: 22px; line-height: 1; }
+    @media (max-width: 640px) { .podium { gap: 6px; } .podium-step { padding: 10px 6px 9px; } }
+
+    /* Race-program club banner */
+    .club-banner { position: relative; overflow: hidden; }
+    .club-banner::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+      background:
+        repeating-linear-gradient(115deg, transparent 0 26px, color-mix(in srgb, var(--tier-c, #7c3aed) 9%, transparent) 26px 30px);
+      mask-image: linear-gradient(90deg, #000 0%, transparent 70%);
+      -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 70%);
+    }
+    .gate-plate {
+      font-family: "Chakra Petch", monospace; font-weight: 700;
+      font-size: 34px; line-height: 1; letter-spacing: -0.02em;
+      color: var(--tier-c, #c4b5fd); opacity: 0.9;
+      min-width: 56px; text-align: center; flex: 0 0 auto;
+      text-shadow: 0 0 22px color-mix(in srgb, var(--tier-c, #7c3aed) 55%, transparent);
+    }
+
+    @media (max-width: 1023px) {
+      .app-shell { display: block; }
+      .rail { display: none; }
+      .mobile-only { display: block; }
+      .mobile-topbar {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        position: sticky; top: 0; z-index: 9;
+        margin: -12px -10px 12px; padding: 10px 12px;
+        background: rgba(9,8,20,0.86);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(167,139,250,0.16);
+      }
+      .mobile-dock {
+        display: flex; gap: 8px; align-items: center; justify-content: space-around;
+        position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 10;
+        padding: 8px 10px; border-radius: 18px;
+        background: rgba(13,11,29,0.92);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(167,139,250,0.25);
+        box-shadow: 0 14px 40px rgba(3,2,10,0.7);
+      }
+      .mobile-dock a { min-width: 0; padding: 7px 9px !important; white-space: nowrap; font-size: 11px !important; }
+      .main { padding-bottom: 88px; }
+      .tab-dock { top: 62px; }
+    }
+
+    /* Club directory — race-card rows */
+    .dir-row {
+      display: grid;
+      grid-template-areas: "id name stats actions" "bar bar bar bar";
+      grid-template-columns: auto minmax(170px, 1.3fr) minmax(260px, 2fr) auto;
+      gap: 6px 14px; align-items: center;
+      padding: 11px 14px 12px; border-radius: 14px;
+      background: rgba(13,11,29,0.6);
+      border: 1px solid rgba(167,139,250,0.12);
+      transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+    }
+    .dir-row:hover { background: rgba(22,19,44,0.75); border-color: rgba(167,139,250,0.34); transform: translateX(2px); }
+    .dir-id { grid-area: id; display: flex; align-items: center; gap: 8px; }
+    .dir-name { grid-area: name; min-width: 0; }
+    .dir-stats { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .dir-actions { grid-area: actions; display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    .dir-bar { grid-area: bar; display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+    .dir-stat-label { color: #5b5680; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; white-space: nowrap; }
+    @media (max-width: 900px) {
+      .dir-row { grid-template-areas: "id name actions" "stats stats stats" "bar bar bar"; grid-template-columns: auto minmax(0, 1fr) auto; }
+      .dir-stats { padding-top: 4px; border-top: 1px dashed rgba(167,139,250,0.12); }
+    }
+
+    /* ── Mobile polish ──────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      #root > div { padding: 12px 10px !important; }
+      .wordmark { font-size: 19px; }
+      .gate-badge { width: 32px; height: 32px; border-radius: 9px; font-size: 17px; }
+      button { min-height: 34px; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bg-aurora, .bg-streaks, .finish-ribbon::after { animation: none !important; }
+      #root { animation: none; }
+      button, tbody tr { transition: none; }
+    }
