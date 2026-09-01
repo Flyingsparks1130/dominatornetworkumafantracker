@@ -64,4 +64,6 @@ The retired uma.moe/Playwright updater, root UMA JSON, and separate UMA rank-his
 
 - Club Detail overview sparklines stop at the current Chronogenesis day, so future zero-filled days are not drawn.
 - Switching clubs on `club.html` preserves the selected Overview, Members, or Pace tab.
+- Club selection on `clubs.html` is page-local: clicking a directory row updates the high-level summary below without changing or inheriting the Club Detail selection.
+- Deeper Insights is the final navigation destination, after Club Detail.
 - The individual rankings list starts at 25 members, expands by 10, and can collapse back to the top 25 after the full list is shown.

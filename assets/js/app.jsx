@@ -1217,7 +1217,7 @@ const { useState, useEffect, useRef } = React;
 
     function getInitialRouteState() {
       const params = new URLSearchParams(window.location.search);
-      const requestedClubId = params.get("id");
+      const requestedClubId = PAGE_MODE === "club" ? params.get("id") : null;
       const requestedRankingsSection = params.get("section");
       const activeIndex = requestedClubId ? CURRENT_CLUBS.findIndex((club) => String(club.id) === requestedClubId) : 0;
       return {
@@ -1236,6 +1236,7 @@ const { useState, useEffect, useRef } = React;
       const [archiveMonth, setArchiveMonth] = useState(initialRoute.archiveMonth);
       const [archiveManifest, setArchiveManifest] = useState(null);
       const [activeIdx, setActiveIdx] = useState(initialRoute.activeIndex);
+      const [clubsPageSelectedIdx, setClubsPageSelectedIdx] = useState(0);
       const [effectiveGameDayKey, setEffectiveGameDayKey] = useState(() => getInitialEffectiveGameDayKey(new Date()));
       const [clubData, setClubData] = useState({});
       const [loading, setLoading] = useState(false);
@@ -1443,6 +1444,15 @@ const { useState, useEffect, useRef } = React;
 
       useEffect(() => { setEffectiveGameDayKey(getInitialEffectiveGameDayKey(new Date())); loadAllData(); }, [archiveMonth]);
       useEffect(() => { if (activeIdx >= viewClubs.length) setActiveIdx(0); }, [activeIdx, viewClubs.length]);
+      useEffect(() => { if (clubsPageSelectedIdx >= viewClubs.length) setClubsPageSelectedIdx(0); }, [clubsPageSelectedIdx, viewClubs.length]);
+      useEffect(() => {
+        if (PAGE_MODE !== "clubs") return;
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has("id")) return;
+        params.delete("id");
+        const query = params.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+      }, []);
 
       useEffect(() => {
         let cancelled = false;
@@ -2174,10 +2184,7 @@ const { useState, useEffect, useRef } = React;
       function selectClubSummary(index) {
         const selectedClub = viewClubs[index];
         if (!selectedClub?.id) return;
-        setActiveIdx(index);
-        const params = new URLSearchParams({ id: String(selectedClub.id) });
-        if (archiveMonth) params.set("month", archiveMonth);
-        window.history.replaceState({}, "", `./clubs.html?${params.toString()}`);
+        setClubsPageSelectedIdx(index);
         window.requestAnimationFrame(() => document.getElementById("selected-club-summary")?.scrollIntoView({ behavior: "smooth", block: "start" }));
       }
       function toggleOverviewStatusFilter(statusKey) { setOverviewStatusFilter((prev) => prev === statusKey ? "" : statusKey); }
@@ -2278,8 +2285,8 @@ const { useState, useEffect, useRef } = React;
                   <a href="./index.html" style={navLinkStyle(PAGE_MODE === "home", "#7c3aed")}>🏠 Home</a>
                   <a href="./clubs.html" style={navLinkStyle(PAGE_MODE === "clubs", "#7c3aed")}>📋 Clubs</a>
                   <a href="./rankings.html" style={navLinkStyle(PAGE_MODE === "rankings", "#2563eb")}>🌐 Rankings</a>
-                  <a href={insightsHref} style={navLinkStyle(PAGE_MODE === "archives", "#a78bfa")}>🔎 Deeper Insights</a>
                   <a href={clubDetailHref} style={navLinkStyle(PAGE_MODE === "club", tc.bar)}>🏇 Club Detail</a>
+                  <a href={insightsHref} style={navLinkStyle(PAGE_MODE === "archives", "#a78bfa")}>🔎 Deeper Insights</a>
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <div style={{ color: "#6b7280", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Data Source</div>
@@ -2388,8 +2395,8 @@ const { useState, useEffect, useRef } = React;
                   {[
                     { href: "./clubs.html", icon: "📋", title: "Clubs", description: "Browse every club and open a focused high-level club summary.", color: "#7c3aed" },
                     { href: "./rankings.html", icon: "🌐", title: "Rankings", description: "Explore club rankings, member leaderboards, pace, health, and movement insights.", color: "#2563eb" },
-                    { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the deeper analysis features you choose next.", color: "#a78bfa" },
                     { href: clubDetailHref, icon: "🏇", title: "Club Detail", description: "Open the full Overview, Members, and Pace dashboard for a single club.", color: tc.bar },
+                    { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the deeper analysis features you choose next.", color: "#a78bfa" },
                   ].map((item) => (
                     <a key={item.title} href={item.href} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${item.color}55`, borderRadius: 14, padding: "18px", textDecoration: "none", display: "block", boxShadow: `0 0 0 1px ${item.color}11 inset` }}>
                       <div style={{ fontSize: 24, marginBottom: 10 }}>{item.icon}</div>
@@ -2412,7 +2419,21 @@ const { useState, useEffect, useRef } = React;
                     const planDelta = entry.hasData && hasComparisonData ? entry.totalMonthly - entry.totalExpected : null;
                     const onPace = planDelta != null && planDelta >= 0;
                     return (
-                      <div key={entry.name} className="dir-row" style={{ borderLeft: `3px solid ${entry.hasData ? ctc.border : "#1e1b35"}` }}>
+                      <div
+                        key={entry.name}
+                        className={`dir-row${clubsPageSelectedIdx === index ? " selected" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={clubsPageSelectedIdx === index}
+                        onClick={() => selectClubSummary(index)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectClubSummary(index);
+                          }
+                        }}
+                        style={{ borderLeft: `3px solid ${entry.hasData ? ctc.border : "#1e1b35"}` }}
+                      >
                         <div className="dir-id">
                           <span className="gate-num" style={{ borderColor: entry.hasData ? ctc.border + "66" : undefined }}>{index + 1}</span>
                           <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
@@ -2445,7 +2466,7 @@ const { useState, useEffect, useRef } = React;
                           <span title={entry.jsonMeta.sub} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: entry.jsonMeta.color, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
                             <span style={{ width: 7, height: 7, borderRadius: 999, background: entry.jsonMeta.color, boxShadow: `0 0 6px ${entry.jsonMeta.color}`, flexShrink: 0 }} />JSON
                           </span>
-                          <button style={S.btn(activeIdx === index, ctc.bar)} onClick={() => selectClubSummary(index)}>{activeIdx === index ? "Viewing" : "View stats"} →</button>
+                          <span className="dir-select-label" style={{ color: clubsPageSelectedIdx === index ? ctc.text : "#8f88b8", borderColor: clubsPageSelectedIdx === index ? `${ctc.border}88` : undefined }}>{clubsPageSelectedIdx === index ? "Selected" : "Select club"}</span>
                         </div>
                         <div className="dir-bar" title={entry.hasData && hasComparisonData ? `${fmtFull(entry.totalMonthly)} of ${fmtFull(entry.clubTarget)} club target (${monthPct.toFixed(1)}%)` : "No data yet"}>
                           <div style={{ flex: 1 }}><ProgressBar pct={monthPct} color={onPace ? "#34d399" : entry.hasData && hasComparisonData ? "#f59e0b" : "#2a2540"} height={5} /></div>
@@ -2458,7 +2479,7 @@ const { useState, useEffect, useRef } = React;
               </div>
 
               {(() => {
-                const entry = networkClubs[activeIdx] || networkClubs[0];
+                const entry = networkClubs[clubsPageSelectedIdx] || networkClubs[0];
                 if (!entry) return null;
                 const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
                 const monthPct = entry.hasData && entry.clubTarget > 0 ? Math.min(100, (entry.totalMonthly / entry.clubTarget) * 100) : 0;
@@ -2475,7 +2496,7 @@ const { useState, useEffect, useRef } = React;
                         </div>
                         <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 6 }}>{entry.officer} · {fmt(entry.target)} per member · Club ID {entry.id}</div>
                       </div>
-                      <button style={S.btn(true, ctc.bar)} onClick={() => openClub(activeIdx)}>Open full club detail →</button>
+                      <button style={S.btn(true, ctc.bar)} onClick={() => openClub(clubsPageSelectedIdx)}>Open full club detail →</button>
                     </div>
                     {!entry.hasData ? (
                       <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "16px", color: "#8f88b8", fontSize: 12 }}>No Chronogenesis JSON is currently loaded for this club.</div>
@@ -2848,6 +2869,7 @@ const { useState, useEffect, useRef } = React;
             <a href="./index.html" style={{ ...S.btn(PAGE_MODE === "home", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>🏠 Home</a>
             <a href="./clubs.html" style={{ ...S.btn(PAGE_MODE === "clubs", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>📋 Clubs</a>
             <a href="./rankings.html" style={{ ...S.btn(PAGE_MODE === "rankings", "#2563eb"), flex: 1, textDecoration: "none", textAlign: "center" }}>🌐 Ranks</a>
+            <a href={clubDetailHref} style={{ ...S.btn(PAGE_MODE === "club", tc.bar), flex: 1, textDecoration: "none", textAlign: "center" }}>🏇 Detail</a>
             <a href={insightsHref} style={{ ...S.btn(PAGE_MODE === "archives", "#a78bfa"), flex: 1, textDecoration: "none", textAlign: "center" }}>🔎 Insights</a>
           </div>
         </div>

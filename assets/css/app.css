@@ -273,7 +273,7 @@
         border: 1px solid rgba(167,139,250,0.25);
         box-shadow: 0 14px 40px rgba(3,2,10,0.7);
       }
-      .mobile-dock a { min-width: 0; padding: 7px 9px !important; white-space: nowrap; font-size: 11px !important; }
+      .mobile-dock a { min-width: 0; padding: 7px 5px !important; white-space: nowrap; font-size: 10px !important; }
       .main { padding-bottom: 88px; }
       .tab-dock { top: 62px; }
     }
@@ -287,13 +287,19 @@
       padding: 11px 14px 12px; border-radius: 14px;
       background: rgba(13,11,29,0.6);
       border: 1px solid rgba(167,139,250,0.12);
+      cursor: pointer;
+      outline: none;
       transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
     }
     .dir-row:hover { background: rgba(22,19,44,0.75); border-color: rgba(167,139,250,0.34); transform: translateX(2px); }
+    .dir-row:focus-visible { box-shadow: 0 0 0 2px rgba(167,139,250,0.7); }
+    .dir-row.selected { background: linear-gradient(150deg, rgba(124,58,237,0.22), rgba(13,11,29,0.78)); border-color: rgba(167,139,250,0.55); }
+    .dir-row.selected:hover { background: linear-gradient(150deg, rgba(124,58,237,0.3), rgba(20,17,40,0.82)); }
     .dir-id { grid-area: id; display: flex; align-items: center; gap: 8px; }
     .dir-name { grid-area: name; min-width: 0; }
     .dir-stats { grid-area: stats; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .dir-actions { grid-area: actions; display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    .dir-select-label { border: 1px solid rgba(167,139,250,0.22); border-radius: 999px; padding: 5px 10px; font-size: 10px; font-weight: 800; white-space: nowrap; }
     .dir-bar { grid-area: bar; display: flex; align-items: center; gap: 8px; margin-top: 2px; }
     .dir-stat-label { color: #5b5680; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; white-space: nowrap; }
     @media (max-width: 900px) {
