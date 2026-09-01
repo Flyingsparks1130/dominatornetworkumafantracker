@@ -191,6 +191,7 @@
       || (categoryFilter === "transfer-review" ? ["promote", "move-down"].includes(item.category) : item.category === categoryFilter);
     const filtered = transferData.recommendations.filter((item) => matchesCategory(item) && (clubFilter === "all" || item.clubId === clubFilter));
     const visible = filtered.slice(0, visibleCount);
+    const eligibility = transferData.eligibility || {};
     const reviewCount = transferData.counts.promote + transferData.counts["move-down"];
     const strongestPromotion = transferData.recommendations.find((item) => item.category === "promote");
     const mostUrgentReview = transferData.recommendations.find((item) => item.category === "move-down");
@@ -211,12 +212,19 @@
         <MetricCard label="Watch and coach" value={transferData.counts.watch} sub="Talk first; collect more evidence" color="#fbbf24" />
         <MetricCard label="Current tier suitable" value={transferData.counts.keep} sub="No move suggested now" color="#60a5fa" />
       </div>
+      <div style={{ ...PANEL, marginBottom: 14, borderColor: "#2dd4bf44", background: "rgba(13,45,48,0.24)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          <div><div style={{ color: "#5eead4", fontSize: 11, fontWeight: 900 }}>Who this analysis includes</div><div style={{ color: "#d5d2e5", fontSize: 12, fontWeight: 800, marginTop: 3 }}>{eligibility.eligibleMembers ?? transferData.recommendations.length} of {eligibility.activeRosterMembers ?? transferData.recommendations.length} current roster members had enough current-club history through Day {analysisDay} to evaluate fairly.</div></div>
+          <Badge color="#2dd4bf">Current-month records only</Badge>
+        </div>
+        <div style={{ color: "#9ca3af", fontSize: 10, lineHeight: 1.6 }}>Excluded automatically: <b style={{ color: "#c7c4dd" }}>{eligibility.excludedInactive || 0}</b> profiles no longer on that club’s current roster, <b style={{ color: "#c7c4dd" }}>{eligibility.excludedNoCurrentMonthHistory || 0}</b> current-roster profiles with no history for that club this month, and <b style={{ color: "#c7c4dd" }}>{eligibility.excludedPartialMonth || 0}</b> late or partial-month records. This prevents end-of-month transfers from being mistaken for poor performance.</div>
+      </div>
       <div style={{ ...PANEL, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
           <div><div style={{ color: "#e2e0f0", fontSize: 15, fontWeight: 900 }}>Member Transfer Helper</div><div style={MUTED}>Uses projected individual pace, the quota for the member’s current tier, recent direction, idle days, and up to three prior archived months. Analysis is through Day {analysisDay}.</div></div>
           <select value={clubFilter} onChange={(event) => setClubFilter(event.target.value)} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 10 }}><option value="all">All clubs</option>{snapshots.map((snapshot) => <option key={snapshot.clubId} value={snapshot.clubId}>{snapshot.clubName}</option>)}</select>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[["transfer-review", "Transfer reviews"], ["promote", "Promotion"], ["move-down", "Lower tier"], ["watch", "Watch & coach"], ["keep", "Keep"], ["all", "Everyone"]].map(([key, label]) => <button key={key} onClick={() => setCategoryFilter(key)} style={{ background: categoryFilter === key ? "#7c3aed" : "#17152a", border: `1px solid ${categoryFilter === key ? "#8b5cf6" : "#2a2540"}`, color: categoryFilter === key ? "#fff" : "#9ca3af", borderRadius: 8, padding: "6px 9px", fontSize: 9, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[["transfer-review", "Transfer reviews"], ["promote", "Promotion"], ["move-down", "Lower tier"], ["watch", "Watch & coach"], ["keep", "Keep"], ["all", "All evaluated members"]].map(([key, label]) => <button key={key} onClick={() => setCategoryFilter(key)} style={{ background: categoryFilter === key ? "#7c3aed" : "#17152a", border: `1px solid ${categoryFilter === key ? "#8b5cf6" : "#2a2540"}`, color: categoryFilter === key ? "#fff" : "#9ca3af", borderRadius: 8, padding: "6px 9px", fontSize: 9, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}</div>
       </div>
       {!visible.length ? <EmptyState title="No members match this filter" detail="Try another recommendation category or club. A blank result means no member crossed that review threshold." /> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 10 }} className="insights-transfer-grid">{visible.map((item) => {
         const meta = CATEGORY[item.category];

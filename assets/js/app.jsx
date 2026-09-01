@@ -592,6 +592,8 @@ const { useState, useEffect, useRef } = React;
       const members = friendProfiles.map((profile) => {
         const viewerId = profile?.friend_viewer_id;
         const rawHistoryCum = Array.isArray(historyByViewerId[viewerId]) ? [...historyByViewerId[viewerId]] : new Array(dim).fill(0);
+        const historyDays = historyDaysByViewerId[viewerId] || new Set();
+        const firstActualHistoryDay = historyDays.size ? Math.min(...historyDays) : 0;
         const lastActualHistoryDay = historyDaysByViewerId[viewerId]?.size ? Math.max(...historyDaysByViewerId[viewerId]) : 0;
         const rawCum = [...rawHistoryCum];
         for (let i = 1; i < rawCum.length; i++) {
@@ -615,6 +617,10 @@ const { useState, useEffect, useRef } = React;
           monthlyGain: latestMonthlyGain || 0,
           projected,
           isActive: activeRosterIds.has(String(viewerId)),
+          historyDayCount: historyDays.size,
+          firstActualHistoryDay,
+          lastActualHistoryDay,
+          observedHistoryDays: Array.from(historyDays).sort((a, b) => a - b),
           dailyFans: [],
           precomputedCumulativeSeries: rawCum,
           precomputedDailyGainSeries: dailySeries,

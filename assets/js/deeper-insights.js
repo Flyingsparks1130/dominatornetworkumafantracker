@@ -109,9 +109,11 @@
           isActive: activeIds.has(id),
           cumulativeSeries: new Array(dim).fill(null),
           dailySeries: new Array(dim).fill(null),
+          observedDays: new Set(),
         });
       }
       const member = membersById.get(id);
+      member.observedDays.add(day);
       const cumulative = number(row?.adjusted_fan_gain_cumulative);
       const daily = number(row?.adjusted_interpolated_fan_gain);
       if (cumulative != null) member.cumulativeSeries[day - 1] = Math.max(0, cumulative);
@@ -126,6 +128,7 @@
         isActive: activeIds.has(id),
         cumulativeSeries: new Array(dim).fill(null),
         dailySeries: new Array(dim).fill(null),
+        observedDays: new Set(),
       });
     });
 
@@ -138,6 +141,11 @@
       const derivedDaily = dailyFromCumulative(cumulative);
       return {
         ...member,
+        historyDayCount: member.observedDays.size,
+        firstActualHistoryDay: member.observedDays.size ? Math.min(...member.observedDays) : 0,
+        lastActualHistoryDay: member.observedDays.size ? Math.max(...member.observedDays) : 0,
+        observedHistoryDays: Array.from(member.observedDays).sort((a, b) => a - b),
+        observedDays: undefined,
         cumulativeSeries: cumulative,
         dailySeries: member.dailySeries.map((value, index) => value == null ? derivedDaily[index] : value),
       };
@@ -220,17 +228,32 @@
     if (!club?.id || !data) return null;
     const monthKey = data?.datasetMonthKey || "";
     const dim = number(dimOverride, getDaysInMonth(monthKey));
-    const members = (data?.members || []).map((member) => ({
-      viewerId: String(member?.viewerId ?? member?.friendViewerId ?? member?.name ?? ""),
-      name: member?.name || "Unknown",
-      isActive: member?.isActive !== false,
-      cumulativeSeries: carryCumulative(
-        Array.from({ length: dim }, (_, index) => number(member?.precomputedCumulativeSeries?.[index])),
-        Math.min(dim, number(data?.sharedActualDate, dim))
-      ),
-      dailySeries: Array.from({ length: dim }, (_, index) => number(member?.precomputedDailyGainSeries?.[index])),
-    }));
-    const maxAvailableDay = clamp(number(data?.sharedActualDate, maxDayFromRows(data?.clubDailyHistory)), 0, dim);
+    const clubHistoryDay = maxDayFromRows(data?.clubDailyHistory);
+    const memberHistoryDay = (data?.members || []).reduce((latestDay, member) => Math.max(latestDay, number(member?.lastActualHistoryDay, 0)), 0);
+    const maxAvailableDay = clamp(Math.max(number(data?.sharedActualDate, 0), clubHistoryDay, memberHistoryDay), 0, dim);
+    const members = (data?.members || []).map((member) => {
+      const historyDayCount = Math.max(0, number(member?.historyDayCount, 0));
+      const firstActualHistoryDay = clamp(number(member?.firstActualHistoryDay, historyDayCount ? 1 : 0), 0, dim);
+      const lastActualHistoryDay = clamp(number(member?.lastActualHistoryDay, historyDayCount ? maxAvailableDay : 0), 0, dim);
+      const observedHistoryDays = Array.from(new Set((member?.observedHistoryDays || [])
+        .map((day) => number(day))
+        .filter((day) => day != null && day >= 1 && day <= dim)))
+        .sort((a, b) => a - b);
+      return {
+        viewerId: String(member?.viewerId ?? member?.friendViewerId ?? member?.name ?? ""),
+        name: member?.name || "Unknown",
+        isActive: member?.isActive === true,
+        historyDayCount,
+        firstActualHistoryDay,
+        lastActualHistoryDay,
+        observedHistoryDays,
+        cumulativeSeries: carryCumulative(
+          Array.from({ length: dim }, (_, index) => number(member?.precomputedCumulativeSeries?.[index])),
+          lastActualHistoryDay
+        ),
+        dailySeries: Array.from({ length: dim }, (_, index) => number(member?.precomputedDailyGainSeries?.[index])),
+      };
+    });
     const observedDays = observedDaysFromRows(data?.clubDailyHistory);
     const clubSeries = buildClubSeries(data?.clubDailyHistory, members, dim, maxAvailableDay);
     const activeMemberCount = members.filter((member) => member.isActive).length;
@@ -652,9 +675,46 @@
       : Object.values(historiesByClub || {}).flat().filter(Boolean);
 
     const recommendations = [];
+    const eligibility = {
+      totalProfiles: 0,
+      activeRosterMembers: 0,
+      eligibleMembers: 0,
+      excludedInactive: 0,
+      excludedNoCurrentMonthHistory: 0,
+      excludedPartialMonth: 0,
+      excludedTotal: 0,
+    };
     usableSnapshots.forEach((snapshot) => {
       const currentTierIndex = tierTargets.findIndex((entry) => entry.tier === snapshot.tier);
-      snapshot.members.filter((member) => member.isActive).forEach((member) => {
+      snapshot.members.forEach((member) => {
+        eligibility.totalProfiles += 1;
+        if (!member.isActive) {
+          eligibility.excludedInactive += 1;
+          return;
+        }
+        eligibility.activeRosterMembers += 1;
+
+        const observedThroughDay = Array.from(new Set((member.observedHistoryDays || [])
+          .map((observedDay) => number(observedDay))
+          .filter((observedDay) => observedDay != null && observedDay >= 1 && observedDay <= day)))
+          .sort((a, b) => a - b);
+        if (!observedThroughDay.length) {
+          eligibility.excludedNoCurrentMonthHistory += 1;
+          return;
+        }
+
+        const firstObservedDay = observedThroughDay[0];
+        const lastObservedDay = observedThroughDay[observedThroughDay.length - 1];
+        const requiredObservedDays = Math.max(3, Math.ceil(day * 0.70));
+        const startedLate = firstObservedDay > Math.min(3, day);
+        const stoppedEarly = lastObservedDay < Math.max(1, day - 2);
+        const insufficientCoverage = observedThroughDay.length < requiredObservedDays;
+        if (startedLate || stoppedEarly || insufficientCoverage) {
+          eligibility.excludedPartialMonth += 1;
+          return;
+        }
+
+        eligibility.eligibleMembers += 1;
         const daily = member.dailySeries.slice(0, day).map((value) => number(value, 0));
         const currentGain = memberValueAtDay(member, day);
         const wholeMonthAverage = currentGain / Math.max(1, day);
@@ -766,7 +826,10 @@
       result[recommendation.category] = (result[recommendation.category] || 0) + 1;
       return result;
     }, { promote: 0, "move-down": 0, watch: 0, keep: 0 });
-    return { ready: true, day, recommendations, counts, tierTargets };
+    eligibility.excludedTotal = eligibility.excludedInactive
+      + eligibility.excludedNoCurrentMonthHistory
+      + eligibility.excludedPartialMonth;
+    return { ready: true, day, recommendations, counts, tierTargets, eligibility };
   }
 
   return {
