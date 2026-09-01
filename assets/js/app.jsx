@@ -608,6 +608,7 @@ const { useState, useEffect, useRef } = React;
         const elapsedProjectionDays = Math.max(positiveGainDays, Math.min(sharedActualDate || lastActualHistoryDay || 0, lastActualHistoryDay || 0));
         const projected = elapsedProjectionDays > 0 ? Math.round((latestMonthlyGain / elapsedProjectionDays) * dim) : null;
         return {
+          viewerId: String(viewerId ?? ""),
           name: profile?.name || (Array.isArray(profile?.names) && profile.names[0]) || "Unknown",
           fans: Number(profile?.fan_count ?? 0),
           dailyGain: latestDailyGain ?? null,
@@ -2719,13 +2720,18 @@ const { useState, useEffect, useRef } = React;
             </>)}
 
             {PAGE_MODE === "archives" && (
-              <div style={{ ...S.card, minHeight: 420, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "48px 24px" }}>
-                <div style={{ maxWidth: 620 }}>
-                  <div style={{ fontSize: 46, marginBottom: 14 }}>🔎</div>
-                  <div style={{ color: "#f1eefc", fontSize: 25, fontWeight: 800, marginBottom: 10 }}>Deeper Insights</div>
-                  <div style={{ color: "#8f88b8", fontSize: 13, lineHeight: 1.7 }}>This page is intentionally being held open for the deeper network analysis features you will define next.</div>
-                </div>
-              </div>
+              window.DeeperInsightsPage
+                ? <window.DeeperInsightsPage
+                    clubs={viewClubs}
+                    clubData={clubData}
+                    archiveManifest={archiveManifest}
+                    today={today}
+                    dim={dim}
+                    monthKey={formatDateKey(year, monthIndex + 1, 1).slice(0, 7)}
+                    archiveMonth={archiveMonth}
+                    isArchiveView={isArchiveView}
+                  />
+                : <div style={{ ...S.card, minHeight: 300, display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171" }}>Deeper Insights failed to load. Refresh the page and check the browser console.</div>
             )}
           </>)}
 

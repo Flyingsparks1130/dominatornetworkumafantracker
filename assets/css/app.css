@@ -307,6 +307,11 @@
       .dir-stats { padding-top: 4px; border-top: 1px dashed rgba(167,139,250,0.12); }
     }
 
+    @media (max-width: 700px) {
+      .insights-donut-grid,
+      .insights-day-control { grid-template-columns: 1fr !important; }
+    }
+
     /* ── Mobile polish ──────────────────────────────────────────── */
     @media (max-width: 640px) {
       #root > div { padding: 12px 10px !important; }
