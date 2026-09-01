@@ -1562,6 +1562,19 @@ const { useState, useEffect, useRef } = React;
         const totalP = decorated.reduce((sum, member) => sum + (member.projected ?? 0), 0);
         const clubTarget = decorated.length * entry.target;
         const nonStagnant = decorated.filter((m) => m.stagnantDays < 3).length;
+        const requiredHistoryDays = Math.max(3, Math.ceil(today * 0.70));
+        const historyEligibleMembers = decorated.filter((member) => {
+          const observedDays = Array.from(new Set((member.observedHistoryDays || [])
+            .map((observedDay) => Number(observedDay))
+            .filter((observedDay) => Number.isFinite(observedDay) && observedDay >= 1 && observedDay <= today)))
+            .sort((a, b) => a - b);
+          if (!observedDays.length) return false;
+          const startedNearMonthStart = observedDays[0] <= Math.min(3, today);
+          const currentThroughDisplayedDay = observedDays[observedDays.length - 1] >= Math.max(1, today - 2);
+          return startedNearMonthStart && currentThroughDisplayedDay && observedDays.length >= requiredHistoryDays;
+        }).length;
+        const historyCoverageRatio = decorated.length > 0 ? historyEligibleMembers / decorated.length : 0;
+        const hasReliableHistory = hasComparisonData && decorated.length > 0 && historyCoverageRatio >= 0.70;
         const pctOnTrack = decorated.length > 0 ? clubStatusCounts["on-track"] / decorated.length : 0;
         const projectedRatio = clubTarget > 0 ? totalP / clubTarget : 0;
         const nonStagnantRatio = decorated.length > 0 ? nonStagnant / decorated.length : 0;
@@ -1625,6 +1638,7 @@ const { useState, useEffect, useRef } = React;
           statusCounts: clubStatusCounts,
           topFiveMembers: [...decorated].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0)).slice(0, 5),
           health, pctOnTrack, projectedRatio, nonStagnantRatio, nonStagnantMembers: nonStagnant, clubTarget,
+          historyEligibleMembers, historyCoverageRatio, hasReliableHistory,
           clubDailySeries, clubCumSeries, clubPctSeries, clubDailyPctSeries, clubColor: getClubColor(viewClubs.indexOf(entry)),
           currentMonthlyRank: ri.rank, rankDelta: ri.delta,
         };
@@ -1647,6 +1661,28 @@ const { useState, useEffect, useRef } = React;
           if (b.currentMonthlyRank == null) return -1;
           return a.currentMonthlyRank - b.currentMonthlyRank;
         });
+      const forecastReadyClubs = networkClubs.filter((entry) => entry.id && entry.hasData && entry.hasReliableHistory);
+      const partialHistoryClubs = networkClubs.filter((entry) => entry.id && entry.hasData && !entry.hasReliableHistory);
+      const clubsProjectedToGoal = forecastReadyClubs.filter((entry) => entry.projectedRatio >= 1);
+      const clubsAheadOfPlan = forecastReadyClubs.filter((entry) => entry.totalMonthly >= entry.totalExpected);
+      const clubsAtRisk = forecastReadyClubs.filter((entry) => entry.projectedRatio < 0.90);
+      const bestRankedClub = rankedNetworkClubs.find((entry) => entry.currentMonthlyRank != null) || null;
+      const strongestOutlookClub = forecastReadyClubs.reduce((best, entry) => !best || entry.projectedRatio > best.projectedRatio ? entry : best, null);
+      const weakestOutlookClub = forecastReadyClubs.reduce((weakest, entry) => !weakest || entry.projectedRatio < weakest.projectedRatio ? entry : weakest, null);
+      const strongestRankMover = rankedNetworkClubs.filter((entry) => (entry.rankDelta ?? 0) > 0).reduce((best, entry) => !best || entry.rankDelta > best.rankDelta ? entry : best, null);
+      const largestRankDrop = rankedNetworkClubs.filter((entry) => (entry.rankDelta ?? 0) < 0).reduce((worst, entry) => !worst || entry.rankDelta < worst.rankDelta ? entry : worst, null);
+      const healthiestClub = forecastReadyClubs.reduce((best, entry) => !best || entry.health.score > best.health.score ? entry : best, null);
+      const networkClubTargetTotal = forecastReadyClubs.reduce((sum, entry) => sum + entry.clubTarget, 0);
+      const networkProjectedTotal = forecastReadyClubs.reduce((sum, entry) => sum + entry.totalProjected, 0);
+      const networkProjectedRatio = networkClubTargetTotal > 0 ? networkProjectedTotal / networkClubTargetTotal : 0;
+      function getClubOutlookMeta(entry) {
+        if (!hasComparisonData) return { label: `Waiting for Day ${today + 1}`, color: "#9ca3af", bg: "#9ca3af18", border: "#9ca3af44" };
+        if (!entry.hasReliableHistory) return { label: "Partial data", color: "#9ca3af", bg: "#9ca3af18", border: "#9ca3af44" };
+        if (entry.projectedRatio >= 1.05) return { label: "Comfortable", color: "#34d399", bg: "#34d39918", border: "#34d39944" };
+        if (entry.projectedRatio >= 1) return { label: "On target", color: "#60a5fa", bg: "#60a5fa18", border: "#60a5fa44" };
+        if (entry.projectedRatio >= 0.90) return { label: "Close", color: "#fbbf24", bg: "#fbbf2418", border: "#fbbf2444" };
+        return { label: "At risk", color: "#f87171", bg: "#f8717118", border: "#f8717144" };
+      }
       const loadedClubCount = networkClubs.filter((entry) => entry.hasData).length;
       const networkMonthlyTotal = networkMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
       const networkFanTotal = networkMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
@@ -2259,7 +2295,7 @@ const { useState, useEffect, useRef } = React;
           {/* ── Mobile top bar ── */}
           <div className="mobile-topbar">
             <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-              <span className="gate-badge" style={{ width: 30, height: 30, borderRadius: 9, fontSize: 16 }}>⬡</span>
+              <a href="./index.html" aria-label="Go to Home" title="Go to Home" style={{ display: "inline-flex", textDecoration: "none", borderRadius: 9 }}><span className="gate-badge" style={{ width: 30, height: 30, borderRadius: 9, fontSize: 16 }}>⬡</span></a>
               <div style={{ minWidth: 0 }}>
                 <div className="wordmark" style={{ fontSize: 15 }}>Dominator Network</div>
                 <div style={{ color: "#8f88b8", fontSize: 9, fontWeight: 700 }}>Day {today}/{dim} · {daysLeft} left{isArchiveView ? ` · 📦 ${archiveMonth}` : ""}</div>
@@ -2276,7 +2312,7 @@ const { useState, useEffect, useRef } = React;
             <aside className="rail">
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <span className="gate-badge">⬡</span>
+                  <a href="./index.html" aria-label="Go to Home" title="Go to Home" style={{ display: "inline-flex", textDecoration: "none", borderRadius: 11 }}><span className="gate-badge">⬡</span></a>
                   <div>
                     <div className="wordmark" style={{ fontSize: 19 }}>Dominator Network</div>
                     <div className="wordmark-sub">Umamusume · Fan Tracker</div>
@@ -2557,20 +2593,41 @@ const { useState, useEffect, useRef } = React;
               </div>
 
               {rankingsTab === "clubs" && (<div id="club-rankings-section" style={S.card}>
-                <div style={S.h2}>Club Rankings</div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Current monthly rank for every loaded club, ordered from best rank to lowest.</div>
-                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Monthly Rank</th><th style={S.th}>Club</th><th style={S.th}>Network Tier</th><th style={S.th}>Monthly Gain</th><th style={S.th}>Projected</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
-                  {rankedNetworkClubs.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No club ranking data is available yet.</td></tr>) : rankedNetworkClubs.map((entry) => (
-                    <tr key={`club-rank-${entry.id}`}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div><div style={S.h2}>Club Rankings</div><div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.6, maxWidth: 760 }}>Compare global rank, progress toward each club’s quota, projected month-end result, member readiness, and health. Clubs remain ordered by their global monthly rank.</div></div>
+                  <div style={{ background: "#17152a", border: "1px solid #2a2540", borderRadius: 999, padding: "7px 10px", color: "#c4b5fd", fontSize: 10, fontWeight: 800 }}>{forecastReadyClubs.length} forecast-ready · {partialHistoryClubs.length} partial</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 9, marginBottom: 12 }}>
+                  {[
+                    { label: "Best global rank", value: bestRankedClub ? `#${bestRankedClub.currentMonthlyRank}` : "—", sub: bestRankedClub?.clubName || "No rank available", color: "#fbbf24" },
+                    { label: "Biggest rank gain", value: strongestRankMover ? `+${strongestRankMover.rankDelta}` : "—", sub: strongestRankMover ? `${strongestRankMover.clubName} places gained` : "No club moved up today", color: "#34d399" },
+                    { label: "Strongest target outlook", value: strongestOutlookClub ? `${Math.round(strongestOutlookClub.projectedRatio * 100)}%` : "—", sub: strongestOutlookClub ? `${strongestOutlookClub.clubName} projected vs quota` : "No reliable forecast yet", color: "#a78bfa" },
+                    { label: "Health leader", value: healthiestClub ? `${healthiestClub.health.score}/100` : "—", sub: healthiestClub?.clubName || "No reliable health score", color: healthiestClub?.health.color || "#9ca3af" },
+                  ].map((item) => (<div key={item.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 11, padding: "11px 13px" }}><div style={{ color: "#6b7280", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{item.label}</div><div style={{ color: item.color, fontSize: 19, fontWeight: 900 }}>{item.value}</div><div style={{ color: "#8f88b8", fontSize: 10, marginTop: 3 }}>{item.sub}</div></div>))}
+                </div>
+
+                <div style={{ background: clubsAtRisk.length ? "rgba(120,53,15,0.16)" : "rgba(6,78,59,0.16)", border: `1px solid ${clubsAtRisk.length ? "#f59e0b44" : "#34d39944"}`, borderRadius: 11, padding: "11px 13px", marginBottom: 14 }}>
+                  <div style={{ color: clubsAtRisk.length ? "#fbbf24" : "#34d399", fontSize: 11, fontWeight: 900, marginBottom: 4 }}>What matters now</div>
+                  <div style={{ color: "#d5d2e5", fontSize: 11, lineHeight: 1.6 }}>{clubsProjectedToGoal.length} of {forecastReadyClubs.length} forecast-ready clubs are projected to meet quota; {clubsAheadOfPlan.length} are currently at or above elapsed-month plan. {clubsAtRisk.length ? `${clubsAtRisk.length} club${clubsAtRisk.length === 1 ? " is" : "s are"} projected below 90% and need attention.` : "No forecast-ready club is currently projected below 90%."}{weakestOutlookClub ? ` The weakest current outlook is ${weakestOutlookClub.clubName} at ${Math.round(weakestOutlookClub.projectedRatio * 100)}%.` : ""}</div>
+                </div>
+
+                {partialHistoryClubs.length > 0 && (<div style={{ background: "rgba(55,65,81,0.22)", border: "1px solid #4b556344", borderRadius: 10, padding: "9px 11px", color: "#9ca3af", fontSize: 10, lineHeight: 1.55, marginBottom: 12 }}><b style={{ color: "#d1d5db" }}>Partial data:</b> {partialHistoryClubs.map((entry) => entry.clubName).join(", ")} {partialHistoryClubs.length === 1 ? "is" : "are"} shown in the table, but forecast and health judgments are withheld because fewer than 70% of current members have near-full-month history in that club. This avoids treating recent transfers or a newly added club as poor performance.</div>)}
+
+                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1020 }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Global Monthly Rank</th><th style={S.th}>Club / Quota Tier</th><th style={S.th}>Goal Progress</th><th style={S.th}>Month-End Outlook</th><th style={S.th}>Members On Pace</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
+                  {rankedNetworkClubs.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No club ranking data is available yet.</td></tr>) : rankedNetworkClubs.map((entry) => {
+                    const outlook = getClubOutlookMeta(entry);
+                    const progressRatio = entry.clubTarget > 0 ? entry.totalMonthly / entry.clubTarget : 0;
+                    return (<tr key={`club-rank-${entry.id}`}>
                       <td style={S.td}>{entry.currentMonthlyRank != null ? <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : <span style={{ color: "#6b7280" }}>—</span>}</td>
-                      <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 800 }}>{entry.clubName}</td>
-                      <td style={S.td}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /></td>
-                      <td style={{ ...S.td, color: gainColor(entry.totalMonthly), fontWeight: 700 }}>{hasComparisonData ? fmtSigned(entry.totalMonthly) : "—"}</td>
-                      <td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{hasComparisonData ? fmt(entry.totalProjected) : "—"}</td>
-                      <td style={S.td}>{hasComparisonData ? <HealthBadge grade={entry.health.grade} /> : <span style={{ color: "#6b7280" }}>—</span>}</td>
+                      <td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span style={{ color: "#e2e0f0", fontWeight: 800 }}>{entry.clubName}</span></div><div style={{ color: "#6b7280", fontSize: 9 }}>{entry.tier} quota · {fmt(entry.target)} per member</div></td>
+                      <td style={S.td}><div style={{ color: entry.hasReliableHistory ? gainColor(entry.totalMonthly) : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div><div style={{ width: 130, margin: "6px 0 4px" }}><ProgressBar pct={progressRatio * 100} color={entry.hasReliableHistory ? (progressRatio >= (today / dim) ? "#34d399" : "#f59e0b") : "#6b7280"} height={5} /></div><div style={{ color: "#6b7280", fontSize: 9 }}>{hasComparisonData ? `${Math.round(progressRatio * 100)}% of ${fmt(entry.clubTarget)}` : noComparisonLabel}</div></td>
+                      <td style={S.td}><div style={{ display: "inline-flex", background: outlook.bg, border: `1px solid ${outlook.border}`, color: outlook.color, borderRadius: 999, padding: "4px 7px", fontSize: 9, fontWeight: 900, marginBottom: 5 }}>{outlook.label}</div><div style={{ color: entry.hasReliableHistory ? "#c4b5fd" : "#6b7280", fontWeight: 800 }}>{entry.hasReliableHistory ? fmt(entry.totalProjected) : "Forecast withheld"}</div><div style={{ color: "#6b7280", fontSize: 9, marginTop: 2 }}>{entry.hasReliableHistory ? `${Math.round(entry.projectedRatio * 100)}% of quota` : `${entry.historyEligibleMembers}/${entry.activeMembers} members have usable history`}</div></td>
+                      <td style={S.td}><div style={{ color: entry.hasReliableHistory ? "#34d399" : "#9ca3af", fontWeight: 900 }}>{entry.hasReliableHistory ? `${entry.statusCounts["on-track"]}/${entry.activeMembers}` : "—"}</div><div style={{ color: "#6b7280", fontSize: 9, marginTop: 3 }}>{entry.hasReliableHistory ? `${Math.round(entry.pctOnTrack * 100)}% currently on pace` : "Not scored on partial data"}</div></td>
+                      <td style={S.td}>{entry.hasReliableHistory ? <><HealthBadge grade={entry.health.grade} /><div style={{ color: entry.health.color, fontSize: 9, fontWeight: 800, marginTop: 4 }}>{entry.health.score}/100</div></> : <span style={{ color: "#6b7280", fontSize: 10 }}>Not scored</span>}</td>
                       <td style={S.td}><a href={`./club.html?id=${encodeURIComponent(entry.id)}${archiveMonth ? `&month=${encodeURIComponent(archiveMonth)}` : ""}`} style={{ ...S.btn(false, entry.clubColor), display: "inline-flex", textDecoration: "none" }}>Open →</a></td>
-                    </tr>
-                  ))}
+                    </tr>);
+                  })}
                 </tbody></table></div>
               </div>)}
 
@@ -2709,17 +2766,42 @@ const { useState, useEffect, useRef } = React;
                 )}
               </div>)}
               {rankingsTab === "home" && (<>
+              <div id="rankings-network-summary" style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div><div style={S.h2}>Network Ranking Pulse</div><div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.6, maxWidth: 760 }}>Use this page to answer four questions quickly: how many clubs are on pace, who is leading, which direction ranks are moving, and where officer attention is most useful.</div></div>
+                  <div style={{ background: "#17152a", border: "1px solid #2a2540", borderRadius: 999, padding: "7px 10px", color: "#c4b5fd", fontSize: 10, fontWeight: 800 }}>Through Day {today}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 9, marginBottom: 13 }}>
+                  {[
+                    { label: "Forecast coverage", value: `${forecastReadyClubs.length}/${loadedClubCount}`, sub: partialHistoryClubs.length ? `${partialHistoryClubs.length} partial-data club${partialHistoryClubs.length === 1 ? "" : "s"} excluded` : "All loaded clubs are forecast-ready", color: partialHistoryClubs.length ? "#fbbf24" : "#34d399" },
+                    { label: "Projected to goal", value: `${clubsProjectedToGoal.length}/${forecastReadyClubs.length}`, sub: "Forecast-ready clubs at 100%+", color: clubsProjectedToGoal.length === forecastReadyClubs.length && forecastReadyClubs.length ? "#34d399" : "#60a5fa" },
+                    { label: "Ahead of elapsed plan", value: `${clubsAheadOfPlan.length}/${forecastReadyClubs.length}`, sub: `Actual gain compared with Day ${today} target`, color: "#2dd4bf" },
+                    { label: "Network month-end outlook", value: forecastReadyClubs.length ? `${Math.round(networkProjectedRatio * 100)}%` : "—", sub: forecastReadyClubs.length ? `${fmt(networkProjectedTotal)} projected vs ${fmt(networkClubTargetTotal)} quota` : "No reliable forecast yet", color: networkProjectedRatio >= 1 ? "#34d399" : networkProjectedRatio >= 0.9 ? "#fbbf24" : "#f87171" },
+                  ].map((item) => (<div key={item.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 11, padding: "11px 13px" }}><div style={{ color: "#6b7280", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{item.label}</div><div style={{ color: item.color, fontSize: 20, fontWeight: 900 }}>{item.value}</div><div style={{ color: "#8f88b8", fontSize: 10, lineHeight: 1.45, marginTop: 3 }}>{item.sub}</div></div>))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(235px, 1fr))", gap: 9 }}>
+                  {[
+                    { label: "Current global leader", value: bestRankedClub ? `${bestRankedClub.clubName} · #${bestRankedClub.currentMonthlyRank}` : "No global rank available", detail: bestRankedClub ? `${bestRankedClub.rankDelta > 0 ? `Gained ${bestRankedClub.rankDelta} places` : bestRankedClub.rankDelta < 0 ? `Lost ${Math.abs(bestRankedClub.rankDelta)} places` : "No rank change today"}.` : "Rank history has not loaded.", color: "#fbbf24" },
+                    { label: "Strongest quota outlook", value: strongestOutlookClub ? `${strongestOutlookClub.clubName} · ${Math.round(strongestOutlookClub.projectedRatio * 100)}%` : "No reliable forecast", detail: strongestOutlookClub ? `${fmt(strongestOutlookClub.totalProjected)} projected against a ${fmt(strongestOutlookClub.clubTarget)} club quota.` : "Wait for sufficient current-club history.", color: "#a78bfa" },
+                    { label: "Biggest positive rank move", value: strongestRankMover ? `${strongestRankMover.clubName} · +${strongestRankMover.rankDelta}` : "No upward move today", detail: strongestRankMover ? `A positive number means ${strongestRankMover.rankDelta} global places gained since the prior displayed day.` : "No club gained a global position in the latest comparison.", color: "#34d399" },
+                    { label: "Needs the closest look", value: weakestOutlookClub ? `${weakestOutlookClub.clubName} · ${Math.round(weakestOutlookClub.projectedRatio * 100)}%` : "No reliable forecast", detail: weakestOutlookClub ? `${clubsAtRisk.length} forecast-ready club${clubsAtRisk.length === 1 ? " is" : "s are"} below 90% of quota.${largestRankDrop ? ` ${largestRankDrop.clubName} also lost ${Math.abs(largestRankDrop.rankDelta)} rank places.` : ""}` : "Partial-data clubs are not labeled at risk.", color: clubsAtRisk.length ? "#f87171" : "#60a5fa" },
+                  ].map((item) => (<div key={item.label} style={{ background: "#0c0b18", border: `1px solid ${item.color}33`, borderRadius: 11, padding: "11px 13px" }}><div style={{ color: item.color, fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{item.label}</div><div style={{ color: "#e2e0f0", fontSize: 13, fontWeight: 900, marginBottom: 3 }}>{item.value}</div><div style={{ color: "#8f88b8", fontSize: 10, lineHeight: 1.5 }}>{item.detail}</div></div>))}
+                </div>
+                {partialHistoryClubs.length > 0 && (<div style={{ marginTop: 12, color: "#9ca3af", fontSize: 10, lineHeight: 1.55 }}><b style={{ color: "#d1d5db" }}>Data-quality note:</b> {partialHistoryClubs.map((entry) => entry.clubName).join(", ")} {partialHistoryClubs.length === 1 ? "is" : "are"} still visible in rank history, but excluded from pace forecasts and risk labels until at least 70% of the current roster has near-full-month history in that club.</div>)}
+              </div>
               <div id="network-pace-chart" style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace. Hover a day to see each club's fan gain totals and % of target.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
-                <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace — Progress Toward Each Club’s Quota</div><div style={{ color: "#8f88b8", fontSize: 12, marginTop: 4, lineHeight: 1.55 }}>In Cumulative view, a club above the dashed line is ahead of the ideal elapsed-month pace. Daily Gain shows which clubs accelerated or slowed on a specific day. Hover any day for exact values.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
+                {strongestOutlookClub && (<div style={{ background: "rgba(124,58,237,0.10)", border: "1px solid #7c3aed33", borderRadius: 9, padding: "8px 10px", color: "#c7c4dd", fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}><b style={{ color: "#c4b5fd" }}>At a glance:</b> {strongestOutlookClub.clubName} has the strongest forecast at {Math.round(strongestOutlookClub.projectedRatio * 100)}% of quota{weakestOutlookClub && weakestOutlookClub.id !== strongestOutlookClub.id ? `; ${weakestOutlookClub.clubName} has the lowest forecast-ready outlook at ${Math.round(weakestOutlookClub.projectedRatio * 100)}%.` : "."}</div>)}
+                {forecastReadyClubs.length ? <NetworkPaceChart clubs={forecastReadyClubs} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} /> : <div style={{ color: "#6b7280", fontSize: 12, padding: "24px 8px", textAlign: "center" }}>No club currently has enough current-roster history for a reliable pace comparison.</div>}
               </div>
               <div id="club-rank-history" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                   <div>
-                    <div style={S.h2}>Club Rank History</div>
-                    <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Daily monthly_rank for each club. Lower rank = better. Tier icons mark boundaries on the y-axis.</div>
+                    <div style={S.h2}>Global Rank History — Direction and Position</div>
+                    <div style={{ color: "#8f88b8", fontSize: 12, marginTop: 4, lineHeight: 1.55 }}>Lower rank numbers are better. Follow a club from left to right to see whether it gained or lost global positions; tier icons mark major rank boundaries.</div>
                   </div>
                 </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><span style={{ background: "#34d39918", border: "1px solid #34d39944", color: "#34d399", borderRadius: 999, padding: "5px 8px", fontSize: 9, fontWeight: 800 }}>{strongestRankMover ? `${strongestRankMover.clubName}: +${strongestRankMover.rankDelta} places` : "No club gained places today"}</span><span style={{ background: "#f8717118", border: "1px solid #f8717144", color: "#f87171", borderRadius: 999, padding: "5px 8px", fontSize: 9, fontWeight: 800 }}>{largestRankDrop ? `${largestRankDrop.clubName}: ${largestRankDrop.rankDelta} places` : "No club lost places today"}</span></div>
                 <NetworkRankChart clubs={networkClubs} dim={dim} effectiveGameDayKey={effectiveGameDayKey} rankHistory={rankHistory} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
               </div>
               </>)}

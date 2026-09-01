@@ -757,10 +757,17 @@
         const supportableLowerTier = lowerTiers.find((entry) => projected >= entry.target * 0.85)
           || lowerTiers[lowerTiers.length - 1]
           || null;
+        const higherTiers = currentTierIndex > 0 ? tierTargets.slice(0, currentTierIndex) : [];
+        const supportableHigherTier = [...higherTiers].reverse()
+          .find((entry) => projectedRatio >= 1.25 && projected >= entry.target * 1.05)
+          || null;
 
         let category = "keep";
         let suggestedTier = snapshot.tier;
-        if (projectedRatio >= 1) {
+        if (supportableHigherTier && trend !== "falling") {
+          category = "promote";
+          suggestedTier = supportableHigherTier.tier;
+        } else if (projectedRatio >= 1) {
           category = "keep";
         } else if (projectedRatio < 0.75 || (idleDays >= 3 && projectedRatio < 0.88)) {
           category = "move-down";
@@ -780,6 +787,7 @@
           : "No usable prior-month record was found, so this relies on the current month only.";
         let commentary = `Projected to finish at ${currentPercent}% of the current ${snapshot.tier} quota; recent pace is ${trend}. ${historySentence}`;
         let action = "Keep the current placement and recheck if pace changes materially.";
+        if (category === "promote") action = `Review a move to ${suggestedTier}; the projection reaches at least 125% of the current quota, clears the next tier's quota by 5%, and recent pace is not falling.`;
         if (category === "move-down") action = suggestedTier === "Roster review"
           ? "Review roster fit directly; the data does not support an automatic removal decision."
           : `Review a move to ${suggestedTier}, where the projected pace is a closer match.`;
@@ -811,17 +819,18 @@
       });
     });
 
-    const categoryPriority = { "move-down": 0, "watch": 1, "keep": 2 };
+    const categoryPriority = { promote: 0, "move-down": 1, "watch": 2, "keep": 3 };
     recommendations.sort((a, b) => {
       const categoryDifference = categoryPriority[a.category] - categoryPriority[b.category];
       if (categoryDifference) return categoryDifference;
+      if (a.category === "promote") return b.projectedRatio - a.projectedRatio;
       if (a.category === "move-down" || a.category === "watch") return a.projectedRatio - b.projectedRatio;
       return b.projectedRatio - a.projectedRatio;
     });
     const counts = recommendations.reduce((result, recommendation) => {
       result[recommendation.category] = (result[recommendation.category] || 0) + 1;
       return result;
-    }, { "move-down": 0, watch: 0, keep: 0 });
+    }, { promote: 0, "move-down": 0, watch: 0, keep: 0 });
     eligibility.excludedTotal = eligibility.excludedInactive
       + eligibility.excludedNoCurrentMonthHistory
       + eligibility.excludedPartialMonth;
