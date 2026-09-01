@@ -309,7 +309,10 @@
 
     @media (max-width: 700px) {
       .insights-donut-grid,
-      .insights-day-control { grid-template-columns: 1fr !important; }
+      .insights-day-control,
+      .insights-transfer-grid { grid-template-columns: 1fr !important; }
+      .insights-dot-row { grid-template-columns: 76px minmax(110px, 1fr) 40px !important; }
+      .insights-dot-axis { margin-left: 84px !important; margin-right: 46px !important; }
     }
 
     /* ── Mobile polish ──────────────────────────────────────────── */
