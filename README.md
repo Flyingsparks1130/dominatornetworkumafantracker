@@ -7,7 +7,9 @@ A static GitHub Pages tracker for the Dominator Network. The frontend reads the 
 - `index.html` — navigation home with network-wide statistics
 - `clubs.html?id=<club-id>` — club directory with an in-page high-level club summary
 - `club.html?id=<club-id>` — reusable individual-club Overview, Members, and Pace dashboard
-- `rankings.html` — club rankings, individual rankings, and network performance insights
+- `rankings.html` — Rankings Home with the network pace chart and club rank history
+- `rankings.html?section=clubs` — club rankings, top-five players by club, network critical members, and club health scores
+- `rankings.html?section=individual` — individual member rankings (top 25 initially, expandable 10 at a time)
 - `archives.html` — reserved Deeper Insights page
 - `assets/css/app.css` — shared styling
 - `assets/js/app.jsx` — shared React application
@@ -57,3 +59,9 @@ Then open `http://localhost:8000/`.
 ## Data architecture
 
 The retired uma.moe/Playwright updater, root UMA JSON, and separate UMA rank-history files have been removed. The frontend now reads only Chronogenesis current and archive data.
+
+## Frontend behavior notes
+
+- Club Detail overview sparklines stop at the current Chronogenesis day, so future zero-filled days are not drawn.
+- Switching clubs on `club.html` preserves the selected Overview, Members, or Pace tab.
+- The individual rankings list starts at 25 members, expands by 10, and can collapse back to the top 25 after the full list is shown.

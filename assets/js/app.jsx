@@ -3,6 +3,8 @@ const { useState, useEffect, useRef } = React;
     const DATA_SOURCE = "chronogenesis";
     const FRONTEND_CONFIG_PATHS = ["./config/frontend.json", "/config/frontend.json"];
     const PAGE_MODE = document.body?.dataset?.page || "home";
+    const RANKINGS_MEMBER_DEFAULT_COUNT = 25;
+    const RANKINGS_MEMBER_PAGE_SIZE = 10;
     let CURRENT_CLUBS = [];
 
     function applyTierTargets(config) {
@@ -899,8 +901,27 @@ const { useState, useEffect, useRef } = React;
       return (<span style={{ color, fontWeight: 700 }}>{days}d</span>);
     }
 
-    function Sparkline({ data = [], width = 90, height = 26, color = "#7c3aed" }) {
-      const vals = data.filter((v) => v > 0);
+    function getVisibleCumulativeSparklineValues(data = [], visibleDayCount = null) {
+      const dayCount = Number.isFinite(visibleDayCount) ? Math.max(0, Math.floor(visibleDayCount)) : data.length;
+      const boundedValues = data.slice(0, dayCount);
+      const values = [];
+      let lastKnownValue = null;
+
+      boundedValues.forEach((rawValue) => {
+        const value = Number(rawValue);
+        if (Number.isFinite(value) && value > 0) {
+          lastKnownValue = lastKnownValue == null ? value : Math.max(lastKnownValue, value);
+          values.push(lastKnownValue);
+        } else if (lastKnownValue != null) {
+          values.push(lastKnownValue);
+        }
+      });
+
+      return values;
+    }
+
+    function Sparkline({ data = [], visibleDayCount = null, width = 90, height = 26, color = "#7c3aed" }) {
+      const vals = getVisibleCumulativeSparklineValues(data, visibleDayCount);
       if (vals.length < 2) return <span style={{ color: "#4b5563", fontSize: 10 }}>—</span>;
       const min = Math.min(...vals); const max = Math.max(...vals); const range = max - min || 1; const step = width / (vals.length - 1);
       const pts = vals.map((v, i) => `${i * step},${height - ((v - min) / range) * (height - 4) - 2}`).join(" ");
@@ -1197,11 +1218,13 @@ const { useState, useEffect, useRef } = React;
     function getInitialRouteState() {
       const params = new URLSearchParams(window.location.search);
       const requestedClubId = params.get("id");
+      const requestedRankingsSection = params.get("section");
       const activeIndex = requestedClubId ? CURRENT_CLUBS.findIndex((club) => String(club.id) === requestedClubId) : 0;
       return {
         view: PAGE_MODE === "club" ? "club" : "home",
         archiveMonth: params.get("month") || "",
         activeIndex: activeIndex >= 0 ? activeIndex : 0,
+        rankingsTab: ["clubs", "individual"].includes(requestedRankingsSection) ? requestedRankingsSection : "home",
       };
     }
 
@@ -1230,6 +1253,8 @@ const { useState, useEffect, useRef } = React;
       const [networkChartMode, setNetworkChartMode] = useState("cumulative");
       const [paceExporting, setPaceExporting] = useState(false);
       const [topNetworkMode, setTopNetworkMode] = useState("daily");
+      const [rankingsTab, setRankingsTab] = useState(initialRoute.rankingsTab);
+      const [networkMemberVisibleCount, setNetworkMemberVisibleCount] = useState(RANKINGS_MEMBER_DEFAULT_COUNT);
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
       const [criticalVisibleCount, setCriticalVisibleCount] = useState(10);
@@ -1451,6 +1476,7 @@ const { useState, useEffect, useRef } = React;
 
       useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true); }, [activeIdx, archiveMonth]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
+      useEffect(() => { setNetworkMemberVisibleCount(RANKINGS_MEMBER_DEFAULT_COUNT); }, [topNetworkMode]);
       useEffect(() => { setPaceHiddenMembers({}); setOverviewStatusFilter(""); setPaceZoom(1); setPacePinnedIdx(null); }, [cid]);
       useEffect(() => { if (!hasComparisonData) { setOverviewStatusFilter(""); setMemberFilters((prev) => (prev.status ? { ...prev, status: "" } : prev)); } }, [hasComparisonData, cid]);
 
@@ -1593,6 +1619,9 @@ const { useState, useEffect, useRef } = React;
       }).sort((a, b) => { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const projectedDiff = (b.projected ?? Number.NEGATIVE_INFINITY) - (a.projected ?? Number.NEGATIVE_INFINITY); if (projectedDiff !== 0) return projectedDiff; return (a.name || "").localeCompare(b.name || ""); });
 
       const topNetworkUsers = hasComparisonData ? [...networkMembers].sort((a, b) => { if (topNetworkMode === "monthly") { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; } else { const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; } return (a.name || "").localeCompare(b.name || ""); }) : [];
+      const visibleNetworkUsers = topNetworkUsers.slice(0, networkMemberVisibleCount);
+      const remainingNetworkUserCount = Math.max(0, topNetworkUsers.length - visibleNetworkUsers.length);
+      const hiddenOnNetworkResetCount = Math.max(0, topNetworkUsers.length - RANKINGS_MEMBER_DEFAULT_COUNT);
       const rankedNetworkClubs = [...networkClubs]
         .filter((entry) => entry.id && entry.hasData)
         .sort((a, b) => {
@@ -2115,6 +2144,17 @@ const { useState, useEffect, useRef } = React;
         window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
       }
 
+      function selectRankingsTab(nextTab) {
+        if (!["home", "clubs", "individual"].includes(nextTab)) return;
+        setRankingsTab(nextTab);
+        setNetworkMemberVisibleCount(RANKINGS_MEMBER_DEFAULT_COUNT);
+        const params = new URLSearchParams(window.location.search);
+        if (nextTab === "home") params.delete("section");
+        else params.set("section", nextTab);
+        const query = params.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+      }
+
       function openClub(index) {
         const selectedClub = viewClubs[index];
         if (!selectedClub?.id) return;
@@ -2126,7 +2166,6 @@ const { useState, useEffect, useRef } = React;
         }
         setActiveIdx(index);
         setErr("");
-        setTab("dashboard");
         setView("club");
         const params = new URLSearchParams({ id: String(selectedClub.id) });
         if (archiveMonth) params.set("month", archiveMonth);
@@ -2470,10 +2509,26 @@ const { useState, useEffect, useRef } = React;
               <div style={S.card}>
                 <div style={S.h2}>Network Rankings</div>
                 <div style={{ color: "#e2e0f0", fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Club and Individual Ranking Insights</div>
-                <div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.6 }}>All ranking-oriented views now live here: current club positions, rank history, member leaderboards, health, pace, critical members, and movement candidates.</div>
+                <div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.6 }}>Choose a focused view for network trends, club-level comparisons, or individual member rankings.</div>
               </div>
 
-              <div style={S.card}>
+              <div className="tab-dock" aria-label="Ranking sections">
+                {[
+                  ["home", "🏠 Rankings Home"],
+                  ["clubs", "🏇 Club Rankings"],
+                  ["individual", "👤 Individual Rankings"],
+                ].map(([sectionKey, label]) => (
+                  <button
+                    key={sectionKey}
+                    style={S.btn(rankingsTab === sectionKey, rankingsTab === sectionKey ? "#7c3aed" : undefined)}
+                    onClick={() => selectRankingsTab(sectionKey)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {rankingsTab === "clubs" && (<div id="club-rankings-section" style={S.card}>
                 <div style={S.h2}>Club Rankings</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Current monthly rank for every loaded club, ordered from best rank to lowest.</div>
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Monthly Rank</th><th style={S.th}>Club</th><th style={S.th}>Network Tier</th><th style={S.th}>Monthly Gain</th><th style={S.th}>Projected</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
@@ -2489,11 +2544,12 @@ const { useState, useEffect, useRef } = React;
                     </tr>
                   ))}
                 </tbody></table></div>
-              </div>
+              </div>)}
 
-              <div style={S.card}>
+              {rankingsTab === "individual" && (<div id="individual-member-rankings" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Individual Member Rankings</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 6 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
+                {hasComparisonData && topNetworkUsers.length > 0 && (<div style={{ color: "#8f88b8", fontSize: 11, marginBottom: 12 }}>Showing the top {visibleNetworkUsers.length} of {topNetworkUsers.length} members.</div>)}
                 {hasComparisonData && topNetworkUsers.length > 0 && (
                   <div className="podium">
                     {topNetworkUsers.slice(0, 3).map((member, index) => {
@@ -2513,12 +2569,28 @@ const { useState, useEffect, useRef } = React;
                 )}
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Total Fans</th></tr></thead><tbody>
                   {!hasComparisonData ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>Load club JSON files to populate the network leaderboard.</td></tr>) : (
-                    topNetworkUsers.slice(3).map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
+                    visibleNetworkUsers.slice(3).map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
                   )}
                 </tbody></table></div>
-              </div>
+                {topNetworkUsers.length > RANKINGS_MEMBER_DEFAULT_COUNT && (
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                    {remainingNetworkUserCount > 0 ? (
+                      <button
+                        style={S.btn(false, "#7c3aed")}
+                        onClick={() => setNetworkMemberVisibleCount((previousCount) => Math.min(topNetworkUsers.length, previousCount + RANKINGS_MEMBER_PAGE_SIZE))}
+                      >
+                        Show next {Math.min(RANKINGS_MEMBER_PAGE_SIZE, remainingNetworkUserCount)} members
+                      </button>
+                    ) : (
+                      <button style={S.btn(false, "#7c3aed")} onClick={() => setNetworkMemberVisibleCount(RANKINGS_MEMBER_DEFAULT_COUNT)}>
+                        Hide {hiddenOnNetworkResetCount} members
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>)}
 
-              <div style={S.card}>
+              {rankingsTab === "clubs" && (<div id="top-five-by-club" style={S.card}>
                 <div style={S.h2}>Top Five Players by Club</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Top five monthly fan gainers in each loaded club, with daily gain for quick comparison.</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
@@ -2540,9 +2612,9 @@ const { useState, useEffect, useRef } = React;
                     );
                   })}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={S.card}>
+              {rankingsTab === "clubs" && (<div id="network-critical-members" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Network Critical Members</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(criticalClubFilter === "all", "#7c3aed")} onClick={() => setCriticalClubFilter("all")}>All Clubs</button>{criticalClubOptions.map((cn) => (<button key={cn} style={S.btn(criticalClubFilter === cn, "#7c3aed")} onClick={() => setCriticalClubFilter(cn)}>{cn}</button>))}</div></div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Members currently in critical status across all loaded clubs. All metrics reflect data through {dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.</div>
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("planDelta")}>Vs Weekly Plan {criticalSortLabel("planDelta")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("rolling3DayAvg")}>3-Day Avg {criticalSortLabel("rolling3DayAvg")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("projected")}>Projected Fans {criticalSortLabel("projected")}</th><th style={{ ...S.th, cursor: "pointer" }} onClick={() => toggleCriticalSort("fansNeeded")}>Needed for Month-End Plan {criticalSortLabel("fansNeeded")}</th><th style={S.th}>Idle</th></tr></thead><tbody>
@@ -2551,11 +2623,11 @@ const { useState, useEffect, useRef } = React;
                   )}
                 </tbody></table></div>
                 {hasComparisonData && remainingCriticalCount > 0 && (<div style={{ position: "sticky", bottom: 0, paddingTop: 12, marginTop: -6, background: "linear-gradient(to bottom, rgba(10,9,18,0), rgba(10,9,18,0.96) 45%, rgba(10,9,18,1) 100%)", display: "flex", justifyContent: "center" }}><button style={S.btn(false, "#7c3aed")} onClick={() => setCriticalVisibleCount((prev) => prev + 10)}>Show {Math.min(10, remainingCriticalCount)} More</button></div>)}
-              </div>
+              </div>)}
             </>)}
 
             {PAGE_MODE === "rankings" && (<>
-              <div style={S.card}>
+              {rankingsTab === "clubs" && (<div id="club-health-scores" style={S.card}>
                 <div style={S.h2}>Club Health Scores</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
                 {!hasComparisonData ? (<div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "14px 16px", color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : (
@@ -2607,12 +2679,13 @@ const { useState, useEffect, useRef } = React;
                     ))}
                   </div>
                 )}
-              </div>
-              <div style={S.card}>
+              </div>)}
+              {rankingsTab === "home" && (<>
+              <div id="network-pace-chart" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace Chart — Club Progress vs Target (%)</div><div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>Each club's aggregate monthly gain as % of their total target. Dashed line = ideal pace. Hover a day to see each club's fan gain totals and % of target.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
                 <NetworkPaceChart clubs={networkClubs.filter((e) => e.hasData)} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} />
               </div>
-              <div style={S.card}>
+              <div id="club-rank-history" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                   <div>
                     <div style={S.h2}>Club Rank History</div>
@@ -2621,18 +2694,7 @@ const { useState, useEffect, useRef } = React;
                 </div>
                 <NetworkRankChart clubs={networkClubs} dim={dim} effectiveGameDayKey={effectiveGameDayKey} rankHistory={rankHistory} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
               </div>
-              <div style={S.card}>
-                <div style={S.h2}>Member Transfer Helper</div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Underperformers in S+ - B+ tiers (demotion candidates) and overperformers in S - B+ tiers (promotion candidates).</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #f8717133", borderRadius: 12, padding: "14px" }}><div style={{ color: "#f87171", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬇ Demotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers, critical or stagnant)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.demotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Vs Plan</th><th style={S.th}>Idle</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.demotionCandidates.slice(0, demotionVisibleCount).map((m, i) => (<tr key={`dem-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{deltaText(m.plan.delta)}</td><td style={S.td}><StagnantBadge days={m.stagnantDays} /></td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}>{m.expectedClubTier === "Remove" ? (<span style={{ color: "#f87171", fontWeight: 800 }}>Remove</span>) : (<div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div>)}</td></tr>))}</tbody></table></div>)}
-                    {transferCandidates.demotionCandidates.length > demotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setDemotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.demotionCandidates.length - demotionVisibleCount)} More</button></div>)}
-                  </div>
-                  <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #34d39933", borderRadius: 12, padding: "14px" }}><div style={{ color: "#34d399", fontWeight: 800, fontSize: 13, marginBottom: 10 }}>⬆ Promotion Candidates <span style={{ color: "#6b7280", fontWeight: 400, fontSize: 11 }}>(All tiers except S+, exceeding 120% target)</span></div>{!hasComparisonData ? (<div style={{ color: "#6b7280", fontSize: 12 }}>{noComparisonLabel}</div>) : transferCandidates.promotionCandidates.length === 0 ? (<div style={{ color: "#6b7280", fontSize: 12 }}>None found.</div>) : (<div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={S.th}>Member</th><th style={S.th}>Club</th><th style={S.th}>Monthly</th><th style={S.th}>% of Target</th><th style={S.th}>Projected Monthly Total</th><th style={S.th}>Move To</th></tr></thead><tbody>{transferCandidates.promotionCandidates.slice(0, promotionVisibleCount).map((m, i) => { const pct = m.clubTarget > 0 ? ((m.monthlyGain ?? 0) / m.clubTarget * 100).toFixed(0) : 0; return (<tr key={`pro-${i}`}><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{m.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.clubName}</div></td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtSigned(m.monthlyGain ?? 0)}</td><td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{pct}%</td><td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{fmt(m.projected ?? 0)}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><TierBadge tier={m.expectedClubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />{m.expectedClubTier}</div></td></tr>); })}</tbody></table></div>)}
-                    {transferCandidates.promotionCandidates.length > promotionVisibleCount && (<div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><button style={S.btn(false, "#7c3aed")} onClick={() => setPromotionVisibleCount((p) => p + 10)}>Show {Math.min(10, transferCandidates.promotionCandidates.length - promotionVisibleCount)} More</button></div>)}
-                  </div>
-                </div>
-              </div>
+              </>)}
             </>)}
 
             {PAGE_MODE === "archives" && (
@@ -2707,7 +2769,7 @@ const { useState, useEffect, useRef } = React;
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Target Progress</div><div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{monthPct.toFixed(1)}%</div></div>
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Still Needed</div><div style={{ color: "#e2e0f0", fontWeight: 700, fontSize: 14 }}>{fmt(stillNeed)}</div></div>
                           <div><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Vs Weekly Plan</div><div style={{ color: progressColor, fontWeight: 700, fontSize: 14 }}>{displayPlanDeltaText(member.plan.delta)}</div></div>
-                          <div style={{ justifySelf: "end" }}><Sparkline data={member.cumulativeSeries || member.dailyFans || []} color={statusMeta.color} /></div>
+                          <div style={{ justifySelf: "end" }}><Sparkline data={member.cumulativeSeries || member.dailyFans || []} visibleDayCount={today} color={statusMeta.color} /></div>
                         </div>
                       </div>
                     ); })}
