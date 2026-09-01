@@ -175,41 +175,35 @@
   }
 
   function TransferHelper({ transferData, snapshots, analysisDay }) {
-    const [categoryFilter, setCategoryFilter] = useState("transfer-review");
+    const [categoryFilter, setCategoryFilter] = useState("move-down");
     const [clubFilter, setClubFilter] = useState("all");
     const [visibleCount, setVisibleCount] = useState(12);
     useEffect(() => { setVisibleCount(12); }, [categoryFilter, clubFilter, analysisDay]);
     if (!transferData?.ready) return <EmptyState title="Transfer recommendations are not ready" detail={transferData?.reason || "More daily history is required."} />;
 
     const CATEGORY = {
-      promote: { label: "Promotion review", color: "#34d399", icon: "↑" },
       "move-down": { label: "Lower-tier review", color: "#f87171", icon: "↓" },
-      watch: { label: "Watch and coach", color: "#fbbf24", icon: "!" },
+      watch: { label: "Monitor", color: "#fbbf24", icon: "!" },
       keep: { label: "Current tier looks suitable", color: "#60a5fa", icon: "✓" },
     };
-    const matchesCategory = (item) => categoryFilter === "all"
-      || (categoryFilter === "transfer-review" ? ["promote", "move-down"].includes(item.category) : item.category === categoryFilter);
+    const matchesCategory = (item) => categoryFilter === "all" || item.category === categoryFilter;
     const filtered = transferData.recommendations.filter((item) => matchesCategory(item) && (clubFilter === "all" || item.clubId === clubFilter));
     const visible = filtered.slice(0, visibleCount);
     const eligibility = transferData.eligibility || {};
-    const reviewCount = transferData.counts.promote + transferData.counts["move-down"];
-    const strongestPromotion = transferData.recommendations.find((item) => item.category === "promote");
+    const reviewCount = transferData.counts["move-down"];
     const mostUrgentReview = transferData.recommendations.find((item) => item.category === "move-down");
     const headline = reviewCount
-      ? `${reviewCount} members cross a transfer-review threshold, ${transferData.counts.watch} belong on a coaching watchlist, and ${transferData.counts.keep} currently look aligned with their tier.`
-      : `No member currently crosses a transfer-review threshold; ${transferData.counts.watch} belong on a coaching watchlist and ${transferData.counts.keep} look aligned with their tier.`;
+      ? `${reviewCount} members cross a transfer-review threshold, ${transferData.counts.watch} should be monitored, and ${transferData.counts.keep} currently look aligned with their tier.`
+      : `No member currently crosses a transfer-review threshold; ${transferData.counts.watch} should be monitored and ${transferData.counts.keep} look aligned with their tier.`;
     const actionSummary = mostUrgentReview
-      ? `Start with ${mostUrgentReview.name} in ${mostUrgentReview.clubName}, then review promotion opportunities${strongestPromotion ? ` such as ${strongestPromotion.name}` : ""}. Do not move anyone from this screen alone.`
-      : strongestPromotion
-        ? `Start with promotion cases such as ${strongestPromotion.name}. Confirm roster space, member preference, and officer context first.`
-        : "Use the watchlist for coaching conversations and wait for more daily evidence before changing placement.";
+      ? `Start with ${mostUrgentReview.name} in ${mostUrgentReview.clubName}. Do not move anyone from this screen alone.`
+      : "Monitor the flagged members and wait for more daily evidence before changing placement.";
 
     return <div>
       <ExplanationBox headline="A decision-support list—not an automatic transfer list" meaning={headline} action={actionSummary} color="#a78bfa" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 9, marginBottom: 14 }}>
-        <MetricCard label="Promotion reviews" value={transferData.counts.promote} sub="Pace supports a higher quota" color="#34d399" />
         <MetricCard label="Lower-tier reviews" value={transferData.counts["move-down"]} sub="Current quota appears mismatched" color="#f87171" />
-        <MetricCard label="Watch and coach" value={transferData.counts.watch} sub="Talk first; collect more evidence" color="#fbbf24" />
+        <MetricCard label="Monitor" value={transferData.counts.watch} sub="Below goal; collect more evidence" color="#fbbf24" />
         <MetricCard label="Current tier suitable" value={transferData.counts.keep} sub="No move suggested now" color="#60a5fa" />
       </div>
       <div style={{ ...PANEL, marginBottom: 14, borderColor: "#2dd4bf44", background: "rgba(13,45,48,0.24)" }}>
@@ -224,7 +218,7 @@
           <div><div style={{ color: "#e2e0f0", fontSize: 15, fontWeight: 900 }}>Member Transfer Helper</div><div style={MUTED}>Uses projected individual pace, the quota for the member’s current tier, recent direction, idle days, and up to three prior archived months. Analysis is through Day {analysisDay}.</div></div>
           <select value={clubFilter} onChange={(event) => setClubFilter(event.target.value)} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 10 }}><option value="all">All clubs</option>{snapshots.map((snapshot) => <option key={snapshot.clubId} value={snapshot.clubId}>{snapshot.clubName}</option>)}</select>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[["transfer-review", "Transfer reviews"], ["promote", "Promotion"], ["move-down", "Lower tier"], ["watch", "Watch & coach"], ["keep", "Keep"], ["all", "All evaluated members"]].map(([key, label]) => <button key={key} onClick={() => setCategoryFilter(key)} style={{ background: categoryFilter === key ? "#7c3aed" : "#17152a", border: `1px solid ${categoryFilter === key ? "#8b5cf6" : "#2a2540"}`, color: categoryFilter === key ? "#fff" : "#9ca3af", borderRadius: 8, padding: "6px 9px", fontSize: 9, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[["move-down", "Lower tier"], ["watch", "Monitor"], ["keep", "Keep"], ["all", "All evaluated members"]].map(([key, label]) => <button key={key} onClick={() => setCategoryFilter(key)} style={{ background: categoryFilter === key ? "#7c3aed" : "#17152a", border: `1px solid ${categoryFilter === key ? "#8b5cf6" : "#2a2540"}`, color: categoryFilter === key ? "#fff" : "#9ca3af", borderRadius: 8, padding: "6px 9px", fontSize: 9, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}</div>
       </div>
       {!visible.length ? <EmptyState title="No members match this filter" detail="Try another recommendation category or club. A blank result means no member crossed that review threshold." /> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 10 }} className="insights-transfer-grid">{visible.map((item) => {
         const meta = CATEGORY[item.category];
@@ -336,7 +330,7 @@
       : "Select a club to see its interpretation.";
 
     if (!A) return <EmptyState title="Insights analytics failed to load" detail="Reload the page. The Chronogenesis data has not been modified." />;
-    if (!snapshots.length) return <EmptyState title="Waiting for Chronogenesis data" detail="No current club JSON was available to analyze. Dominarium will remain unavailable until its external feed creates a JSON file." />;
+    if (!snapshots.length) return <EmptyState title="Waiting for Chronogenesis data" detail="No current club JSON was available to analyze. A newly configured club will appear after its first successful updater run creates a JSON file." />;
 
     return (
       <div>
@@ -398,7 +392,7 @@
           <ExplanationBox headline="Historical twins answer: ‘When this club looked like this before, how did the month finish?’" meaning="Similarity compares the shape of the selected club’s progress with its own earlier months after adjusting for the fan target active in each month." action="Use the closest match as context for planning—not as a promise. Pay most attention when several prior months point in the same direction." color="#a78bfa" />
           <div style={PANEL}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}><div><div style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 800 }}>Club-level Historical Twins</div><div style={MUTED}>Compares the selected club’s target-normalized trajectory through Day {analysisDay} with up to three earlier completed months for the same club.</div></div><select value={selectedClubId} onChange={(event) => setSelectedClubId(event.target.value)} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 10 }}>{snapshots.map((snapshot) => <option key={snapshot.clubId} value={snapshot.clubId}>{snapshot.clubName}</option>)}</select></div>
-          {historyStatus.loading && !twins.length ? <div style={MUTED}>Loading the latest historical snapshots for this club…</div> : twins.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>{twins.map((twin, index) => <div key={twin.monthKey} style={{ background: "#0c0b18", border: `1px solid ${index === 0 ? "#7c3aed88" : "#1e1b35"}`, borderRadius: 12, padding: "14px 15px" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{monthLabel(twin.monthKey)}</div><Badge color={index === 0 ? "#a78bfa" : "#60a5fa"}>{twin.similarity}% similar</Badge></div><div style={{ color: twin.finalProgress >= 1 ? "#34d399" : "#fbbf24", background: twin.finalProgress >= 1 ? "#34d39910" : "#fbbf2410", borderRadius: 8, padding: "7px 9px", fontSize: 10, fontWeight: 800, marginBottom: 10 }}>What happened next: finished {twin.finalProgress >= 1 ? `${pct(twin.finalProgress - 1)} above` : `${pct(1 - twin.finalProgress)} below`} that month’s goal.</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 10 }}><div><div style={{ color: "#4b5563" }}>Progress by Day {analysisDay}</div><div style={{ color: "#c4b5fd", fontWeight: 800 }}>{pct(twin.progressAtDay)}</div></div><div><div style={{ color: "#4b5563" }}>Final goal attainment</div><div style={{ color: twin.finalProgress >= 1 ? "#34d399" : "#fbbf24", fontWeight: 800 }}>{pct(twin.finalProgress)}</div></div><div><div style={{ color: "#4b5563" }}>Final club gain</div><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{fmt(twin.finalGain)}</div></div><div><div style={{ color: "#4b5563" }}>Global rank movement</div><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{twin.rankAtDay && twin.finalRank ? `#${twin.rankAtDay.toLocaleString()} → #${twin.finalRank.toLocaleString()}` : "Unavailable"}</div></div></div><div style={{ ...MUTED, marginTop: 10 }}>Historical quota: {fmt(twin.perMemberTarget)}/member · {twin.activeMemberCount} active in archived roster</div></div>)}</div> : <EmptyState title="No valid historical twin yet" detail="This club needs an earlier completed archive with a captured target and enough daily history. Dominarium currently has no history, while some clubs have only one usable month." />}
+          {historyStatus.loading && !twins.length ? <div style={MUTED}>Loading the latest historical snapshots for this club…</div> : twins.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>{twins.map((twin, index) => <div key={twin.monthKey} style={{ background: "#0c0b18", border: `1px solid ${index === 0 ? "#7c3aed88" : "#1e1b35"}`, borderRadius: 12, padding: "14px 15px" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{monthLabel(twin.monthKey)}</div><Badge color={index === 0 ? "#a78bfa" : "#60a5fa"}>{twin.similarity}% similar</Badge></div><div style={{ color: twin.finalProgress >= 1 ? "#34d399" : "#fbbf24", background: twin.finalProgress >= 1 ? "#34d39910" : "#fbbf2410", borderRadius: 8, padding: "7px 9px", fontSize: 10, fontWeight: 800, marginBottom: 10 }}>What happened next: finished {twin.finalProgress >= 1 ? `${pct(twin.finalProgress - 1)} above` : `${pct(1 - twin.finalProgress)} below`} that month’s goal.</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 10 }}><div><div style={{ color: "#4b5563" }}>Progress by Day {analysisDay}</div><div style={{ color: "#c4b5fd", fontWeight: 800 }}>{pct(twin.progressAtDay)}</div></div><div><div style={{ color: "#4b5563" }}>Final goal attainment</div><div style={{ color: twin.finalProgress >= 1 ? "#34d399" : "#fbbf24", fontWeight: 800 }}>{pct(twin.finalProgress)}</div></div><div><div style={{ color: "#4b5563" }}>Final club gain</div><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{fmt(twin.finalGain)}</div></div><div><div style={{ color: "#4b5563" }}>Global rank movement</div><div style={{ color: "#e2e0f0", fontWeight: 800 }}>{twin.rankAtDay && twin.finalRank ? `#${twin.rankAtDay.toLocaleString()} → #${twin.finalRank.toLocaleString()}` : "Unavailable"}</div></div></div><div style={{ ...MUTED, marginTop: 10 }}>Historical quota: {fmt(twin.perMemberTarget)}/member · {twin.activeMemberCount} active in archived roster</div></div>)}</div> : <EmptyState title="No valid historical twin yet" detail="This club needs an earlier completed archive with a captured target and enough daily history. Newly added clubs will not have a historical twin until a complete month is archived." />}
           </div>
         </>}
 

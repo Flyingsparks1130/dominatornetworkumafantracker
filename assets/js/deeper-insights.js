@@ -753,8 +753,6 @@
         const priorTargetsMet = historicalRecords.filter((record) => record.targetRatio >= 1).length;
         const historicalAverageRatio = historicalRecords.length ? average(historicalRecords.map((record) => record.targetRatio)) : null;
 
-        const higherTiers = currentTierIndex > 0 ? tierTargets.slice(0, currentTierIndex) : [];
-        const supportableHigherTier = [...higherTiers].reverse().find((entry) => projected >= entry.target * 1.05) || null;
         const lowerTiers = currentTierIndex >= 0 ? tierTargets.slice(currentTierIndex + 1) : [];
         const supportableLowerTier = lowerTiers.find((entry) => projected >= entry.target * 0.85)
           || lowerTiers[lowerTiers.length - 1]
@@ -762,13 +760,12 @@
 
         let category = "keep";
         let suggestedTier = snapshot.tier;
-        if (supportableHigherTier && projectedRatio >= 1.15 && trend !== "falling") {
-          category = "promote";
-          suggestedTier = supportableHigherTier.tier;
+        if (projectedRatio >= 1) {
+          category = "keep";
         } else if (projectedRatio < 0.75 || (idleDays >= 3 && projectedRatio < 0.88)) {
           category = "move-down";
           suggestedTier = supportableLowerTier?.tier || "Roster review";
-        } else if (projectedRatio < 0.95 || (trend === "falling" && projectedRatio < 1.08)) {
+        } else {
           category = "watch";
         }
 
@@ -783,11 +780,10 @@
           : "No usable prior-month record was found, so this relies on the current month only.";
         let commentary = `Projected to finish at ${currentPercent}% of the current ${snapshot.tier} quota; recent pace is ${trend}. ${historySentence}`;
         let action = "Keep the current placement and recheck if pace changes materially.";
-        if (category === "promote") action = `Review for ${suggestedTier}. Confirm roster space and use officer context before moving.`;
         if (category === "move-down") action = suggestedTier === "Roster review"
           ? "Review roster fit directly; the data does not support an automatic removal decision."
           : `Review a move to ${suggestedTier}, where the projected pace is a closer match.`;
-        if (category === "watch") action = "Check in or coach first, then reassess after several more daily updates before moving.";
+        if (category === "watch") action = "Monitor recent pace and reassess after several more daily updates before moving.";
 
         recommendations.push({
           viewerId: member.viewerId,
@@ -815,7 +811,7 @@
       });
     });
 
-    const categoryPriority = { "promote": 0, "move-down": 1, "watch": 2, "keep": 3 };
+    const categoryPriority = { "move-down": 0, "watch": 1, "keep": 2 };
     recommendations.sort((a, b) => {
       const categoryDifference = categoryPriority[a.category] - categoryPriority[b.category];
       if (categoryDifference) return categoryDifference;
@@ -825,7 +821,7 @@
     const counts = recommendations.reduce((result, recommendation) => {
       result[recommendation.category] = (result[recommendation.category] || 0) + 1;
       return result;
-    }, { promote: 0, "move-down": 0, watch: 0, keep: 0 });
+    }, { "move-down": 0, watch: 0, keep: 0 });
     eligibility.excludedTotal = eligibility.excludedInactive
       + eligibility.excludedNoCurrentMonthHistory
       + eligibility.excludedPartialMonth;
