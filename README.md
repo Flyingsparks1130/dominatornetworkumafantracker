@@ -4,11 +4,11 @@ A static GitHub Pages tracker for the Dominator Network. The frontend reads the 
 
 ## Frontend structure
 
-- `index.html` — network home
-- `clubs.html` — club directory
-- `club.html?id=<club-id>` — reusable individual-club dashboard
-- `rankings.html` — network analysis and rankings
-- `archives.html?month=YYYY-MM` — archive entry point
+- `index.html` — navigation home with network-wide statistics
+- `clubs.html?id=<club-id>` — club directory with an in-page high-level club summary
+- `club.html?id=<club-id>` — reusable individual-club Overview, Members, and Pace dashboard
+- `rankings.html` — club rankings, individual rankings, and network performance insights
+- `archives.html` — reserved Deeper Insights page
 - `assets/css/app.css` — shared styling
 - `assets/js/app.jsx` — shared React application
 - `assets/js/snapshot-compat.js` — runtime fallback for the existing archive snapshot contract

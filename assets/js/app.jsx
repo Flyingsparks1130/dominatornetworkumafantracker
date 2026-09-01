@@ -1200,7 +1200,6 @@ const { useState, useEffect, useRef } = React;
       const activeIndex = requestedClubId ? CURRENT_CLUBS.findIndex((club) => String(club.id) === requestedClubId) : 0;
       return {
         view: PAGE_MODE === "club" ? "club" : "home",
-        homeTab: PAGE_MODE === "rankings" ? "network" : "directory",
         archiveMonth: params.get("month") || "",
         activeIndex: activeIndex >= 0 ? activeIndex : 0,
       };
@@ -1235,7 +1234,6 @@ const { useState, useEffect, useRef } = React;
       const [criticalSort, setCriticalSort] = useState({ key: "planDelta", direction: "asc" });
       const [criticalVisibleCount, setCriticalVisibleCount] = useState(10);
       const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
-      const [homeTab, setHomeTab] = useState(initialRoute.homeTab);
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(false);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
@@ -1594,7 +1592,15 @@ const { useState, useEffect, useRef } = React;
         return members;
       }).sort((a, b) => { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const projectedDiff = (b.projected ?? Number.NEGATIVE_INFINITY) - (a.projected ?? Number.NEGATIVE_INFINITY); if (projectedDiff !== 0) return projectedDiff; return (a.name || "").localeCompare(b.name || ""); });
 
-      const topNetworkUsers = hasComparisonData ? [...networkMembers].sort((a, b) => { if (topNetworkMode === "monthly") { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; } else { const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; } return (a.name || "").localeCompare(b.name || ""); }).slice(0, 10) : [];
+      const topNetworkUsers = hasComparisonData ? [...networkMembers].sort((a, b) => { if (topNetworkMode === "monthly") { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; } else { const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; } return (a.name || "").localeCompare(b.name || ""); }) : [];
+      const rankedNetworkClubs = [...networkClubs]
+        .filter((entry) => entry.id && entry.hasData)
+        .sort((a, b) => {
+          if (a.currentMonthlyRank == null && b.currentMonthlyRank == null) return a.clubName.localeCompare(b.clubName);
+          if (a.currentMonthlyRank == null) return 1;
+          if (b.currentMonthlyRank == null) return -1;
+          return a.currentMonthlyRank - b.currentMonthlyRank;
+        });
       const loadedClubCount = networkClubs.filter((entry) => entry.hasData).length;
       const networkMonthlyTotal = networkMembers.reduce((sum, member) => sum + (member.monthlyGain ?? 0), 0);
       const networkFanTotal = networkMembers.reduce((sum, member) => sum + (member.fans || 0), 0);
@@ -2126,6 +2132,15 @@ const { useState, useEffect, useRef } = React;
         if (archiveMonth) params.set("month", archiveMonth);
         window.history.replaceState({}, "", `./club.html?${params.toString()}`);
       }
+      function selectClubSummary(index) {
+        const selectedClub = viewClubs[index];
+        if (!selectedClub?.id) return;
+        setActiveIdx(index);
+        const params = new URLSearchParams({ id: String(selectedClub.id) });
+        if (archiveMonth) params.set("month", archiveMonth);
+        window.history.replaceState({}, "", `./clubs.html?${params.toString()}`);
+        window.requestAnimationFrame(() => document.getElementById("selected-club-summary")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      }
       function toggleOverviewStatusFilter(statusKey) { setOverviewStatusFilter((prev) => prev === statusKey ? "" : statusKey); }
       function togglePaceMember(name) { setPaceHiddenMembers((prev) => ({ ...prev, [name]: !prev[name] })); }
       function showAllPaceMembers() { setPaceHiddenMembers({}); }
@@ -2183,7 +2198,7 @@ const { useState, useEffect, useRef } = React;
       if (cid) clubDetailParams.set("id", String(cid));
       if (archiveMonth) clubDetailParams.set("month", archiveMonth);
       const clubDetailHref = `./club.html${clubDetailParams.toString() ? `?${clubDetailParams.toString()}` : ""}`;
-      const archivesHref = `./archives.html${archiveMonth ? `?month=${encodeURIComponent(archiveMonth)}` : ""}`;
+      const insightsHref = "./archives.html";
       const navLinkStyle = (active, color) => ({ ...S.btn(active, color), display: "flex", alignItems: "center", gap: 8, width: "100%", textDecoration: "none" });
 
       return (
@@ -2224,7 +2239,7 @@ const { useState, useEffect, useRef } = React;
                   <a href="./index.html" style={navLinkStyle(PAGE_MODE === "home", "#7c3aed")}>🏠 Home</a>
                   <a href="./clubs.html" style={navLinkStyle(PAGE_MODE === "clubs", "#7c3aed")}>📋 Clubs</a>
                   <a href="./rankings.html" style={navLinkStyle(PAGE_MODE === "rankings", "#2563eb")}>🌐 Rankings</a>
-                  <a href={archivesHref} style={navLinkStyle(PAGE_MODE === "archives", "#a78bfa")}>📦 Archives</a>
+                  <a href={insightsHref} style={navLinkStyle(PAGE_MODE === "archives", "#a78bfa")}>🔎 Deeper Insights</a>
                   <a href={clubDetailHref} style={navLinkStyle(PAGE_MODE === "club", tc.bar)}>🏇 Club Detail</a>
                 </div>
                 <div style={{ marginTop: 12 }}>
@@ -2310,21 +2325,44 @@ const { useState, useEffect, useRef } = React;
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
 
           {view === "home" && (<>
-            <div className="tab-dock"><a href="./clubs.html" style={{ ...S.btn(homeTab === "directory", "#7c3aed"), textDecoration: "none" }}>📋 Directory</a><a href="./rankings.html" style={{ ...S.btn(homeTab === "network", "#7c3aed"), textDecoration: "none" }}>🌐 Network Analysis</a></div>
-            <div className="stat-strip">
-              {[
-                { label: "Tracked Clubs", value: `${loadedClubCount}/${viewClubs.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
-                { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
-                { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
-                { label: "Active Members", value: hasComparisonData ? networkMemberCount : "—", sub: hasComparisonData ? `${clubsMissingData} clubs missing JSON` : noComparisonLabel, col: hasComparisonData ? (clubsMissingData ? "#fbbf24" : "#34d399") : "#9ca3af" },
-                { label: `${STATUS_META["on-track"].icon} On Track`, value: hasComparisonData ? networkStatusCounts["on-track"] : "—", sub: hasComparisonData ? "Members at or above plan" : noComparisonLabel, col: STATUS_META["on-track"].color },
-                { label: `${STATUS_META["behind"].icon} Behind`, value: hasComparisonData ? networkStatusCounts["behind"] : "—", sub: hasComparisonData ? "Members below plan" : noComparisonLabel, col: STATUS_META["behind"].color },
-                { label: `${STATUS_META["critical"].icon} Critical`, value: hasComparisonData ? networkStatusCounts["critical"] : "—", sub: hasComparisonData ? "Members under 25% of plan" : noComparisonLabel, col: STATUS_META["critical"].color },
-                { label: "Members At/Above Plan", value: hasComparisonData ? `${networkMembersAtOrAbovePlan}/${networkMemberCount}` : "—", sub: hasComparisonData ? `${loadedClubCount} clubs loaded · ${clubsMissingData} missing JSON` : noComparisonLabel, col: hasComparisonData && networkMembersAtOrAbovePlan === networkMemberCount && networkMemberCount > 0 ? "#34d399" : "#c4b5fd" },
-              ].map((card) => (<div key={card.label} style={{ ...S.card, marginBottom: 0, padding: "13px 15px", minWidth: 0 }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{card.label}</div><div style={{ color: card.col, fontSize: 22, fontWeight: 800 }}>{card.value}</div><div style={{ color: "#6b7280", fontSize: 11, marginTop: 3 }}>{card.sub}</div></div>))}
-            </div>
+            {PAGE_MODE === "home" && (<>
+              <div style={S.card}>
+                <div style={S.h2}>Network Home</div>
+                <div style={{ color: "#e2e0f0", fontSize: 24, fontWeight: 800, marginBottom: 6 }}>Dominator Network Overview</div>
+                <div style={{ color: "#8f88b8", fontSize: 13, lineHeight: 1.6 }}>Use this page as the network-wide starting point. The live statistics below summarize every loaded club; choose a destination for the detailed views.</div>
+              </div>
+              <div className="stat-strip">
+                {[
+                  { label: "Tracked Clubs", value: `${loadedClubCount}/${viewClubs.filter((entry) => entry.id).length}`, sub: "Loaded club data", col: "#e2e0f0" },
+                  { label: "Network Monthly +", value: hasComparisonData ? fmt(networkMonthlyTotal) : "—", sub: hasComparisonData ? "Across loaded clubs" : noComparisonLabel, col: hasComparisonData ? "#c4b5fd" : "#9ca3af" },
+                  { label: "Network Fans", value: fmt(networkFanTotal), sub: "Active members only", col: "#34d399" },
+                  { label: "Active Members", value: hasComparisonData ? networkMemberCount : "—", sub: hasComparisonData ? `${clubsMissingData} clubs missing JSON` : noComparisonLabel, col: hasComparisonData ? (clubsMissingData ? "#fbbf24" : "#34d399") : "#9ca3af" },
+                  { label: `${STATUS_META["on-track"].icon} On Track`, value: hasComparisonData ? networkStatusCounts["on-track"] : "—", sub: hasComparisonData ? "Members at or above plan" : noComparisonLabel, col: STATUS_META["on-track"].color },
+                  { label: `${STATUS_META["behind"].icon} Behind`, value: hasComparisonData ? networkStatusCounts["behind"] : "—", sub: hasComparisonData ? "Members below plan" : noComparisonLabel, col: STATUS_META["behind"].color },
+                  { label: `${STATUS_META["critical"].icon} Critical`, value: hasComparisonData ? networkStatusCounts["critical"] : "—", sub: hasComparisonData ? "Members under 25% of plan" : noComparisonLabel, col: STATUS_META["critical"].color },
+                  { label: "Members At/Above Plan", value: hasComparisonData ? `${networkMembersAtOrAbovePlan}/${networkMemberCount}` : "—", sub: hasComparisonData ? `${loadedClubCount} clubs loaded · ${clubsMissingData} missing JSON` : noComparisonLabel, col: hasComparisonData && networkMembersAtOrAbovePlan === networkMemberCount && networkMemberCount > 0 ? "#34d399" : "#c4b5fd" },
+                ].map((card) => (<div key={card.label} style={{ ...S.card, marginBottom: 0, padding: "13px 15px", minWidth: 0 }}><div style={{ color: "#4b5563", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{card.label}</div><div style={{ color: card.col, fontSize: 22, fontWeight: 800 }}>{card.value}</div><div style={{ color: "#6b7280", fontSize: 11, marginTop: 3 }}>{card.sub}</div></div>))}
+              </div>
+              <div style={S.card}>
+                <div style={S.h2}>Navigate the Tracker</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
+                  {[
+                    { href: "./clubs.html", icon: "📋", title: "Clubs", description: "Browse every club and open a focused high-level club summary.", color: "#7c3aed" },
+                    { href: "./rankings.html", icon: "🌐", title: "Rankings", description: "Explore club rankings, member leaderboards, pace, health, and movement insights.", color: "#2563eb" },
+                    { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the deeper analysis features you choose next.", color: "#a78bfa" },
+                    { href: clubDetailHref, icon: "🏇", title: "Club Detail", description: "Open the full Overview, Members, and Pace dashboard for a single club.", color: tc.bar },
+                  ].map((item) => (
+                    <a key={item.title} href={item.href} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${item.color}55`, borderRadius: 14, padding: "18px", textDecoration: "none", display: "block", boxShadow: `0 0 0 1px ${item.color}11 inset` }}>
+                      <div style={{ fontSize: 24, marginBottom: 10 }}>{item.icon}</div>
+                      <div style={{ color: "#f1eefc", fontSize: 16, fontWeight: 800, marginBottom: 6 }}>{item.title}</div>
+                      <div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.55 }}>{item.description}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </>)}
 
-            {homeTab === "directory" && (<>
+            {PAGE_MODE === "clubs" && (<>
               <div style={S.card}>
                 <div style={S.h2}>Club Directory</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Hover the pace bar for exact figures. The dot next to JSON shows load status.</div>
@@ -2368,7 +2406,7 @@ const { useState, useEffect, useRef } = React;
                           <span title={entry.jsonMeta.sub} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: entry.jsonMeta.color, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
                             <span style={{ width: 7, height: 7, borderRadius: 999, background: entry.jsonMeta.color, boxShadow: `0 0 6px ${entry.jsonMeta.color}`, flexShrink: 0 }} />JSON
                           </span>
-                          <button style={S.btn(false, ctc.bar)} onClick={() => openClub(index)}>Open →</button>
+                          <button style={S.btn(activeIdx === index, ctc.bar)} onClick={() => selectClubSummary(index)}>{activeIdx === index ? "Viewing" : "View stats"} →</button>
                         </div>
                         <div className="dir-bar" title={entry.hasData && hasComparisonData ? `${fmtFull(entry.totalMonthly)} of ${fmtFull(entry.clubTarget)} club target (${monthPct.toFixed(1)}%)` : "No data yet"}>
                           <div style={{ flex: 1 }}><ProgressBar pct={monthPct} color={onPace ? "#34d399" : entry.hasData && hasComparisonData ? "#f59e0b" : "#2a2540"} height={5} /></div>
@@ -2380,8 +2418,81 @@ const { useState, useEffect, useRef } = React;
                 </div>
               </div>
 
+              {(() => {
+                const entry = networkClubs[activeIdx] || networkClubs[0];
+                if (!entry) return null;
+                const ctc = viewTierColors[entry.tier] || viewTierColors["B+"];
+                const monthPct = entry.hasData && entry.clubTarget > 0 ? Math.min(100, (entry.totalMonthly / entry.clubTarget) * 100) : 0;
+                const planDelta = entry.hasData && hasComparisonData ? entry.totalMonthly - entry.totalExpected : null;
+                return (
+                  <div id="selected-club-summary" style={{ ...S.card, border: `1px solid ${ctc.border}55`, scrollMarginTop: 18 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+                      <div>
+                        <div style={S.h2}>Selected Club — High-Level Stats</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                          <TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />
+                          <span style={{ color: "#f1eefc", fontSize: 21, fontWeight: 800 }}>{entry.clubName}</span>
+                          {entry.currentMonthlyRank != null && <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
+                        </div>
+                        <div style={{ color: "#8f88b8", fontSize: 11, marginTop: 6 }}>{entry.officer} · {fmt(entry.target)} per member · Club ID {entry.id}</div>
+                      </div>
+                      <button style={S.btn(true, ctc.bar)} onClick={() => openClub(activeIdx)}>Open full club detail →</button>
+                    </div>
+                    {!entry.hasData ? (
+                      <div style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 12, padding: "16px", color: "#8f88b8", fontSize: 12 }}>No Chronogenesis JSON is currently loaded for this club.</div>
+                    ) : (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10, marginBottom: 14 }}>
+                          {[
+                            { label: "Active Members", value: `${entry.activeMembers}/${viewMaxMembers}`, col: "#e2e0f0" },
+                            { label: "Monthly Gain", value: hasComparisonData ? fmt(entry.totalMonthly) : "—", col: "#c4b5fd" },
+                            { label: "Daily Gain", value: entry.totalDaily != null ? fmt(entry.totalDaily) : "—", col: "#e2e0f0" },
+                            { label: "Projected", value: hasComparisonData ? fmt(entry.totalProjected) : "—", col: "#a78bfa" },
+                            { label: "Total Fans", value: fmt(entry.totalFans), col: "#34d399" },
+                            { label: "Health", value: hasComparisonData ? `${entry.health.grade} · ${entry.health.score}` : "—", col: hasComparisonData ? entry.health.color : "#9ca3af" },
+                          ].map((item) => (<div key={item.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 11, padding: "11px 13px" }}><div style={{ color: "#4b5563", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{item.label}</div><div style={{ color: item.col, fontSize: 17, fontWeight: 800 }}>{item.value}</div></div>))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 14 }}>
+                          {["on-track", "behind", "critical"].map((statusKey) => { const meta = STATUS_META[statusKey]; return (<div key={statusKey} style={{ background: meta.bg, border: `1px solid ${meta.border}`, borderRadius: 10, padding: "10px 12px" }}><div style={{ color: meta.color, fontSize: 11, fontWeight: 800 }}>{meta.icon} {meta.label}</div><div style={{ color: "#f1eefc", fontSize: 18, fontWeight: 800, marginTop: 3 }}>{hasComparisonData ? entry.statusCounts[statusKey] : "—"}</div></div>); })}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: 220 }}><ProgressBar pct={monthPct} color={planDelta != null && planDelta >= 0 ? "#34d399" : "#f59e0b"} height={8} /></div>
+                          <div className="telemetry" style={{ color: planDelta != null && planDelta >= 0 ? "#34d399" : "#fbbf24", fontSize: 12, fontWeight: 800 }}>{hasComparisonData ? `${monthPct.toFixed(1)}% of club target · ${fmtSigned(planDelta)} vs plan` : noComparisonLabel}</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </>)}
+
+            {PAGE_MODE === "rankings" && (<>
               <div style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Top 10 Network Members</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
+                <div style={S.h2}>Network Rankings</div>
+                <div style={{ color: "#e2e0f0", fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Club and Individual Ranking Insights</div>
+                <div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.6 }}>All ranking-oriented views now live here: current club positions, rank history, member leaderboards, health, pace, critical members, and movement candidates.</div>
+              </div>
+
+              <div style={S.card}>
+                <div style={S.h2}>Club Rankings</div>
+                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>Current monthly rank for every loaded club, ordered from best rank to lowest.</div>
+                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Monthly Rank</th><th style={S.th}>Club</th><th style={S.th}>Network Tier</th><th style={S.th}>Monthly Gain</th><th style={S.th}>Projected</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
+                  {rankedNetworkClubs.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No club ranking data is available yet.</td></tr>) : rankedNetworkClubs.map((entry) => (
+                    <tr key={`club-rank-${entry.id}`}>
+                      <td style={S.td}>{entry.currentMonthlyRank != null ? <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : <span style={{ color: "#6b7280" }}>—</span>}</td>
+                      <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 800 }}>{entry.clubName}</td>
+                      <td style={S.td}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /></td>
+                      <td style={{ ...S.td, color: gainColor(entry.totalMonthly), fontWeight: 700 }}>{hasComparisonData ? fmtSigned(entry.totalMonthly) : "—"}</td>
+                      <td style={{ ...S.td, color: "#c4b5fd", fontWeight: 700 }}>{hasComparisonData ? fmt(entry.totalProjected) : "—"}</td>
+                      <td style={S.td}>{hasComparisonData ? <HealthBadge grade={entry.health.grade} /> : <span style={{ color: "#6b7280" }}>—</span>}</td>
+                      <td style={S.td}><a href={`./club.html?id=${encodeURIComponent(entry.id)}${archiveMonth ? `&month=${encodeURIComponent(archiveMonth)}` : ""}`} style={{ ...S.btn(false, entry.clubColor), display: "inline-flex", textDecoration: "none" }}>Open →</a></td>
+                    </tr>
+                  ))}
+                </tbody></table></div>
+              </div>
+
+              <div style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Individual Member Rankings</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
                 {hasComparisonData && topNetworkUsers.length > 0 && (
                   <div className="podium">
@@ -2443,7 +2554,7 @@ const { useState, useEffect, useRef } = React;
               </div>
             </>)}
 
-            {homeTab === "network" && (<>
+            {PAGE_MODE === "rankings" && (<>
               <div style={S.card}>
                 <div style={S.h2}>Club Health Scores</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 14 }}>Composite score: % on track (40%) + projected vs target (35%) + member activity (25%).</div>
@@ -2523,6 +2634,16 @@ const { useState, useEffect, useRef } = React;
                 </div>
               </div>
             </>)}
+
+            {PAGE_MODE === "archives" && (
+              <div style={{ ...S.card, minHeight: 420, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "48px 24px" }}>
+                <div style={{ maxWidth: 620 }}>
+                  <div style={{ fontSize: 46, marginBottom: 14 }}>🔎</div>
+                  <div style={{ color: "#f1eefc", fontSize: 25, fontWeight: 800, marginBottom: 10 }}>Deeper Insights</div>
+                  <div style={{ color: "#8f88b8", fontSize: 13, lineHeight: 1.7 }}>This page is intentionally being held open for the deeper network analysis features you will define next.</div>
+                </div>
+              </div>
+            )}
           </>)}
 
           {view === "club" && !cid && (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 40, marginBottom: 10 }}>🔜</div><div style={{ color: "#6b7280" }}><b style={{ color: "#9ca3af" }}>{club.name}</b> is a future addition.</div></div>)}
@@ -2551,7 +2672,7 @@ const { useState, useEffect, useRef } = React;
 
             {!decoratedMembers.length ? (<div style={{ ...S.card, textAlign: "center", padding: "50px 20px" }}><div style={{ fontSize: 44, marginBottom: 10 }}>🏇</div><div style={{ color: "#6b7280", marginBottom: 16 }}>No active member data for <b style={{ color: "#9ca3af" }}>{clubName}</b> yet.</div><div style={{ display: "flex", justifyContent: "center", gap: 8 }}><button style={S.btn(false, tc.bar)} onClick={() => fetchData()}>🔄 Refresh Data</button></div></div>) : (<>
               <div className="tab-dock">
-                {[["dashboard", "📊 Overview"], ["members", "👥 Members"], ["pace", "📈 Pace"], ["debug", "🔧 Debug"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
+                {[["dashboard", "📊 Overview"], ["members", "👥 Members"], ["pace", "📈 Pace"]].map(([tabKey, label]) => (<button key={tabKey} style={S.btn(tab === tabKey, tab === tabKey ? tc.bar : undefined)} onClick={() => setTab(tabKey)}>{label}</button>))}
               </div>
 
               {tab === "dashboard" && (<>
@@ -2665,7 +2786,7 @@ const { useState, useEffect, useRef } = React;
             <a href="./index.html" style={{ ...S.btn(PAGE_MODE === "home", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>🏠 Home</a>
             <a href="./clubs.html" style={{ ...S.btn(PAGE_MODE === "clubs", "#7c3aed"), flex: 1, textDecoration: "none", textAlign: "center" }}>📋 Clubs</a>
             <a href="./rankings.html" style={{ ...S.btn(PAGE_MODE === "rankings", "#2563eb"), flex: 1, textDecoration: "none", textAlign: "center" }}>🌐 Ranks</a>
-            <a href={archivesHref} style={{ ...S.btn(PAGE_MODE === "archives", "#a78bfa"), flex: 1, textDecoration: "none", textAlign: "center" }}>📦 Archive</a>
+            <a href={insightsHref} style={{ ...S.btn(PAGE_MODE === "archives", "#a78bfa"), flex: 1, textDecoration: "none", textAlign: "center" }}>🔎 Insights</a>
           </div>
         </div>
       );
