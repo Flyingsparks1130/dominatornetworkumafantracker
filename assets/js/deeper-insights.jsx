@@ -108,30 +108,32 @@
     return null;
   }
 
-  function ForecastTable({ clubs, snapshotsById, forecastsById, selectedClubId, setSelectedClubId }) {
+  function ForecastTable({ clubs, snapshotsById, forecastsById, officialOutlooksById, selectedClubId, setSelectedClubId }) {
     return (
       <div style={{ ...PANEL, overflow: "hidden", padding: 0 }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1060 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
             <thead>
               <tr style={{ background: "rgba(11,9,24,0.82)" }}>
-                {["Club", "Gain so far", "Full club goal", "Best month-end estimate", "Working range", "Goal status", "Estimated final rank", "Data confidence"].map((header) => <th key={header} style={{ color: "#6b7280", textAlign: "left", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", padding: "11px 12px", borderBottom: "1px solid #1e1b35", whiteSpace: "nowrap" }}>{header}</th>)}
+                {["Club", "Gain so far", "Full club goal", "Best month-end estimate", "Working range", "Goal status", "Official rank outlook", "Historical rank trend", "Data confidence"].map((header) => <th key={header} style={{ color: "#6b7280", textAlign: "left", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", padding: "11px 12px", borderBottom: "1px solid #1e1b35", whiteSpace: "nowrap" }}>{header}</th>)}
               </tr>
             </thead>
             <tbody>
               {clubs.map((club) => {
                 const snapshot = snapshotsById[club.id];
                 const forecast = forecastsById[club.id];
+                const official = officialOutlooksById[club.id];
                 const selected = String(club.id) === String(selectedClubId);
                 return (
                   <tr key={club.id} onClick={() => snapshot && setSelectedClubId(String(club.id))} style={{ cursor: snapshot ? "pointer" : "default", background: selected ? "rgba(124,58,237,0.12)" : "transparent", borderBottom: "1px solid #17152a" }}>
                     <td style={{ padding: "11px 12px" }}><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>{club.name}</div><div style={{ color: "#6b7280", fontSize: 9 }}>{club.tier} · {snapshot ? `${snapshot.activeMemberCount} active` : "Waiting for data"}</div></td>
-                    {!snapshot || !forecast ? <td colSpan="7" style={{ padding: "11px 12px", color: "#6b7280", fontSize: 11 }}>No current club data yet. Analysis will appear when its daily feed exists.</td> : <>
+                    {!snapshot || !forecast ? <td colSpan="8" style={{ padding: "11px 12px", color: "#6b7280", fontSize: 11 }}>No current club data yet. Analysis will appear when its daily feed exists.</td> : <>
                       <td style={{ padding: "11px 12px", color: "#e2e0f0", fontWeight: 700, fontSize: 11 }}>{fmt(forecast.currentGain)}</td>
                       <td style={{ padding: "11px 12px", fontSize: 11 }}><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(snapshot.clubTarget)}</div><div style={{ color: "#4b5563", fontSize: 9 }}>{fmt(snapshot.perMemberTarget)} × {snapshot.activeMemberCount}</div></td>
                       <td style={{ padding: "11px 12px", color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>{fmt(forecast.forecast)}</td>
                       <td style={{ padding: "11px 12px", color: "#9ca3af", fontSize: 11 }}>{fmt(forecast.low)} – {fmt(forecast.high)}</td>
                       <td style={{ padding: "11px 12px" }}><Badge color={forecast.outlook.color}>{forecast.outlook.label}</Badge></td>
+                      <td style={{ padding: "11px 12px", color: "#e2e0f0", fontSize: 11, fontWeight: 700 }}>{official?.ready ? <><div>≈#{official.projectedRank.toLocaleString()}</div><div style={{ color: "#60a5fa", fontSize: 9 }}>{official.projectedTier} cutoff-backed</div></> : <div style={{ color: "#6b7280", fontSize: 9 }}>{official?.status === "collecting" ? "Collecting cutoffs" : "Not ready"}</div>}</td>
                       <td style={{ padding: "11px 12px", color: "#e2e0f0", fontSize: 11, fontWeight: 700 }}>{forecast.projectedRank ? <><div>#{forecast.projectedRank.toLocaleString()}</div><div style={{ color: "#4b5563", fontSize: 9 }}>#{forecast.rankLow?.toLocaleString()}–#{forecast.rankHigh?.toLocaleString()}</div></> : "Insufficient history"}</td>
                       <td style={{ padding: "11px 12px" }}><Badge color={forecast.confidenceColor}>{forecast.confidence}</Badge><div style={{ color: "#4b5563", fontSize: 9, marginTop: 4 }}>{forecast.historicalSamples} similar prior months</div></td>
                     </>}
@@ -269,7 +271,7 @@
     </div>;
   }
 
-  function DeeperInsightsPage({ clubs = [], clubData = {}, archiveManifest = null, today = 1, dim = 31, monthKey = "", archiveMonth = "", isArchiveView = false }) {
+  function DeeperInsightsPage({ clubs = [], clubData = {}, archiveManifest = null, rankThresholdData = null, today = 1, dim = 31, monthKey = "", archiveMonth = "", isArchiveView = false }) {
     const snapshots = useMemo(() => clubs.map((club) => A.buildCurrentSnapshot(club, clubData[club.id], dim)).filter(Boolean), [clubs, clubData, dim]);
     const snapshotsById = useMemo(() => Object.fromEntries(snapshots.map((snapshot) => [snapshot.clubId, snapshot])), [snapshots]);
     const latestDay = Math.max(1, Math.min(today, ...snapshots.map((snapshot) => snapshot.maxAvailableDay).filter((day) => day > 0), today));
@@ -315,6 +317,9 @@
 
     const rankHistoryPool = useMemo(() => Object.values(historyByClub).flat(), [historyByClub]);
     const forecastsById = useMemo(() => Object.fromEntries(snapshots.map((snapshot) => [snapshot.clubId, A.forecastClub(snapshot, historyByClub[snapshot.clubId] || [], analysisDay, rankHistoryPool)])), [snapshots, historyByClub, analysisDay, rankHistoryPool]);
+    const officialOutlooksById = useMemo(() => Object.fromEntries(snapshots.map((snapshot) => [snapshot.clubId, A.buildOfficialRankOutlook(snapshot, forecastsById[snapshot.clubId], rankThresholdData, monthKey || snapshot.monthKey, analysisDay)])), [snapshots, forecastsById, rankThresholdData, monthKey, analysisDay]);
+    const officialReadyCount = Object.values(officialOutlooksById).filter((outlook) => outlook?.ready).length;
+    const officialExample = Object.values(officialOutlooksById).find((outlook) => outlook?.ready) || Object.values(officialOutlooksById)[0];
     const overall = useMemo(() => {
       const forecasts = snapshots.map((snapshot) => ({ snapshot, forecast: forecastsById[snapshot.clubId] })).filter((entry) => entry.forecast);
       return {
@@ -395,9 +400,13 @@
             <MetricCard label="Combined network goal" value={fmt(overall.target)} sub="Each club's member quota × active roster" color="#60a5fa" />
             <MetricCard label="Clubs above goal at midpoint" value={`${overall.aboveTarget}/${overall.clubCount}`} sub="A planning estimate, not a guarantee" color="#34d399" />
           </div>
+          <div style={{ ...PANEL, marginBottom: 14, borderColor: officialReadyCount ? "#2563eb66" : "#f59e0b55", background: officialReadyCount ? "rgba(37,99,235,0.07)" : "rgba(120,53,15,0.10)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}><div><div style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 900 }}>Official Rank Outlook</div><div style={{ ...MUTED, marginTop: 4 }}>This compares each club’s month-end fan forecast with UMA’s published tier cutoffs, then gives those cutoffs most of the weight and recent club rank movement a smaller weight. It answers how a club may finish relative to nearby ranks—not just against its own quota.</div></div><Badge color={officialReadyCount ? "#60a5fa" : "#fbbf24"}>{officialReadyCount ? `${officialReadyCount}/${snapshots.length} clubs modeled` : "Rank outlook withheld"}</Badge></div>
+            <div style={{ marginTop: 11, color: officialReadyCount ? "#bfdbfe" : "#fde68a", fontSize: 10, lineHeight: 1.55 }}>{officialReadyCount ? `Threshold data through Day ${officialExample?.asOfDay}. “≈” means approximate: UMA publishes tier boundaries rather than every individual leaderboard position, so the exact position inside a tier remains an estimate.` : (isArchiveView ? "Official cutoff history is collected for the live month only; archived months continue to use their historical rank trend." : (officialExample?.message || "Waiting for official rank threshold data."))}</div>
+          </div>
           <TargetAttainmentDotPlot clubs={clubs} snapshotsById={snapshotsById} forecastsById={forecastsById} selectedClubId={selectedClubId} setSelectedClubId={setSelectedClubId} analysisDay={analysisDay} />
-          <ForecastTable clubs={clubs} snapshotsById={snapshotsById} forecastsById={forecastsById} selectedClubId={selectedClubId} setSelectedClubId={setSelectedClubId} />
-          {selectedSnapshot && selectedForecast && <div style={{ ...PANEL, marginTop: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><div><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 13 }}>{selectedSnapshot.clubName}: what the forecast says</div><div style={{ color: selectedForecastGap >= 0 ? "#34d399" : "#f87171", fontWeight: 800, fontSize: 11, marginTop: 5 }}>{selectedForecastGap >= 0 ? `${fmt(selectedForecastGap)} above goal at the midpoint` : `${fmt(Math.abs(selectedForecastGap))} below goal at the midpoint`}</div></div><Badge color={selectedForecast.confidenceColor}>{selectedForecast.confidence} confidence</Badge></div><div style={{ color: "#c7c4dd", fontSize: 11, lineHeight: 1.55, marginTop: 9 }}>{selectedForecastMeaning}</div><div style={{ ...MUTED, marginTop: 8 }}>The club goal is {fmt(selectedSnapshot.perMemberTarget)} per active member × {selectedSnapshot.activeMemberCount} members = {fmt(selectedSnapshot.clubTarget)}. “{selectedForecast.confidence} confidence” describes how much comparable history is available, not the probability of success. Global rank remains less certain because outside clubs are not visible.</div></div>}
+          <ForecastTable clubs={clubs} snapshotsById={snapshotsById} forecastsById={forecastsById} officialOutlooksById={officialOutlooksById} selectedClubId={selectedClubId} setSelectedClubId={setSelectedClubId} />
+          {selectedSnapshot && selectedForecast && <div style={{ ...PANEL, marginTop: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><div><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 13 }}>{selectedSnapshot.clubName}: what the forecast says</div><div style={{ color: selectedForecastGap >= 0 ? "#34d399" : "#f87171", fontWeight: 800, fontSize: 11, marginTop: 5 }}>{selectedForecastGap >= 0 ? `${fmt(selectedForecastGap)} above goal at the midpoint` : `${fmt(Math.abs(selectedForecastGap))} below goal at the midpoint`}</div></div><Badge color={selectedForecast.confidenceColor}>{selectedForecast.confidence} confidence</Badge></div><div style={{ color: "#c7c4dd", fontSize: 11, lineHeight: 1.55, marginTop: 9 }}>{selectedForecastMeaning}</div><div style={{ ...MUTED, marginTop: 8 }}>The club goal is {fmt(selectedSnapshot.perMemberTarget)} per active member × {selectedSnapshot.activeMemberCount} members = {fmt(selectedSnapshot.clubTarget)}. “{selectedForecast.confidence} confidence” describes how much comparable history is available, not the probability of success. {officialOutlooksById[selectedSnapshot.clubId]?.ready ? `The official rank outlook is ≈#${officialOutlooksById[selectedSnapshot.clubId].projectedRank.toLocaleString()} (${officialOutlooksById[selectedSnapshot.clubId].projectedTier}); it is cutoff-backed but remains approximate inside a tier.` : "The official rank outlook is withheld until the current-month UMA cutoffs have at least three observations."}</div></div>}
         </>}
 
         {activeSection === "momentum" && <>

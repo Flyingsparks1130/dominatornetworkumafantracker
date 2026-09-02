@@ -1682,7 +1682,7 @@ const { useState, useEffect, useRef } = React;
       }, []);
 
       useEffect(() => {
-        if (PAGE_MODE !== "rankings" || isArchiveView) return undefined;
+        if (!(["rankings", "archives"].includes(PAGE_MODE)) || isArchiveView) return undefined;
         let cancelled = false;
         const loadRankThresholds = async () => {
           const errors = [];
@@ -3130,6 +3130,7 @@ const { useState, useEffect, useRef } = React;
                     clubs={viewClubs}
                     clubData={clubData}
                     archiveManifest={archiveManifest}
+                    rankThresholdData={rankThresholdData}
                     today={today}
                     dim={dim}
                     monthKey={formatDateKey(year, monthIndex + 1, 1).slice(0, 7)}
