@@ -1,0 +1,56 @@
+name: Update rank threshold history
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Use one additional API request even if today is already stored"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "25 10 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-rank-thresholds
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update-rank-thresholds:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Fetch one daily threshold snapshot
+        env:
+          UMA_API_KEY: ${{ secrets.UMA_API_KEY }}
+          UMA_RANK_THRESHOLDS_URL: ${{ vars.UMA_RANK_THRESHOLDS_URL }}
+          FORCE_THRESHOLD_REFRESH: ${{ inputs.force || false }}
+        run: node scripts/update-rank-thresholds.mjs
+
+      - name: Commit and push threshold file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/rank-thresholds.json || true
+
+          if git diff --cached --quiet; then
+            echo "No threshold update to commit"
+            exit 0
+          fi
+
+          git commit -m "Update rank threshold history"
+          git push

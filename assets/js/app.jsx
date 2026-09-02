@@ -2,6 +2,7 @@ const { useState, useEffect, useRef } = React;
 
     const DATA_SOURCE = "chronogenesis";
     const FRONTEND_CONFIG_PATHS = ["./config/frontend.json", "/config/frontend.json"];
+    const RANK_THRESHOLD_DATA_PATHS = ["./data/rank-thresholds.json", "/data/rank-thresholds.json"];
     const PAGE_MODE = document.body?.dataset?.page || "home";
     const RANKINGS_MEMBER_DEFAULT_COUNT = 25;
     const RANKINGS_MEMBER_PAGE_SIZE = 10;
@@ -240,6 +241,202 @@ const { useState, useEffect, useRef } = React;
     };
     const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
     const gainColor = (n) => n == null ? "#6b7280" : n > 0 ? "#34d399" : n < 0 ? "#f87171" : "#9ca3af";
+
+    function finiteThresholdNumber(value) {
+      if (value == null || value === "") return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function getMedian(values) {
+      const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+      if (!sorted.length) return 0;
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    function getThresholdForecastWeight(day, monthLength) {
+      const progress = Math.max(0, Math.min(1, Number(day || 1) / Math.max(1, Number(monthLength || 1))));
+      if (progress <= 0.25) return 0.60;
+      if (progress <= 0.50) return 0.70;
+      if (progress <= 0.75) return 0.80;
+      return 0.90;
+    }
+
+    function buildRankThresholdForecast(feed, expectedMonth, displayedDay, monthLength) {
+      const base = {
+        status: "missing",
+        ready: false,
+        observationCount: 0,
+        rows: [],
+        message: "The daily UMA threshold feed has not created data/rank-thresholds.json yet.",
+      };
+      if (!feed || typeof feed !== "object") return base;
+      if (feed.month !== expectedMonth) {
+        return { ...base, status: "month-mismatch", message: "The available threshold feed is for " + (feed.month || "an unknown month") + ", not " + expectedMonth + "." };
+      }
+
+      const availableSnapshots = (Array.isArray(feed.days) ? feed.days : [])
+        .filter((snapshot) =>
+          snapshot &&
+          Number.isFinite(Number(snapshot.day)) &&
+          Number(snapshot.day) <= displayedDay &&
+          Array.isArray(snapshot.thresholds)
+        )
+        .sort((a, b) => Number(a.day) - Number(b.day));
+      const displaySnapshot = availableSnapshots[availableSnapshots.length - 1] || (
+        Number(feed?.latest?.day) <= displayedDay && Array.isArray(feed?.latest?.thresholds)
+          ? feed.latest
+          : null
+      );
+      const latestThresholds = Array.isArray(displaySnapshot?.thresholds) ? displaySnapshot.thresholds : [];
+      const actualRows = latestThresholds
+        .map((threshold) => ({
+          ...threshold,
+          rank_index: finiteThresholdNumber(threshold?.rank_index),
+          ranking_from: finiteThresholdNumber(threshold?.ranking_from),
+          ranking_to: finiteThresholdNumber(threshold?.ranking_to),
+          current_min_fans: finiteThresholdNumber(threshold?.current_min_fans),
+          daily_fans_delta: finiteThresholdNumber(threshold?.daily_fans_delta),
+          last_month_min_fans: finiteThresholdNumber(threshold?.last_month_min_fans),
+          current_vs_last_month_delta: finiteThresholdNumber(threshold?.current_vs_last_month_delta),
+        }))
+        .filter((threshold) => threshold.rank_index != null && threshold.name)
+        .sort((a, b) => b.rank_index - a.rank_index);
+
+      if (!actualRows.length) {
+        return { ...base, status: "invalid", message: "The threshold file loaded, but its latest snapshot did not contain usable ranks." };
+      }
+
+      const activationDay = finiteThresholdNumber(feed.activationDay);
+      const observations = availableSnapshots
+        .filter((snapshot) =>
+          (!activationDay || Number(snapshot.day) >= activationDay) &&
+          Array.isArray(snapshot.thresholds)
+        )
+        .sort((a, b) => Number(a.day) - Number(b.day));
+      const observationCount = observations.length;
+      const currentMonthActive = feed.currentMonthActive === true && (!activationDay || activationDay <= displayedDay);
+      const ready = currentMonthActive && observationCount >= 3;
+      const currentWeight = getThresholdForecastWeight(displayedDay, monthLength);
+
+      const rows = actualRows.map((row) => {
+        let projectedMinFans = null;
+        if (ready && row.current_min_fans != null) {
+          const series = observations
+            .map((snapshot) => {
+              const match = snapshot.thresholds.find((threshold) => String(threshold?.name) === String(row.name));
+              return { day: Number(snapshot.day), value: finiteThresholdNumber(match?.current_min_fans) };
+            })
+            .filter((entry) => Number.isFinite(entry.day) && entry.value != null);
+          const recent = series.slice(-7);
+          const dailyChanges = [];
+          for (let index = 1; index < recent.length; index++) {
+            const dayGap = recent[index].day - recent[index - 1].day;
+            if (dayGap > 0) dailyChanges.push((recent[index].value - recent[index - 1].value) / dayGap);
+          }
+          const recentDailyChange = getMedian(dailyChanges);
+          const dayNumber = Math.max(1, Number(displaySnapshot?.day) || Number(displayedDay) || 1);
+          const paceProjection = (row.current_min_fans / dayNumber) * monthLength;
+          const trendProjection = row.current_min_fans + (recentDailyChange * Math.max(0, monthLength - dayNumber));
+          const currentTrajectory = (paceProjection * 0.65) + (trendProjection * 0.35);
+          const historicalBaseline = row.last_month_min_fans ?? currentTrajectory;
+          projectedMinFans = Math.max(
+            row.current_min_fans,
+            Math.round((currentTrajectory * currentWeight) + (historicalBaseline * (1 - currentWeight)))
+          );
+        }
+        return { ...row, projectedMinFans, forecastWeight: currentWeight };
+      });
+
+      if (!currentMonthActive) {
+        return {
+          ...base,
+          status: "awaiting-current-month",
+          rows,
+          observationCount,
+          asOfDay: finiteThresholdNumber(displaySnapshot?.day),
+          asOfDate: displaySnapshot?.date || null,
+          message: "UMA is still returning last month’s final cutoffs. Actual values are shown, but forecasts are withheld.",
+        };
+      }
+      if (!ready) {
+        const remaining = Math.max(0, 3 - observationCount);
+        return {
+          ...base,
+          status: "collecting",
+          rows,
+          observationCount,
+          asOfDay: finiteThresholdNumber(displaySnapshot?.day),
+          asOfDate: displaySnapshot?.date || null,
+          message: "Current-month thresholds detected. Collecting " + remaining + " more daily observation" + (remaining === 1 ? "" : "s") + " before forecasting.",
+        };
+      }
+      return {
+        status: "ready",
+        ready: true,
+        observationCount,
+        rows,
+        currentWeight,
+        asOfDay: finiteThresholdNumber(displaySnapshot?.day),
+        asOfDate: displaySnapshot?.date || null,
+        message: Math.round(currentWeight * 100) + "% current threshold trajectory and " + Math.round((1 - currentWeight) * 100) + "% prior-month baseline.",
+      };
+    }
+
+    function estimateRankFromThresholds(projectedFans, thresholdRows) {
+      const fans = finiteThresholdNumber(projectedFans);
+      const points = (Array.isArray(thresholdRows) ? thresholdRows : [])
+        .map((row) => ({
+          fans: finiteThresholdNumber(row?.projectedMinFans),
+          rank: finiteThresholdNumber(row?.ranking_to),
+        }))
+        .filter((point) => point.fans != null && point.rank != null)
+        .sort((a, b) => b.fans - a.fans);
+      if (fans == null || !points.length) return null;
+      if (fans >= points[0].fans) return Math.max(1, Math.round(points[0].rank));
+      for (let index = 1; index < points.length; index++) {
+        const higher = points[index - 1];
+        const lower = points[index];
+        if (fans < lower.fans) continue;
+        const fanRange = higher.fans - lower.fans;
+        const ratio = fanRange > 0 ? (higher.fans - fans) / fanRange : 1;
+        return Math.round(higher.rank + (ratio * (lower.rank - higher.rank)));
+      }
+      return null;
+    }
+
+    function projectHistoricalRank(rankMap, monthKey, displayedDay, monthLength) {
+      const points = Object.entries(rankMap || {})
+        .filter(([dateKey, value]) => dateKey.startsWith(monthKey) && finiteThresholdNumber(value?.rank) != null)
+        .map(([dateKey, value]) => ({ day: Number(dateKey.slice(-2)), rank: Number(value.rank) }))
+        .filter((point) => Number.isFinite(point.day) && point.day <= displayedDay)
+        .sort((a, b) => a.day - b.day)
+        .slice(-7);
+      if (!points.length) return null;
+      if (points.length === 1) return points[0].rank;
+      const first = points[0];
+      const last = points[points.length - 1];
+      const dayGap = last.day - first.day;
+      const dailyRankMovement = dayGap > 0 ? (last.rank - first.rank) / dayGap : 0;
+      return Math.max(1, Math.min(10000, Math.round(last.rank + (dailyRankMovement * Math.max(0, monthLength - displayedDay)))));
+    }
+
+    function getOfficialClubRankForecast(clubEntry, thresholdForecast, clubRankHistory, monthKey, displayedDay, monthLength) {
+      if (!thresholdForecast?.ready || !clubEntry?.hasReliableHistory) return null;
+      const thresholdRank = estimateRankFromThresholds(clubEntry.totalProjected, thresholdForecast.rows);
+      if (thresholdRank == null) return null;
+      const historicalRank = projectHistoricalRank(clubRankHistory, monthKey, displayedDay, monthLength);
+      const estimatedRank = historicalRank == null
+        ? thresholdRank
+        : Math.round((thresholdRank * 0.75) + (historicalRank * 0.25));
+      return {
+        rank: Math.max(1, estimatedRank),
+        thresholdRank,
+        historicalRank,
+        confidence: thresholdForecast.observationCount >= 7 ? "Moderate" : "Early estimate",
+      };
+    }
 
     function getClubColor(i) { return `hsl(${(i * 67 + 20) % 360}, 70%, 58%)`; }
 
@@ -1271,6 +1468,8 @@ const { useState, useEffect, useRef } = React;
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(true);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
+      const [rankThresholdData, setRankThresholdData] = useState(null);
+      const [rankThresholdError, setRankThresholdError] = useState("");
       const [demotionVisibleCount, setDemotionVisibleCount] = useState(10);
       const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
       const paceSvgRef = useRef(null);
@@ -1316,6 +1515,8 @@ const { useState, useEffect, useRef } = React;
       const monthIndex = dataDate.getMonth();
       const today = dataDate.getDate();
       const dim = daysInMonth(year, monthIndex + 1);
+      const thresholdMonthKey = formatDateKey(year, monthIndex + 1, 1).slice(0, 7);
+      const rankThresholdForecast = buildRankThresholdForecast(rankThresholdData, thresholdMonthKey, today, dim);
       const hasComparisonData = today > 1;
       const noComparisonLabel = `No comparison data yet (Day ${today})`;
       const getDisplayStatusKey = (statusKey) => (hasComparisonData ? statusKey : DAY1_STATUS_KEY);
@@ -1479,6 +1680,37 @@ const { useState, useEffect, useRef } = React;
         loadArchiveManifest();
         return () => { cancelled = true; };
       }, []);
+
+      useEffect(() => {
+        if (PAGE_MODE !== "rankings" || isArchiveView) return undefined;
+        let cancelled = false;
+        const loadRankThresholds = async () => {
+          const errors = [];
+          for (const url of RANK_THRESHOLD_DATA_PATHS) {
+            try {
+              const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+              if (!response.ok) {
+                errors.push(url + ": HTTP " + response.status);
+                continue;
+              }
+              const json = await response.json();
+              if (!cancelled) {
+                setRankThresholdData(json);
+                setRankThresholdError("");
+              }
+              return;
+            } catch (error) {
+              errors.push(url + ": " + error.message);
+            }
+          }
+          if (!cancelled) {
+            setRankThresholdData(null);
+            setRankThresholdError(errors.join(" | "));
+          }
+        };
+        loadRankThresholds();
+        return () => { cancelled = true; };
+      }, [isArchiveView]);
 
       useEffect(() => {
         return () => {
@@ -1650,6 +1882,18 @@ const { useState, useEffect, useRef } = React;
           currentMonthlyRank: ri.rank, rankDelta: ri.delta,
         };
       });
+
+      const officialRankForecastByClubId = networkClubs.reduce((result, entry) => {
+        result[entry.id] = getOfficialClubRankForecast(
+          entry,
+          rankThresholdForecast,
+          rankHistory[entry.id],
+          thresholdMonthKey,
+          today,
+          dim
+        );
+        return result;
+      }, {});
 
       const networkMembers = networkClubs.filter((entry) => entry.id && clubData[entry.id]).flatMap((entry) => {
         const members = (clubData[entry.id]?.members || []).filter((member) => member.isActive !== false).map((member) => ({ ...decorateMember(member, entry.target), clubName: clubData[entry.id]?.clubName || entry.name, clubTier: entry.tier, clubTarget: entry.target }));
@@ -2625,12 +2869,25 @@ const { useState, useEffect, useRef } = React;
 
                 {partialHistoryClubs.length > 0 && (<div style={{ background: "rgba(55,65,81,0.22)", border: "1px solid #4b556344", borderRadius: 10, padding: "9px 11px", color: "#9ca3af", fontSize: 10, lineHeight: 1.55, marginBottom: 12 }}><b style={{ color: "#d1d5db" }}>Partial data:</b> {partialHistoryClubs.map((entry) => entry.clubName).join(", ")} {partialHistoryClubs.length === 1 ? "is" : "are"} shown in the table, but forecast and health judgments are withheld because fewer than 70% of current members have near-full-month history in that club. This avoids treating recent transfers or a newly added club as poor performance.</div>)}
 
-                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1020 }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Global Monthly Rank</th><th style={S.th}>Club / Quota Tier</th><th style={S.th}>Goal Progress</th><th style={S.th}>Month-End Outlook</th><th style={S.th}>Members On Pace</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
+                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>Global Monthly Rank — Current / Projected</th><th style={S.th}>Club / Quota Tier</th><th style={S.th}>Goal Progress</th><th style={S.th}>Month-End Outlook</th><th style={S.th}>Members On Pace</th><th style={S.th}>Health</th><th style={S.th}>Detail</th></tr></thead><tbody>
                   {rankedNetworkClubs.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No club ranking data is available yet.</td></tr>) : rankedNetworkClubs.map((entry) => {
                     const outlook = getClubOutlookMeta(entry);
                     const progressRatio = entry.clubTarget > 0 ? entry.totalMonthly / entry.clubTarget : 0;
+                    const officialRankForecast = officialRankForecastByClubId[entry.id];
+                    const projectedOfficialTier = officialRankForecast ? getTierForRank(officialRankForecast.rank, viewRankingConfig) : null;
                     return (<tr key={`club-rank-${entry.id}`}>
-                      <td style={S.td}>{entry.currentMonthlyRank != null ? <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : <span style={{ color: "#6b7280" }}>—</span>}</td>
+                      <td style={S.td}>
+                        <div style={{ marginBottom: 6 }}>{entry.currentMonthlyRank != null ? <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : <span style={{ color: "#6b7280" }}>Current rank —</span>}</div>
+                        {officialRankForecast ? (
+                          <div title={`75% threshold-based rank estimate (${officialRankForecast.thresholdRank}) and 25% recent rank-history estimate (${officialRankForecast.historicalRank ?? "unavailable"}).`} style={{ display: "flex", alignItems: "center", gap: 5, color: "#c4b5fd", fontSize: 10, fontWeight: 800 }}>
+                            {projectedOfficialTier && <TierIcon tier={projectedOfficialTier} size={14} showFallbackText={false} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
+                            Projected ≈ #{officialRankForecast.rank.toLocaleString()}
+                            <span style={{ color: "#6b7280", fontWeight: 600 }}>· {officialRankForecast.confidence}</span>
+                          </div>
+                        ) : (
+                          <div style={{ color: "#6b7280", fontSize: 9, lineHeight: 1.4 }}>{rankThresholdForecast.ready ? "Projected rank unavailable for partial club data" : "Projected rank waiting for threshold history"}</div>
+                        )}
+                      </td>
                       <td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}><TierBadge tier={entry.tier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span style={{ color: "#e2e0f0", fontWeight: 800 }}>{entry.clubName}</span></div><div style={{ color: "#6b7280", fontSize: 9 }}>{entry.tier} quota · {fmt(entry.target)} per member</div></td>
                       <td style={S.td}><div style={{ color: entry.hasReliableHistory ? gainColor(entry.totalMonthly) : "#9ca3af", fontWeight: 800 }}>{hasComparisonData ? fmt(entry.totalMonthly) : "—"}</div><div style={{ width: 130, margin: "6px 0 4px" }}><ProgressBar pct={progressRatio * 100} color={entry.hasReliableHistory ? (progressRatio >= (today / dim) ? "#34d399" : "#f59e0b") : "#6b7280"} height={5} /></div><div style={{ color: "#6b7280", fontSize: 9 }}>{hasComparisonData ? `${Math.round(progressRatio * 100)}% of ${fmt(entry.clubTarget)}` : noComparisonLabel}</div></td>
                       <td style={S.td}><div style={{ display: "inline-flex", background: outlook.bg, border: `1px solid ${outlook.border}`, color: outlook.color, borderRadius: 999, padding: "4px 7px", fontSize: 9, fontWeight: 900, marginBottom: 5 }}>{outlook.label}</div><div style={{ color: entry.hasReliableHistory ? "#c4b5fd" : "#6b7280", fontWeight: 800 }}>{entry.hasReliableHistory ? fmt(entry.totalProjected) : "Forecast withheld"}</div><div style={{ color: "#6b7280", fontSize: 9, marginTop: 2 }}>{entry.hasReliableHistory ? `${Math.round(entry.projectedRatio * 100)}% of quota` : `${entry.historyEligibleMembers}/${entry.activeMembers} members have usable history`}</div></td>
@@ -2811,6 +3068,48 @@ const { useState, useEffect, useRef } = React;
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Network Pace — Progress Toward Each Club’s Quota</div><div style={{ color: "#8f88b8", fontSize: 12, marginTop: 4, lineHeight: 1.55 }}>In Cumulative view, a club above the dashed line is ahead of the ideal elapsed-month pace. Daily Gain shows which clubs accelerated or slowed on a specific day. Hover any day for exact values.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(networkChartMode === "cumulative", networkChartMode === "cumulative" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("cumulative")}>Cumulative</button><button style={S.btn(networkChartMode === "daily", networkChartMode === "daily" ? "#7c3aed" : undefined)} onClick={() => setNetworkChartMode("daily")}>Daily Gain</button></div></div>
                 {strongestOutlookClub && (<div style={{ background: "rgba(124,58,237,0.10)", border: "1px solid #7c3aed33", borderRadius: 9, padding: "8px 10px", color: "#c7c4dd", fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}><b style={{ color: "#c4b5fd" }}>At a glance:</b> {strongestOutlookClub.clubName} has the strongest forecast at {Math.round(strongestOutlookClub.projectedRatio * 100)}% of quota{weakestOutlookClub && weakestOutlookClub.id !== strongestOutlookClub.id ? `; ${weakestOutlookClub.clubName} has the lowest forecast-ready outlook at ${Math.round(weakestOutlookClub.projectedRatio * 100)}%.` : "."}</div>)}
                 {forecastReadyClubs.length ? <NetworkPaceChart clubs={forecastReadyClubs} dim={dim} today={today} mode={networkChartMode} currentDayIdx={Math.max(0, today - 1)} /> : <div style={{ color: "#6b7280", fontSize: 12, padding: "24px 8px", textAlign: "center" }}>No club currently has enough current-roster history for a reliable pace comparison.</div>}
+              </div>
+              <div id="official-fan-thresholds" style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div>
+                    <div style={S.h2}>Official Fan Thresholds</div>
+                    <div style={{ color: "#8f88b8", fontSize: 12, marginTop: 4, lineHeight: 1.55, maxWidth: 780 }}>The actual cutoff is supplied by UMA and shows the minimum club fans currently needed for each global tier. The modeled month-end cutoff appears only after three valid current-month observations.</div>
+                  </div>
+                  <div style={{ background: rankThresholdForecast.ready ? "#34d39918" : "#fbbf2418", border: "1px solid " + (rankThresholdForecast.ready ? "#34d39944" : "#fbbf2444"), borderRadius: 999, padding: "7px 10px", color: rankThresholdForecast.ready ? "#34d399" : "#fbbf24", fontSize: 10, fontWeight: 800 }}>
+                    {rankThresholdForecast.ready ? "Forecast active" : rankThresholdForecast.status === "collecting" ? "Collecting observations" : "Forecast withheld"}
+                  </div>
+                </div>
+                <div style={{ background: rankThresholdForecast.ready ? "rgba(6,78,59,0.15)" : "rgba(120,53,15,0.15)", border: "1px solid " + (rankThresholdForecast.ready ? "#34d39933" : "#f59e0b33"), borderRadius: 10, padding: "9px 11px", color: "#d5d2e5", fontSize: 10, lineHeight: 1.55, marginBottom: 12 }}>
+                  <b style={{ color: rankThresholdForecast.ready ? "#34d399" : "#fbbf24" }}>Status:</b> {rankThresholdForecast.message}
+                  {rankThresholdForecast.asOfDate ? <span style={{ color: "#8f88b8" }}> Thresholds aligned through {rankThresholdForecast.asOfDate}.</span> : null}
+                </div>
+                {rankThresholdForecast.rows.length ? (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+                      <thead><tr style={{ textAlign: "left" }}><th style={S.th}>Official Tier</th><th style={S.th}>Placement Band</th><th style={S.th}>Actual Current Cutoff</th><th style={S.th}>Change Today</th><th style={S.th}>Vs Last Month</th><th style={S.th}>Modeled Month-End Cutoff</th></tr></thead>
+                      <tbody>
+                        {rankThresholdForecast.rows.filter((row) => row.current_min_fans != null).map((row) => {
+                          const dailyColor = row.daily_fans_delta > 0 ? "#fbbf24" : row.daily_fans_delta < 0 ? "#34d399" : "#9ca3af";
+                          const monthColor = row.current_vs_last_month_delta > 0 ? "#fbbf24" : row.current_vs_last_month_delta < 0 ? "#34d399" : "#9ca3af";
+                          const placement = row.ranking_from == null ? "—" : row.ranking_to == null ? row.ranking_from.toLocaleString() + "+" : row.ranking_from.toLocaleString() + "–" + row.ranking_to.toLocaleString();
+                          return (
+                            <tr key={"official-threshold-" + row.rank_index}>
+                              <td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierIcon tier={row.name} size={20} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span style={{ color: "#e2e0f0", fontWeight: 900 }}>{row.name}</span></div></td>
+                              <td style={{ ...S.td, color: "#c7c4dd", fontWeight: 700 }}>{placement}</td>
+                              <td style={{ ...S.td, color: "#e2e0f0", fontWeight: 900 }}>{fmt(row.current_min_fans)}</td>
+                              <td style={{ ...S.td, color: dailyColor, fontWeight: 800 }}>{fmtSigned(row.daily_fans_delta)}</td>
+                              <td style={{ ...S.td, color: monthColor, fontWeight: 800 }}>{fmtSigned(row.current_vs_last_month_delta)}</td>
+                              <td style={{ ...S.td, color: row.projectedMinFans != null ? "#c4b5fd" : "#6b7280", fontWeight: 900 }}>{row.projectedMinFans != null ? fmt(row.projectedMinFans) : "Not available yet"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ color: "#6b7280", fontSize: 12, textAlign: "center", padding: "22px 8px" }}>No threshold JSON has been loaded yet. The table will populate after the first successful workflow run.</div>
+                )}
+                <div style={{ color: "#6b7280", fontSize: 9, lineHeight: 1.55, marginTop: 10 }}>Actual Current Cutoff, Change Today, and Vs Last Month come directly from the API. Modeled Month-End Cutoff is a tracker estimate and is never presented as an official UMA result.{rankThresholdError ? " The threshold file is not available on this deployment yet." : ""}</div>
               </div>
               <div id="club-rank-history" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
