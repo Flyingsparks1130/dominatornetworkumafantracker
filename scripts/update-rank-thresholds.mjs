@@ -4,7 +4,7 @@ import path from "node:path";
 const TIME_ZONE = "Asia/Bangkok";
 const OUTPUT_PATH = path.join(process.cwd(), "data", "rank-thresholds.json");
 const API_KEY = process.env.UMA_API_KEY?.trim();
-const ENDPOINT = process.env.UMA_RANK_THRESHOLDS_URL?.trim();
+const ENDPOINT = process.env.UMA_RANK_THRESHOLDS_URL?.trim() || "https://uma.moe/api/v4/circles/rank-thresholds";
 const FORCE_REFRESH = process.env.FORCE_THRESHOLD_REFRESH === "true";
 
 function getCalendarParts(date = new Date()) {
@@ -115,7 +115,6 @@ if (existingToday && !FORCE_REFRESH) {
 }
 
 if (!API_KEY) throw new Error("Missing UMA_API_KEY GitHub Actions secret");
-if (!ENDPOINT) throw new Error("Missing UMA_RANK_THRESHOLDS_URL GitHub Actions variable");
 
 const response = await fetch(ENDPOINT, {
   method: "GET",

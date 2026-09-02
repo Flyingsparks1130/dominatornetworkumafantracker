@@ -8,9 +8,6 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    - cron: "25 10 * * *"
-
 permissions:
   contents: write
 
@@ -37,7 +34,6 @@ jobs:
       - name: Fetch one daily threshold snapshot
         env:
           UMA_API_KEY: ${{ secrets.UMA_API_KEY }}
-          UMA_RANK_THRESHOLDS_URL: ${{ vars.UMA_RANK_THRESHOLDS_URL }}
           FORCE_THRESHOLD_REFRESH: ${{ inputs.force || false }}
         run: node scripts/update-rank-thresholds.mjs
 
