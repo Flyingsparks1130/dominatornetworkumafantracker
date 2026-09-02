@@ -6,6 +6,7 @@
   const PANEL = { background: "rgba(17,16,40,0.92)", border: "1px solid #1e1b35", borderRadius: 14, padding: "16px 18px" };
   const MUTED = { color: "#6b7280", fontSize: 11, lineHeight: 1.5 };
   const PROFILE_DESCRIPTIONS = {
+    front: "Builds most of the month’s gain early, then slows sharply while approaching or after passing quota.",
     anchor: "One of the network’s highest-volume members who also contributes on most days.",
     consistent: "Contributes on most days with relatively stable daily output.",
     weekend: "A noticeably larger share of activity happens on Saturdays and Sundays.",
@@ -248,6 +249,26 @@
     </div>;
   }
 
+  function QuotaStressLab({ snapshot, forecast, stress, snapshots, selectedClubId, setSelectedClubId, analysisDay }) {
+    if (!snapshot || !forecast || !stress) return <EmptyState title="Stress test unavailable" detail="Select a club with enough current data and a working forecast." />;
+    const baseRatio = snapshot.clubTarget > 0 ? forecast.forecast / snapshot.clubTarget : 0;
+    const worstScenario = [...stress.scenarios].sort((a, b) => a.targetRatio - b.targetRatio)[0];
+    return <div>
+      <ExplanationBox headline={`${snapshot.clubName} is ${stress.resilienceLabel.toLowerCase()} under the tested slowdowns.`} meaning={`${stress.failedScenarios} of ${stress.scenarios.length} realistic what-if scenarios finish below the club quota. The normal forecast is ${pct(baseRatio)} of target.`} action={stress.failedScenarios ? `Plan around the weakest case: ${worstScenario.label}. The club would need ${fmt(worstScenario.dailyRecoveryNeeded)} extra fans per remaining day to recover.` : "The club remains above quota in all tested cases. Continue monitoring concentration rather than making a roster change from this screen alone."} color={stress.resilienceColor} />
+      <div style={{ ...PANEL, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}><div><div style={{ color: "#e2e0f0", fontSize: 15, fontWeight: 900 }}>Quota Stress Lab</div><div style={MUTED}>Deterministic what-if tests through Day {analysisDay}. This is not a probability model.</div></div><select value={selectedClubId} onChange={(event) => setSelectedClubId(event.target.value)} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 10 }}>{snapshots.map((entry) => <option key={entry.clubId} value={entry.clubId}>{entry.clubName}</option>)}</select></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 9, marginBottom: 14 }}>
+          <MetricCard label="Normal forecast" value={fmt(stress.baseForecast)} sub={`${pct(baseRatio)} of ${fmt(snapshot.clubTarget)} quota`} color="#c4b5fd" />
+          <MetricCard label="Stress result" value={stress.resilienceLabel} sub={`${stress.failedScenarios}/${stress.scenarios.length} cases fall below goal`} color={stress.resilienceColor} />
+          <MetricCard label="Top-three exposure" value={pct(stress.topThreeRemainingShare)} sub="Share of expected remaining gain" color={stress.topThreeRemainingShare >= 0.5 ? "#f87171" : "#fbbf24"} />
+          <MetricCard label="Days remaining" value={stress.daysRemaining} sub="Recovery window after the selected day" color="#60a5fa" />
+        </div>
+        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}><thead><tr>{["Scenario", "Stressed finish", "% of quota", "Goal margin", "Recovery needed/day"].map((header) => <th key={header} style={{ color: "#6b7280", textAlign: "left", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", padding: "10px 9px", borderBottom: "1px solid #1e1b35" }}>{header}</th>)}</tr></thead><tbody>{stress.scenarios.map((scenario) => <tr key={scenario.key}><td style={{ padding: "11px 9px", borderBottom: "1px solid #1e1b35" }}><div style={{ color: "#e2e0f0", fontSize: 11, fontWeight: 800 }}>{scenario.label}</div><div style={{ ...MUTED, fontSize: 9, marginTop: 2 }}>{scenario.description}</div></td><td style={{ padding: "11px 9px", borderBottom: "1px solid #1e1b35", color: "#c4b5fd", fontWeight: 800 }}>{fmt(scenario.stressedForecast)}</td><td style={{ padding: "11px 9px", borderBottom: "1px solid #1e1b35", color: scenario.gap >= 0 ? "#34d399" : "#f87171", fontWeight: 900 }}>{pct(scenario.targetRatio)}</td><td style={{ padding: "11px 9px", borderBottom: "1px solid #1e1b35", color: scenario.gap >= 0 ? "#34d399" : "#f87171", fontWeight: 800 }}>{scenario.gap >= 0 ? `+${fmt(scenario.gap)}` : `-${fmt(Math.abs(scenario.gap))}`}</td><td style={{ padding: "11px 9px", borderBottom: "1px solid #1e1b35", color: scenario.dailyRecoveryNeeded ? "#fbbf24" : "#6b7280", fontWeight: 800 }}>{scenario.dailyRecoveryNeeded ? fmt(scenario.dailyRecoveryNeeded) : "None"}</td></tr>)}</tbody></table></div>
+      </div>
+      <div style={PANEL}><div style={{ color: "#e2e0f0", fontSize: 13, fontWeight: 900, marginBottom: 10 }}>Largest remaining dependencies</div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 9 }}>{stress.topThree.map((member, index) => <div key={member.viewerId} style={{ background: "#0c0b18", border: "1px solid #1e1b35", borderRadius: 10, padding: "11px 12px" }}><div style={{ color: index === 0 ? "#fbbf24" : "#e2e0f0", fontWeight: 900, fontSize: 12 }}>#{index + 1} {member.name}</div><div style={{ color: "#8f88b8", fontSize: 10, marginTop: 4 }}>{fmt(member.projectedRemaining)} expected remaining · {pct(stress.totalProjectedRemaining > 0 ? member.projectedRemaining / stress.totalProjectedRemaining : 0)} of club’s remaining member output</div></div>)}</div></div>
+    </div>;
+  }
+
   function DeeperInsightsPage({ clubs = [], clubData = {}, archiveManifest = null, today = 1, dim = 31, monthKey = "", archiveMonth = "", isArchiveView = false }) {
     const snapshots = useMemo(() => clubs.map((club) => A.buildCurrentSnapshot(club, clubData[club.id], dim)).filter(Boolean), [clubs, clubData, dim]);
     const snapshotsById = useMemo(() => Object.fromEntries(snapshots.map((snapshot) => [snapshot.clubId, snapshot])), [snapshots]);
@@ -259,6 +280,7 @@
     const [historyStatus, setHistoryStatus] = useState({ loading: false, loaded: 0, total: 0, failed: 0 });
     const [contributionExpanded, setContributionExpanded] = useState(false);
     const [profileExpanded, setProfileExpanded] = useState({});
+    const [profileClubFilter, setProfileClubFilter] = useState("all");
 
     useEffect(() => { setAnalysisDay(latestDay); }, [latestDay, monthKey, archiveMonth]);
     useEffect(() => {
@@ -317,7 +339,9 @@
     const networkMemberAlerts = snapshots.flatMap((snapshot) => (momentumByClub[snapshot.clubId]?.memberAlerts || []).map((alert) => ({ ...alert, clubName: snapshot.clubName }))).sort((a, b) => b.projectedImpact - a.projectedImpact);
     const resilience = useMemo(() => selectedSnapshot ? A.computeResilience(selectedSnapshot, analysisDay) : null, [selectedSnapshot, analysisDay]);
     const profiles = useMemo(() => A.profileMembers(snapshots, analysisDay), [snapshots, analysisDay]);
+    const filteredProfileGroups = useMemo(() => !profiles.ready ? [] : profiles.groups.map((group) => ({ ...group, members: profileClubFilter === "all" ? group.members : group.members.filter((member) => String(member.clubId) === String(profileClubFilter)) })).filter((group) => group.members.length), [profiles, profileClubFilter]);
     const transferData = useMemo(() => A.buildTransferRecommendations(snapshots, historyByClub, analysisDay), [snapshots, historyByClub, analysisDay]);
+    const stress = useMemo(() => selectedSnapshot && selectedForecast ? A.computeQuotaStress(selectedSnapshot, selectedForecast, analysisDay) : null, [selectedSnapshot, selectedForecast, analysisDay]);
 
     const sections = [
       ["forecast", "📡 Forecasts"],
@@ -325,6 +349,7 @@
       ["twins", "🪞 Historical Twins"],
       ["profiles", "🧬 Member Archetypes"],
       ["transfer", "🔄 Transfer Helper"],
+      ["stress", "🧪 Quota Stress Lab"],
     ];
     const sliderStops = [5, 10, 15, 20, 25, latestDay].filter((day, index, values) => day <= latestDay && values.indexOf(day) === index);
     const selectedClub = clubs.find((club) => String(club.id) === String(selectedClubId));
@@ -345,7 +370,7 @@
       <div>
         <div style={{ ...PANEL, marginBottom: 14, background: "linear-gradient(135deg, rgba(124,58,237,0.16), rgba(17,16,40,0.94) 48%, rgba(37,99,235,0.10))" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <div style={{ maxWidth: 760 }}><div style={{ color: "#f1eefc", fontSize: 25, fontWeight: 900 }}>Deeper Insights</div><div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.65, marginTop: 5 }}>Use these five views to answer practical questions: where clubs may finish, what changed recently, which past months look similar, how members contribute, and which placements deserve a human review. Every view now includes a plain-language interpretation.</div></div>
+            <div style={{ maxWidth: 760 }}><div style={{ color: "#f1eefc", fontSize: 25, fontWeight: 900 }}>Deeper Insights</div><div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.65, marginTop: 5 }}>Six practical analysis views cover forecasts, momentum, historical twins, member patterns, transfer reviews, and club stress tests. Every view includes a plain-language interpretation.</div></div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}><Badge color="#a78bfa">{monthLabel(monthKey || snapshots[0]?.monthKey)}</Badge><Badge color={isArchiveView ? "#c4b5fd" : "#34d399"}>{isArchiveView ? "Past-month view" : "Current-month data"}</Badge><Badge color={historyStatus.loading ? "#fbbf24" : "#60a5fa"}>{historyStatus.loading ? `Loading prior months ${historyStatus.loaded + historyStatus.failed}/${historyStatus.total}` : `${historyStatus.loaded} prior months loaded`}</Badge></div>
           </div>
           <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "minmax(230px,1fr) auto", gap: 14, alignItems: "end" }} className="insights-day-control">
@@ -408,12 +433,13 @@
         {activeSection === "profiles" && <>
           <ExplanationBox headline="Archetypes describe how someone contributes—not whether they are good or bad." meaning="Each active member receives one primary pattern based on daily consistency, timing, concentration, target progress, and recent direction." action="Use the pattern to tailor expectations: protect consistency, plan around weekend-focused members, and avoid judging burst contributors from one quiet day." color="#2dd4bf" />
           <div style={PANEL}>
-            <div style={{ marginBottom: 14 }}><div style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 800 }}>Network-wide Member Archetypes</div><div style={MUTED}>These descriptions summarize contribution style. They are not rankings, transfer decisions, or permanent labels.</div></div>
-            {!profiles.ready ? <EmptyState title="Not enough elapsed data" detail={profiles.reason} /> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10 }}>{profiles.groups.map((group) => { const showAll = Boolean(profileExpanded[group.key]); const visible = showAll ? group.members : group.members.slice(0, 6); return <div key={group.key} style={{ background: "#0c0b18", border: `1px solid ${group.color}44`, borderRadius: 12, padding: "13px 14px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 5 }}><div style={{ color: group.color, fontWeight: 800, fontSize: 12 }}>{group.label}</div><Badge color={group.color}>{group.members.length}</Badge></div><div style={{ ...MUTED, minHeight: 33, marginBottom: 9 }}>{PROFILE_DESCRIPTIONS[group.key]}</div><div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{visible.map((member) => <div key={`${member.viewerId}-${member.clubName}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 10 }}><div style={{ minWidth: 0 }}><div style={{ color: "#e2e0f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div><div style={{ color: "#4b5563", fontSize: 9 }}>{member.clubName}</div></div><div style={{ color: "#9ca3af", fontWeight: 700, whiteSpace: "nowrap" }}>{pct(member.progressRatio)} of quota</div></div>)}</div>{group.members.length > 6 && <button onClick={() => setProfileExpanded((previous) => ({ ...previous, [group.key]: !showAll }))} style={{ marginTop: 10, background: "transparent", border: 0, color: group.color, fontSize: 9, fontWeight: 800, cursor: "pointer", padding: 0 }}>{showAll ? "Show fewer" : `Show ${group.members.length - 6} more`}</button>}</div>; })}</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}><div><div style={{ color: "#e2e0f0", fontSize: 14, fontWeight: 800 }}>Network-wide Member Archetypes</div><div style={MUTED}>These descriptions summarize contribution style. They are not rankings, transfer decisions, or permanent labels.</div></div><select value={profileClubFilter} onChange={(event) => { setProfileClubFilter(event.target.value); setProfileExpanded({}); }} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 8, padding: "7px 9px", fontSize: 10 }}><option value="all">All clubs</option>{snapshots.map((snapshot) => <option key={snapshot.clubId} value={snapshot.clubId}>{snapshot.clubName}</option>)}</select></div>
+            {!profiles.ready ? <EmptyState title="Not enough elapsed data" detail={profiles.reason} /> : !filteredProfileGroups.length ? <EmptyState title="No archetypes for this club" detail="No active member with sufficient daily gain was classified at the selected analysis day." /> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10 }}>{filteredProfileGroups.map((group) => { const showAll = Boolean(profileExpanded[group.key]); const visible = showAll ? group.members : group.members.slice(0, 6); return <div key={group.key} style={{ background: "#0c0b18", border: `1px solid ${group.color}44`, borderRadius: 12, padding: "13px 14px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 5 }}><div style={{ color: group.color, fontWeight: 800, fontSize: 12 }}>{group.label}</div><Badge color={group.color}>{group.members.length}</Badge></div><div style={{ ...MUTED, minHeight: 33, marginBottom: 9 }}>{PROFILE_DESCRIPTIONS[group.key]}</div><div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{visible.map((member) => <div key={`${member.viewerId}-${member.clubName}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 10 }}><div style={{ minWidth: 0 }}><div style={{ color: "#e2e0f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div><div style={{ color: "#4b5563", fontSize: 9 }}>{member.clubName}</div></div><div style={{ color: "#9ca3af", fontWeight: 700, whiteSpace: "nowrap" }}>{pct(member.progressRatio)} of quota</div></div>)}</div>{group.members.length > 6 && <button onClick={() => setProfileExpanded((previous) => ({ ...previous, [group.key]: !showAll }))} style={{ marginTop: 10, background: "transparent", border: 0, color: group.color, fontSize: 9, fontWeight: 800, cursor: "pointer", padding: 0 }}>{showAll ? "Show fewer" : `Show ${group.members.length - 6} more`}</button>}</div>; })}</div>}
           </div>
         </>}
 
         {activeSection === "transfer" && <TransferHelper transferData={transferData} snapshots={snapshots} analysisDay={analysisDay} />}
+        {activeSection === "stress" && <QuotaStressLab snapshot={selectedSnapshot} forecast={selectedForecast} stress={stress} snapshots={snapshots} selectedClubId={selectedClubId} setSelectedClubId={setSelectedClubId} analysisDay={analysisDay} />}
 
         <div style={{ ...PANEL, marginTop: 14, borderColor: "#3a3159" }}><div style={{ color: "#c4b5fd", fontSize: 11, fontWeight: 800, marginBottom: 6 }}>Known limits—in plain language</div><div style={MUTED}>The site loads up to three earlier months per club, and some clubs have little or no history. Historical rosters are month-end snapshots rather than a day-by-day record. Outside clubs are invisible, which makes rank estimates weaker than fan forecasts. Transfer guidance cannot see absences, personal preference, roster capacity, or officer context. Treat every range and recommendation as decision support, not an automatic answer. No Chronogenesis file or job is changed by this page.</div></div>
       </div>

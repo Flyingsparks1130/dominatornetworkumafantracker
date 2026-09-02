@@ -1261,6 +1261,7 @@ const { useState, useEffect, useRef } = React;
       const [networkChartMode, setNetworkChartMode] = useState("cumulative");
       const [paceExporting, setPaceExporting] = useState(false);
       const [topNetworkMode, setTopNetworkMode] = useState("daily");
+      const [networkMemberClubFilter, setNetworkMemberClubFilter] = useState("all");
       const [rankingsTab, setRankingsTab] = useState(initialRoute.rankingsTab);
       const [networkMemberVisibleCount, setNetworkMemberVisibleCount] = useState(RANKINGS_MEMBER_DEFAULT_COUNT);
       const [criticalClubFilter, setCriticalClubFilter] = useState("all");
@@ -1493,7 +1494,7 @@ const { useState, useEffect, useRef } = React;
 
       useEffect(() => { if (cid && !clubData[cid]) fetchData(cid, true); }, [activeIdx, archiveMonth]);
       useEffect(() => { setCriticalVisibleCount(10); }, [criticalClubFilter, criticalSort]);
-      useEffect(() => { setNetworkMemberVisibleCount(RANKINGS_MEMBER_DEFAULT_COUNT); }, [topNetworkMode]);
+      useEffect(() => { setNetworkMemberVisibleCount(RANKINGS_MEMBER_DEFAULT_COUNT); }, [topNetworkMode, networkMemberClubFilter]);
       useEffect(() => { setPaceHiddenMembers({}); setOverviewStatusFilter(""); setPaceZoom(1); setPacePinnedIdx(null); }, [cid]);
       useEffect(() => { if (!hasComparisonData) { setOverviewStatusFilter(""); setMemberFilters((prev) => (prev.status ? { ...prev, status: "" } : prev)); } }, [hasComparisonData, cid]);
 
@@ -1533,6 +1534,12 @@ const { useState, useEffect, useRef } = React;
       const statusCounts = hasComparisonData ? decoratedMembers.reduce((acc, member) => { acc[member.plan.statusKey] += 1; return acc; }, { "on-track": 0, "behind": 0, "critical": 0 }) : { "on-track": 0, "behind": 0, "critical": 0 };
       const membersOnTrack = statusCounts["on-track"];
       const sortedByMonthly = [...decoratedMembers].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0));
+      const clubGoalProgressRatio = clubMonthlyTarget > 0 ? totalMonthly / clubMonthlyTarget : 0;
+      const clubProjectedRatio = clubMonthlyTarget > 0 ? totalProj / clubMonthlyTarget : 0;
+      const clubTopContributor = sortedByMonthly[0] || null;
+      const clubLargestPlanGap = [...decoratedMembers].sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0))[0] || null;
+      const clubOutlookLabel = clubProjectedRatio >= 1.05 ? "Comfortably on target" : clubProjectedRatio >= 1 ? "Projected to reach target" : clubProjectedRatio >= 0.9 ? "Close to target" : "Needs attention";
+      const clubOutlookColor = clubProjectedRatio >= 1.05 ? "#34d399" : clubProjectedRatio >= 1 ? "#60a5fa" : clubProjectedRatio >= 0.9 ? "#fbbf24" : "#f87171";
       const overviewMembers = overviewStatusFilter ? sortedByMonthly.filter((member) => member.plan.statusKey === overviewStatusFilter) : sortedByMonthly;
 
       const perMemberDailyTarget = Math.round(club.target / Math.max(dim, 1));
@@ -1649,7 +1656,11 @@ const { useState, useEffect, useRef } = React;
         return members;
       }).sort((a, b) => { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const projectedDiff = (b.projected ?? Number.NEGATIVE_INFINITY) - (a.projected ?? Number.NEGATIVE_INFINITY); if (projectedDiff !== 0) return projectedDiff; return (a.name || "").localeCompare(b.name || ""); });
 
-      const topNetworkUsers = hasComparisonData ? [...networkMembers].sort((a, b) => { if (topNetworkMode === "monthly") { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; } else { const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; } return (a.name || "").localeCompare(b.name || ""); }) : [];
+      const individualRankPool = networkMemberClubFilter === "all" ? networkMembers : networkMembers.filter((member) => member.clubName === networkMemberClubFilter);
+      const topNetworkUsers = hasComparisonData ? [...individualRankPool].sort((a, b) => { if (topNetworkMode === "monthly") { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; } else { const dayDiff = (b.dailyGain ?? Number.NEGATIVE_INFINITY) - (a.dailyGain ?? Number.NEGATIVE_INFINITY); if (dayDiff !== 0) return dayDiff; const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; } return (a.name || "").localeCompare(b.name || ""); }) : [];
+      const individualQuotaHitters = individualRankPool.filter((member) => (member.projected ?? 0) >= member.clubTarget).length;
+      const individualHighOutlook = individualRankPool.filter((member) => (member.projected ?? 0) >= member.clubTarget * 1.25).length;
+      const representedTopClubs = new Set(topNetworkUsers.slice(0, 25).map((member) => member.clubName)).size;
       const visibleNetworkUsers = topNetworkUsers.slice(0, networkMemberVisibleCount);
       const remainingNetworkUserCount = Math.max(0, topNetworkUsers.length - visibleNetworkUsers.length);
       const hiddenOnNetworkResetCount = Math.max(0, topNetworkUsers.length - RANKINGS_MEMBER_DEFAULT_COUNT);
@@ -2439,7 +2450,7 @@ const { useState, useEffect, useRef } = React;
                     { href: "./clubs.html", icon: "📋", title: "Clubs", description: "Browse every club and open a focused high-level club summary.", color: "#7c3aed" },
                     { href: "./rankings.html", icon: "🌐", title: "Rankings", description: "Explore club rankings, member leaderboards, pace, health, and movement insights.", color: "#2563eb" },
                     { href: clubDetailHref, icon: "🏇", title: "Club Detail", description: "Open the full Overview, Members, and Pace dashboard for a single club.", color: tc.bar },
-                    { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the deeper analysis features you choose next.", color: "#a78bfa" },
+                    { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the nerds: forecasts, stress tests, member patterns, and roster decision tools.", color: "#a78bfa" },
                   ].map((item) => (
                     <a key={item.title} href={item.href} style={{ background: "rgba(11,9,24,0.72)", border: `1px solid ${item.color}55`, borderRadius: 14, padding: "18px", textDecoration: "none", display: "block", boxShadow: `0 0 0 1px ${item.color}11 inset` }}>
                       <div style={{ fontSize: 24, marginBottom: 10 }}>{item.icon}</div>
@@ -2632,8 +2643,15 @@ const { useState, useEffect, useRef } = React;
               </div>)}
 
               {rankingsTab === "individual" && (<div id="individual-member-rankings" style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div style={S.h2}>Individual Member Rankings</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 6 }}>{topNetworkMode === "daily" ? "Members are ranked by daily gain to spotlight the hottest performers right now, with total fans shown for context." : "Members are ranked by monthly fans to spotlight the strongest performers this month, with total fans shown for context."}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}><div><div style={S.h2}>Individual Member Rankings</div><div style={{ color: "#8f88b8", fontSize: 12, lineHeight: 1.55 }}>Compare raw fan production with each member’s club-specific quota. Rankings measure output—not automatic promotion or transfer decisions.</div></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}><select value={networkMemberClubFilter} onChange={(event) => setNetworkMemberClubFilter(event.target.value)} style={{ background: "#0c0b18", border: "1px solid #2a2540", color: "#e2e0f0", borderRadius: 999, padding: "7px 10px", fontSize: 10 }}><option value="all">All clubs</option>{networkClubs.filter((entry) => entry.hasData).map((entry) => <option key={entry.id} value={entry.clubName}>{entry.clubName}</option>)}</select><button style={S.btn(topNetworkMode === "daily", "#7c3aed")} onClick={() => setTopNetworkMode("daily")}>Daily Gain</button><button style={S.btn(topNetworkMode === "monthly", "#7c3aed")} onClick={() => setTopNetworkMode("monthly")}>Monthly Gain</button></div></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 9, margin: "12px 0" }}>
+                  {[
+                    { label: topNetworkMode === "daily" ? "Daily leader" : "Monthly leader", value: topNetworkUsers[0]?.name || "—", sub: topNetworkUsers[0] ? `${topNetworkUsers[0].clubName} · ${fmt(topNetworkMode === "daily" ? topNetworkUsers[0].dailyGain : topNetworkUsers[0].monthlyGain)}` : "No member data", color: "#fbbf24" },
+                    { label: "Projected to quota", value: `${individualQuotaHitters}/${individualRankPool.length}`, sub: "Using each member’s current club quota", color: "#34d399" },
+                    { label: "Projected at 125%+", value: individualHighOutlook, sub: "Strong output signal; not a transfer verdict", color: "#a78bfa" },
+                    { label: "Top-25 club breadth", value: `${representedTopClubs} clubs`, sub: networkMemberClubFilter === "all" ? "Clubs represented among visible leaders" : `Filtered to ${networkMemberClubFilter}`, color: "#60a5fa" },
+                  ].map((item) => <div key={item.label} style={{ background: "rgba(11,9,24,0.72)", border: "1px solid #1e1b35", borderRadius: 11, padding: "11px 13px" }}><div style={{ color: "#6b7280", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em" }}>{item.label}</div><div style={{ color: item.color, fontWeight: 900, fontSize: 17, marginTop: 4 }}>{item.value}</div><div style={{ color: "#8f88b8", fontSize: 9, marginTop: 3 }}>{item.sub}</div></div>)}
+                </div>
                 {hasComparisonData && topNetworkUsers.length > 0 && (<div style={{ color: "#8f88b8", fontSize: 11, marginBottom: 12 }}>Showing the top {visibleNetworkUsers.length} of {topNetworkUsers.length} members.</div>)}
                 {hasComparisonData && topNetworkUsers.length > 0 && (
                   <div className="podium">
@@ -2652,9 +2670,9 @@ const { useState, useEffect, useRef } = React;
                     })}
                   </div>
                 )}
-                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Total Fans</th></tr></thead><tbody>
-                  {!hasComparisonData ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>Load club JSON files to populate the network leaderboard.</td></tr>) : (
-                    visibleNetworkUsers.slice(3).map((member, index) => (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>))
+                <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 850 }}><thead><tr style={{ textAlign: "left" }}><th style={S.th}>#</th><th style={S.th}>Member</th><th style={S.th}>Club</th>{topNetworkMode === "daily" ? <th style={S.th}>Daily Gain</th> : <th style={S.th}>Monthly Fans</th>}<th style={S.th}>Projected Finish</th><th style={S.th}>Quota Outlook</th><th style={S.th}>Total Fans</th></tr></thead><tbody>
+                  {!hasComparisonData ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>{noComparisonLabel}</td></tr>) : topNetworkUsers.length === 0 ? (<tr><td colSpan={7} style={{ ...S.td, textAlign: "center", color: "#6b7280", padding: "22px 8px" }}>No members match the selected club filter.</td></tr>) : (
+                    visibleNetworkUsers.slice(3).map((member, index) => { const quotaRatio = member.clubTarget > 0 ? (member.projected ?? 0) / member.clubTarget : 0; const quotaColor = quotaRatio >= 1.25 ? "#a78bfa" : quotaRatio >= 1 ? "#34d399" : quotaRatio >= 0.9 ? "#fbbf24" : "#f87171"; return (<tr key={`${member.clubName}-${member.name}-${index}`}><td style={{ ...S.td, color: "#6b7280" }}>{index + 4}</td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{member.name}</td><td style={S.td}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><TierBadge tier={member.clubTier} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /><span>{member.clubName}</span></div></td>{topNetworkMode === "daily" ? (<td style={{ ...S.td, color: gainColor(member.dailyGain), fontWeight: 700 }}>{member.dailyGain != null ? fmtSigned(member.dailyGain) : "—"}</td>) : (<td style={{ ...S.td, color: gainColor(member.monthlyGain), fontWeight: 700 }}>{fmtSigned(member.monthlyGain ?? 0)}</td>)}<td style={{ ...S.td, color: "#c4b5fd", fontWeight: 800 }}>{fmt(member.projected)}</td><td style={{ ...S.td, color: quotaColor, fontWeight: 900 }}>{Math.round(quotaRatio * 100)}% <span style={{ color: "#6b7280", fontSize: 9 }}>of {fmt(member.clubTarget)}</span></td><td style={{ ...S.td, color: "#e2e0f0", fontWeight: 700 }}>{fmtFull(member.fans)}</td></tr>); })
                   )}
                 </tbody></table></div>
                 {topNetworkUsers.length > RANKINGS_MEMBER_DEFAULT_COUNT && (
@@ -2853,6 +2871,18 @@ const { useState, useEffect, useRef } = React;
               </div>
 
               {tab === "dashboard" && (<>
+                <div style={{ ...S.card, background: `${clubOutlookColor}0d`, border: `1px solid ${clubOutlookColor}44` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}><div><div style={S.h2}>Club Pulse</div><div style={{ color: "#e2e0f0", fontSize: 18, fontWeight: 900 }}>{clubOutlookLabel}</div><div style={{ color: "#8f88b8", fontSize: 11, marginTop: 4 }}>{fmt(totalProj)} projected against a {fmt(clubMonthlyTarget)} full-club quota.</div></div><div style={{ background: `${clubOutlookColor}18`, border: `1px solid ${clubOutlookColor}55`, color: clubOutlookColor, borderRadius: 999, padding: "6px 9px", fontSize: 10, fontWeight: 900 }}>{Math.round(clubProjectedRatio * 100)}% projected</div></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 9 }}>
+                    {[
+                      { label: "Goal progress", value: `${Math.round(clubGoalProgressRatio * 100)}%`, sub: `${fmt(totalMonthly)} earned so far`, color: clubGoalProgressRatio >= today / dim ? "#34d399" : "#fbbf24" },
+                      { label: "Members on pace", value: `${statusCounts["on-track"]}/${decoratedMembers.length}`, sub: `${statusCounts["behind"] + statusCounts["critical"]} currently need attention`, color: "#34d399" },
+                      { label: "Largest contributor", value: clubTopContributor?.name || "—", sub: clubTopContributor ? `${fmt(clubTopContributor.monthlyGain)} this month` : "No member data", color: "#c4b5fd" },
+                      { label: "First review", value: clubLargestPlanGap?.name || "—", sub: clubLargestPlanGap ? `${fmtSigned(clubLargestPlanGap.plan.delta)} versus elapsed plan` : "No plan gap", color: clubLargestPlanGap && (clubLargestPlanGap.plan.delta ?? 0) < 0 ? "#f87171" : "#60a5fa" },
+                    ].map((item) => <div key={item.label} style={{ background: "rgba(11,9,24,0.68)", border: "1px solid #1e1b35", borderRadius: 10, padding: "10px 12px" }}><div style={{ color: "#6b7280", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em" }}>{item.label}</div><div style={{ color: item.color, fontSize: 15, fontWeight: 900, marginTop: 4 }}>{item.value}</div><div style={{ color: "#8f88b8", fontSize: 9, marginTop: 3 }}>{item.sub}</div></div>)}
+                  </div>
+                  <div style={{ color: "#c7c4dd", fontSize: 10, lineHeight: 1.55, marginTop: 11 }}><b style={{ color: clubOutlookColor }}>What to do:</b> {clubProjectedRatio >= 1 ? "Protect the current pace and focus officer attention on the members furthest below elapsed plan." : `The club is projected ${fmt(Math.max(0, clubMonthlyTarget - totalProj))} short. Start with ${clubLargestPlanGap?.name || "the largest negative plan gaps"} and confirm whether the slowdown is temporary.`}</div>
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
                   {[
                     { label: "Active Members", value: hasComparisonData ? `${decoratedMembers.length}/${viewMaxMembers}` : "—", sub: hasComparisonData ? "Inactive excluded" : noComparisonLabel, col: hasComparisonData ? "#e2e0f0" : "#9ca3af" },

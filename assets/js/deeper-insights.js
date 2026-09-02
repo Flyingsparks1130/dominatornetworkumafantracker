@@ -599,6 +599,8 @@
         const previousFive = average(daily.slice(Math.max(0, daily.length - 10), Math.max(0, daily.length - 5)));
         const firstHalf = average(daily.slice(0, Math.max(1, Math.floor(day / 2))));
         const secondHalf = average(daily.slice(Math.max(1, Math.floor(day / 2))));
+        const firstHalfTotal = sum(daily.slice(0, Math.max(1, Math.floor(day / 2))));
+        const frontLoadedShare = total > 0 ? firstHalfTotal / total : 0;
         const monthMatch = String(snapshot.monthKey || "").match(/^(\d{4})-(\d{2})$/);
         const year = monthMatch ? Number(monthMatch[1]) : 2026;
         const month = monthMatch ? Number(monthMatch[2]) : 1;
@@ -612,6 +614,7 @@
           viewerId: member.viewerId,
           name: member.name,
           clubName: snapshot.clubName,
+          clubId: snapshot.clubId,
           clubTier: snapshot.tier,
           total,
           progressRatio: snapshot.perMemberTarget > 0 ? total / snapshot.perMemberTarget : 0,
@@ -622,6 +625,7 @@
           previousFive,
           firstHalf,
           secondHalf,
+          frontLoadedShare,
           weekendAverage: average(weekendValues),
           weekdayAverage: average(weekdayValues),
           weekendDays: weekendValues.length,
@@ -630,6 +634,7 @@
     });
     const anchorCutoff = quantile(candidates.map((candidate) => candidate.progressRatio), 0.85) || Infinity;
     const labels = [
+      { key: "front", label: "Early-month front-loader", color: "#f472b6" },
       { key: "anchor", label: "High-volume anchor", color: "#fbbf24" },
       { key: "consistent", label: "Consistent contributor", color: "#34d399" },
       { key: "weekend", label: "Weekend-focused", color: "#60a5fa" },
@@ -641,6 +646,7 @@
     ];
     const classified = candidates.map((candidate) => {
       const matches = [];
+      if (day >= 14 && candidate.progressRatio >= 0.85 && candidate.frontLoadedShare >= 0.60 && candidate.firstHalf > 0 && candidate.secondHalf <= candidate.firstHalf * 0.55) matches.push("front");
       if (candidate.progressRatio >= anchorCutoff && candidate.activeRate >= 0.6) matches.push("anchor");
       if (candidate.activeRate >= 0.8 && candidate.cv <= 0.9) matches.push("consistent");
       if (candidate.weekendDays >= 2 && candidate.weekendAverage >= candidate.weekdayAverage * 1.6 && candidate.weekendAverage > 0) matches.push("weekend");
@@ -655,6 +661,59 @@
       members: classified.filter((member) => member.primary === meta.key).sort((a, b) => b.progressRatio - a.progressRatio),
     })).filter((group) => group.members.length);
     return { ready: true, day, memberCount: classified.length, groups };
+  }
+
+  function computeQuotaStress(snapshot, forecast, analysisDay = null) {
+    if (!snapshot?.clubTarget || !forecast) return null;
+    const day = clamp(number(analysisDay, snapshot.maxAvailableDay), 1, Math.max(1, snapshot.maxAvailableDay));
+    const daysRemaining = Math.max(0, snapshot.dim - day);
+    const rawMembers = snapshot.members.filter((member) => member.isActive).map((member) => {
+      const currentGain = memberValueAtDay(member, day);
+      const projectedFinish = day >= snapshot.dim ? currentGain : Math.max(currentGain, Math.round((currentGain / Math.max(1, day)) * snapshot.dim));
+      return { viewerId: member.viewerId, name: member.name, currentGain, projectedFinish, projectedRemaining: Math.max(0, projectedFinish - currentGain) };
+    });
+    const rawProjectedRemaining = sum(rawMembers.map((member) => member.projectedRemaining));
+    const forecastRemaining = Math.max(0, forecast.forecast - forecast.currentGain);
+    const remainingScale = rawProjectedRemaining > 0 ? forecastRemaining / rawProjectedRemaining : 0;
+    const members = rawMembers.map((member) => ({ ...member, projectedRemaining: member.projectedRemaining * remainingScale })).sort((a, b) => b.projectedRemaining - a.projectedRemaining);
+    const totalProjectedRemaining = sum(members.map((member) => member.projectedRemaining));
+    const topOne = members[0] || null;
+    const topThree = members.slice(0, 3);
+    const buildScenario = (key, label, lostFutureGain, description) => {
+      const stressedForecast = Math.max(forecast.currentGain, Math.round(forecast.forecast - Math.max(0, lostFutureGain)));
+      const gap = stressedForecast - snapshot.clubTarget;
+      return {
+        key,
+        label,
+        description,
+        stressedForecast,
+        gap,
+        targetRatio: stressedForecast / snapshot.clubTarget,
+        dailyRecoveryNeeded: gap < 0 && daysRemaining > 0 ? Math.ceil(Math.abs(gap) / daysRemaining) : 0,
+      };
+    };
+    const scenarios = [
+      buildScenario("top-one-half", "Top contributor slows 50%", (topOne?.projectedRemaining || 0) * 0.50, "Half of the leading member’s expected remaining gain is removed."),
+      buildScenario("top-three-quarter", "Top three slow 25%", sum(topThree.map((member) => member.projectedRemaining)) * 0.25, "Each of the three largest remaining contributors loses one quarter of expected future gain."),
+      buildScenario("top-one-out", "Top contributor stops", topOne?.projectedRemaining || 0, "The leading remaining contributor adds no more fans after the selected day."),
+      buildScenario("network-slowdown", "All remaining pace drops 15%", totalProjectedRemaining * 0.15, "Every active member’s expected remaining output is reduced by 15%."),
+    ];
+    const failedScenarios = scenarios.filter((scenario) => scenario.gap < 0).length;
+    const topThreeRemainingShare = totalProjectedRemaining > 0 ? sum(topThree.map((member) => member.projectedRemaining)) / totalProjectedRemaining : 0;
+    return {
+      day,
+      daysRemaining,
+      baseForecast: forecast.forecast,
+      baseGap: forecast.forecast - snapshot.clubTarget,
+      scenarios,
+      failedScenarios,
+      topOne,
+      topThree,
+      topThreeRemainingShare,
+      totalProjectedRemaining,
+      resilienceLabel: failedScenarios === 0 ? "Resilient" : failedScenarios <= 2 ? "Exposed" : "Fragile",
+      resilienceColor: failedScenarios === 0 ? "#34d399" : failedScenarios <= 2 ? "#fbbf24" : "#f87171",
+    };
   }
 
   function buildTransferRecommendations(snapshots = [], historiesByClub = {}, analysisDay = null) {
@@ -842,6 +901,7 @@
     buildTransferRecommendations,
     buildCurrentSnapshot,
     computeMomentum,
+    computeQuotaStress,
     computeResilience,
     findHistoricalTwins,
     forecastClub,
