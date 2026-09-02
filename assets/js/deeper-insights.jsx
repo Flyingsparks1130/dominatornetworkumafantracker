@@ -112,10 +112,10 @@
     return (
       <div style={{ ...PANEL, overflow: "hidden", padding: 0 }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1060 }}>
             <thead>
               <tr style={{ background: "rgba(11,9,24,0.82)" }}>
-                {["Club", "Gain so far", "Full club goal", "Best month-end estimate", "Working range", "Goal status", "Official rank outlook", "Historical rank trend", "Data confidence"].map((header) => <th key={header} style={{ color: "#6b7280", textAlign: "left", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", padding: "11px 12px", borderBottom: "1px solid #1e1b35", whiteSpace: "nowrap" }}>{header}</th>)}
+                {["Club", "Gain so far", "Full club goal", "Best month-end estimate", "Working range", "Goal status", "Estimated final rank", "Data confidence"].map((header) => <th key={header} style={{ color: "#6b7280", textAlign: "left", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", padding: "11px 12px", borderBottom: "1px solid #1e1b35", whiteSpace: "nowrap" }}>{header}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -127,14 +127,13 @@
                 return (
                   <tr key={club.id} onClick={() => snapshot && setSelectedClubId(String(club.id))} style={{ cursor: snapshot ? "pointer" : "default", background: selected ? "rgba(124,58,237,0.12)" : "transparent", borderBottom: "1px solid #17152a" }}>
                     <td style={{ padding: "11px 12px" }}><div style={{ color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>{club.name}</div><div style={{ color: "#6b7280", fontSize: 9 }}>{club.tier} · {snapshot ? `${snapshot.activeMemberCount} active` : "Waiting for data"}</div></td>
-                    {!snapshot || !forecast ? <td colSpan="8" style={{ padding: "11px 12px", color: "#6b7280", fontSize: 11 }}>No current club data yet. Analysis will appear when its daily feed exists.</td> : <>
+                    {!snapshot || !forecast ? <td colSpan="7" style={{ padding: "11px 12px", color: "#6b7280", fontSize: 11 }}>No current club data yet. Analysis will appear when its daily feed exists.</td> : <>
                       <td style={{ padding: "11px 12px", color: "#e2e0f0", fontWeight: 700, fontSize: 11 }}>{fmt(forecast.currentGain)}</td>
                       <td style={{ padding: "11px 12px", fontSize: 11 }}><div style={{ color: "#c4b5fd", fontWeight: 700 }}>{fmt(snapshot.clubTarget)}</div><div style={{ color: "#4b5563", fontSize: 9 }}>{fmt(snapshot.perMemberTarget)} × {snapshot.activeMemberCount}</div></td>
                       <td style={{ padding: "11px 12px", color: "#e2e0f0", fontWeight: 800, fontSize: 12 }}>{fmt(forecast.forecast)}</td>
                       <td style={{ padding: "11px 12px", color: "#9ca3af", fontSize: 11 }}>{fmt(forecast.low)} – {fmt(forecast.high)}</td>
                       <td style={{ padding: "11px 12px" }}><Badge color={forecast.outlook.color}>{forecast.outlook.label}</Badge></td>
-                      <td style={{ padding: "11px 12px", color: "#e2e0f0", fontSize: 11, fontWeight: 700 }}>{official?.ready ? <><div>≈#{official.projectedRank.toLocaleString()}</div><div style={{ color: "#60a5fa", fontSize: 9 }}>{official.projectedTier} cutoff-backed</div></> : <div style={{ color: "#6b7280", fontSize: 9 }}>{official?.status === "collecting" ? "Collecting cutoffs" : "Not ready"}</div>}</td>
-                      <td style={{ padding: "11px 12px", color: "#e2e0f0", fontSize: 11, fontWeight: 700 }}>{forecast.projectedRank ? <><div>#{forecast.projectedRank.toLocaleString()}</div><div style={{ color: "#4b5563", fontSize: 9 }}>#{forecast.rankLow?.toLocaleString()}–#{forecast.rankHigh?.toLocaleString()}</div></> : "Insufficient history"}</td>
+                      <td style={{ padding: "11px 12px", color: "#e2e0f0", fontSize: 11, fontWeight: 700 }}>{official?.ready ? <><div>≈#{official.projectedRank.toLocaleString()}</div><div style={{ color: "#60a5fa", fontSize: 9 }}>{official.projectedTier} · thresholds + history</div></> : <div style={{ color: "#6b7280", fontSize: 9 }}>{official?.status === "collecting" ? "Collecting thresholds" : "Not ready"}</div>}</td>
                       <td style={{ padding: "11px 12px" }}><Badge color={forecast.confidenceColor}>{forecast.confidence}</Badge><div style={{ color: "#4b5563", fontSize: 9, marginTop: 4 }}>{forecast.historicalSamples} similar prior months</div></td>
                     </>}
                   </tr>
