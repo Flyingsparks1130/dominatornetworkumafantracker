@@ -1466,6 +1466,12 @@ const { useState, useEffect, useRef } = React;
       const [criticalVisibleCount, setCriticalVisibleCount] = useState(10);
       const [pacePinnedIdx, setPacePinnedIdx] = useState(null);
       const [paceCardsCollapsed, setPaceCardsCollapsed] = useState(true);
+      useEffect(() => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const root = document.getElementById('root');
+        const animation = root?.animate?.([{opacity:0.65},{opacity:1}], {duration:180,easing:'ease-out'});
+        return () => animation?.cancel();
+      }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
@@ -1682,7 +1688,7 @@ const { useState, useEffect, useRef } = React;
       }, []);
 
       useEffect(() => {
-        if (!(["rankings", "archives"].includes(PAGE_MODE)) || isArchiveView) return undefined;
+        if (!(["rankings", "archives", "club"].includes(PAGE_MODE)) || isArchiveView) return undefined;
         let cancelled = false;
         const loadRankThresholds = async () => {
           const errors = [];
@@ -2543,7 +2549,7 @@ const { useState, useEffect, useRef } = React;
       if (archiveMonth) clubDetailParams.set("month", archiveMonth);
       const clubDetailHref = `./club.html${clubDetailParams.toString() ? `?${clubDetailParams.toString()}` : ""}`;
       const insightsHref = "./archives.html";
-      const navLinkStyle = (active, color) => ({ ...S.btn(active, color), display: "flex", alignItems: "center", gap: 8, width: "100%", textDecoration: "none" });
+      const navLinkStyle = (active, color) => ({ ...S.btn(active, active ? "#e87e87" : color), display: "flex", alignItems: "center", gap: 8, width: "100%", textDecoration: "none" });
 
       return (
         <div style={S.root}>
@@ -3111,6 +3117,7 @@ const { useState, useEffect, useRef } = React;
                 )}
                 <div style={{ color: "#6b7280", fontSize: 9, lineHeight: 1.55, marginTop: 10 }}>Actual Current Cutoff, Change Today, and Vs Last Month come directly from the API. Modeled Month-End Cutoff is a tracker estimate and is never presented as an official UMA result.{rankThresholdError ? " The threshold file is not available on this deployment yet." : ""}</div>
               </div>
+              <window.ThresholdTrends feed={rankThresholdData} model={rankThresholdForecast} month={thresholdMonthKey} today={today} dim={dim} />
               <div id="club-rank-history" style={S.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                   <div>
@@ -3197,6 +3204,7 @@ const { useState, useEffect, useRef } = React;
                 </div>
 
                 <div style={S.card}>
+                  <window.ClubBoundaryChart feed={rankThresholdData} data={clubData[cid]} club={club} month={thresholdMonthKey} today={today} dim={dim} />
                   <div style={S.h2}>Member Progress — Sorted by Monthly Gain</div>
                   {overviewStatusFilter && (<div style={{ color: STATUS_META[overviewStatusFilter]?.color || "#9ca3af", fontSize: 12, marginBottom: 10 }}>Filtering overview to {STATUS_META[overviewStatusFilter]?.icon} {STATUS_META[overviewStatusFilter]?.label}. Click the same summary card again to clear.</div>)}
                   {!hasComparisonData && (<div style={{ color: "#6b7280", fontSize: 12, marginBottom: 10 }}>{noComparisonLabel}</div>)}
