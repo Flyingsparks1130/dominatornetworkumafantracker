@@ -41,22 +41,29 @@
         260353363016,
         208867857943
       ],
-      "daily_average": 257831312,
+      "daily_average": 259908595,
       "monthly_average": 3094490599,
-      "fan_count": 6329861163,
+      "fan_count": 6330473472,
       "rank": 77,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "is_active": true,
-      "rank_diff": 0,
+      "rank_diff": 21,
       "names": [
         "Dominance",
         "Dominant"
       ],
-      "daily_diff": 352539711,
-      "is_rolling_updated": 1
+      "daily_diff": 0,
+      "is_rolling_updated": 0
     }
   ],
   "club_daily_history": [
+    {
+      "rank": 77,
+      "rank_gain": 15,
+      "interpolated_fan_count": 6330240648,
+      "interpolated_fan_gain": 352919196,
+      "actual_date": 25
+    },
     {
       "rank": 92,
       "rank_gain": 7,
@@ -297,7 +304,7 @@
       "name": "Alczak",
       "leader_chara_id": 1087,
       "membership": 1,
-      "daily_average": 6670957,
+      "daily_average": 6825412,
       "monthly_average": 128785063,
       "join_time": "2026-05-03T03:12:27",
       "fan_count": 1204129100,
@@ -306,352 +313,20 @@
       "leader_chara_dress_id": 108701,
       "support_card_id": 30097,
       "team_evaluation_point": 321733,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Alczak"
       ],
-      "daily_diff": 10859872,
+      "daily_diff": 0,
       "monthly_diff": 134788571,
       "last_month": 251468971
-    },
-    {
-      "friend_viewer_id": 114780844333,
-      "name": "Iviers",
-      "leader_chara_id": 1037,
-      "membership": 2,
-      "daily_average": 8697044,
-      "monthly_average": 114096439,
-      "join_time": "2026-08-02T00:20:27",
-      "fan_count": 1137539547,
-      "honor_id": 105205,
-      "last_login_time": "2026-09-26T16:03:05",
-      "leader_chara_dress_id": 103701,
-      "support_card_id": 30101,
-      "team_evaluation_point": 345525,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Iviers"
-      ],
-      "daily_diff": 11892580,
-      "monthly_diff": 199706185,
-      "last_month": 296111435
-    },
-    {
-      "friend_viewer_id": 398758946199,
-      "name": "Cato",
-      "leader_chara_id": 1045,
-      "membership": 1,
-      "daily_average": 7820143,
-      "monthly_average": 73643165,
-      "join_time": "2026-05-13T11:24:00",
-      "fan_count": 831848724,
-      "honor_id": 103604,
-      "last_login_time": "2026-09-26T13:22:40",
-      "leader_chara_dress_id": 104501,
-      "support_card_id": 30052,
-      "team_evaluation_point": 229404,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Cato"
-      ],
-      "daily_diff": 11919653,
-      "monthly_diff": 188293514,
-      "last_month": 252350320
-    },
-    {
-      "friend_viewer_id": 381950203740,
-      "name": "Billy",
-      "leader_chara_id": 1020,
-      "membership": 1,
-      "daily_average": 9533080,
-      "monthly_average": 115969780,
-      "join_time": "2026-04-03T02:10:44",
-      "fan_count": 1157552182,
-      "honor_id": 410101,
-      "last_login_time": "2026-09-26T14:00:12",
-      "leader_chara_dress_id": 102001,
-      "support_card_id": 30101,
-      "team_evaluation_point": 342288,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Billy"
-      ],
-      "daily_diff": 9970787,
-      "monthly_diff": 272005532,
-      "last_month": 262940167
-    },
-    {
-      "friend_viewer_id": 177048997921,
-      "name": "HUDAILI",
-      "leader_chara_id": 1049,
-      "membership": 1,
-      "daily_average": 7162718,
-      "monthly_average": 77549989,
-      "join_time": "2026-04-01T09:54:06",
-      "fan_count": 1038436651,
-      "honor_id": 310112,
-      "last_login_time": "2026-09-26T18:34:59",
-      "leader_chara_dress_id": 104901,
-      "support_card_id": 30028,
-      "team_evaluation_point": 260105,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "HUDAILI",
-        "Lotus"
-      ],
-      "daily_diff": 7056331,
-      "monthly_diff": 151076264,
-      "last_month": 250895685
-    },
-    {
-      "friend_viewer_id": 377627950213,
-      "name": "Bloodvvolf",
-      "leader_chara_id": 1016,
-      "membership": 1,
-      "daily_average": 6355813,
-      "monthly_average": 100330697,
-      "join_time": "2026-06-02T03:57:14",
-      "fan_count": 1015303832,
-      "honor_id": 105004,
-      "last_login_time": "2026-09-25T21:02:00",
-      "leader_chara_dress_id": 101601,
-      "support_card_id": 30010,
-      "team_evaluation_point": 282693,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Bloodvvolf"
-      ],
-      "daily_diff": 1366000,
-      "monthly_diff": 141722835,
-      "last_month": 213310530
-    },
-    {
-      "friend_viewer_id": 330470415798,
-      "name": "Cieri",
-      "leader_chara_id": 1060,
-      "membership": 1,
-      "daily_average": 8761890,
-      "monthly_average": 112726014,
-      "join_time": "2026-09-03T03:25:23",
-      "fan_count": 1407413659,
-      "honor_id": 104304,
-      "last_login_time": "2026-09-26T12:28:37",
-      "leader_chara_dress_id": 106050,
-      "support_card_id": 30107,
-      "team_evaluation_point": 335022,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Cieri",
-        "Cierir"
-      ],
-      "daily_diff": 16141913,
-      "monthly_diff": 274047615,
-      "last_month": 229175528
-    },
-    {
-      "friend_viewer_id": 272532017258,
-      "name": "Moon",
-      "leader_chara_id": 1045,
-      "membership": 1,
-      "daily_average": 10022342,
-      "monthly_average": 94758559,
-      "join_time": "2026-07-06T22:03:49",
-      "fan_count": 1443728257,
-      "honor_id": 407102,
-      "last_login_time": "2026-09-26T18:03:10",
-      "leader_chara_dress_id": 104540,
-      "support_card_id": 30101,
-      "team_evaluation_point": 349261,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Moon"
-      ],
-      "daily_diff": 9519156,
-      "monthly_diff": 273396017,
-      "last_month": 290497376
-    },
-    {
-      "friend_viewer_id": 466795375849,
-      "name": "Essential",
-      "leader_chara_id": 1068,
-      "membership": 1,
-      "daily_average": 8428519,
-      "monthly_average": 98202372,
-      "join_time": "2026-07-03T19:35:08",
-      "fan_count": 1204210847,
-      "honor_id": 100705,
-      "last_login_time": "2026-09-26T16:19:54",
-      "leader_chara_dress_id": 106801,
-      "support_card_id": 30052,
-      "team_evaluation_point": 365562,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Essential"
-      ],
-      "daily_diff": 7599961,
-      "monthly_diff": 191033491,
-      "last_month": 281598884
-    },
-    {
-      "friend_viewer_id": 375978160276,
-      "name": "Frafnar",
-      "leader_chara_id": 1006,
-      "membership": 1,
-      "daily_average": 12865733,
-      "monthly_average": 116327124,
-      "join_time": "2026-07-06T21:04:22",
-      "fan_count": 1261882369,
-      "honor_id": 102004,
-      "last_login_time": "2026-09-26T14:08:35",
-      "leader_chara_dress_id": 100601,
-      "support_card_id": 30052,
-      "team_evaluation_point": 323730,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Frafnar"
-      ],
-      "daily_diff": 15052782,
-      "monthly_diff": 292387604,
-      "last_month": 437119934
-    },
-    {
-      "friend_viewer_id": 208867857943,
-      "name": "Zorua",
-      "leader_chara_id": 1068,
-      "membership": 1,
-      "daily_average": 7942489,
-      "monthly_average": 80452443,
-      "join_time": "2026-07-02T11:19:22",
-      "fan_count": 702415860,
-      "honor_id": 106404,
-      "last_login_time": "2026-09-26T18:32:01",
-      "leader_chara_dress_id": 106801,
-      "support_card_id": 30081,
-      "team_evaluation_point": 338101,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Zorua"
-      ],
-      "daily_diff": 8502369,
-      "monthly_diff": 184002647,
-      "last_month": 260926699
-    },
-    {
-      "friend_viewer_id": 700394693148,
-      "name": "sialan",
-      "leader_chara_id": 1050,
-      "membership": 1,
-      "daily_average": 9065312,
-      "monthly_average": 148039022,
-      "join_time": "2026-09-02T09:34:46",
-      "fan_count": 1533546274,
-      "honor_id": 100803,
-      "last_login_time": "2026-09-26T16:49:02",
-      "leader_chara_dress_id": 105001,
-      "support_card_id": 30101,
-      "team_evaluation_point": 324138,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "sialan"
-      ],
-      "daily_diff": 16646478,
-      "monthly_diff": 211165823,
-      "last_month": 315156397
-    },
-    {
-      "friend_viewer_id": 483723407342,
-      "name": "Trin",
-      "leader_chara_id": 1025,
-      "membership": 1,
-      "daily_average": 11812900,
-      "monthly_average": 117433600,
-      "join_time": "2026-05-02T02:16:29",
-      "fan_count": 1224444019,
-      "honor_id": 102004,
-      "last_login_time": "2026-09-26T15:39:20",
-      "leader_chara_dress_id": 102501,
-      "support_card_id": 30097,
-      "team_evaluation_point": 322827,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Trin"
-      ],
-      "daily_diff": 23427814,
-      "monthly_diff": 335346300,
-      "last_month": 349908542
-    },
-    {
-      "friend_viewer_id": 717136007468,
-      "name": "OctoAnita",
-      "leader_chara_id": 1100,
-      "membership": 1,
-      "daily_average": 8367451,
-      "monthly_average": 90083836,
-      "join_time": "2026-09-06T11:01:22",
-      "fan_count": 1074631589,
-      "honor_id": 104204,
-      "last_login_time": "2026-09-26T13:00:57",
-      "leader_chara_dress_id": 110001,
-      "support_card_id": 30101,
-      "team_evaluation_point": 334647,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "OctoAnita"
-      ],
-      "daily_diff": 15259082,
-      "monthly_diff": 197372798,
-      "last_month": 260850184
-    },
-    {
-      "friend_viewer_id": 776791656743,
-      "name": "Nikola Jokic",
-      "leader_chara_id": 1028,
-      "membership": 1,
-      "daily_average": 4011787,
-      "monthly_average": 15384817,
-      "join_time": "2026-09-04T22:59:31",
-      "fan_count": 491451389,
-      "honor_id": 100704,
-      "last_login_time": "2026-09-26T18:38:10",
-      "leader_chara_dress_id": 102801,
-      "support_card_id": 30036,
-      "team_evaluation_point": 295012,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Nikola Jokic"
-      ],
-      "daily_diff": 11970878,
-      "monthly_diff": 213295294,
-      "last_month": 24463312
-    },
-    {
-      "friend_viewer_id": 907332833596,
-      "name": "Fabino",
-      "leader_chara_id": 1041,
-      "membership": 3,
-      "daily_average": 12906244,
-      "monthly_average": 137291099,
-      "join_time": "2026-04-02T01:14:12",
-      "fan_count": 1556951617,
-      "honor_id": 100188,
-      "last_login_time": "2026-09-26T09:05:53",
-      "leader_chara_dress_id": 104101,
-      "support_card_id": 30052,
-      "team_evaluation_point": 308607,
-      "updated_at": "2026-09-26T18:50:25.355561",
-      "names": [
-        "Fabino"
-      ],
-      "daily_diff": 13780954,
-      "monthly_diff": 306347655,
-      "last_month": 419343123
     },
     {
       "friend_viewer_id": 158624380842,
       "name": "NakeGhostie",
       "leader_chara_id": 1004,
       "membership": 1,
-      "daily_average": 5762057,
+      "daily_average": 5828056,
       "monthly_average": 97343756,
       "join_time": "2026-04-04T04:32:26",
       "fan_count": 953304308,
@@ -660,65 +335,64 @@
       "leader_chara_dress_id": 100430,
       "support_card_id": 30010,
       "team_evaluation_point": 330139,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "NakeGhostie"
       ],
-      "daily_diff": 9380151,
+      "daily_diff": 0,
       "monthly_diff": 124410198,
       "last_month": 205513046
     },
     {
-      "friend_viewer_id": 446635486767,
-      "name": "Nord",
-      "leader_chara_id": 1034,
+      "friend_viewer_id": 272532017258,
+      "name": "Moon",
+      "leader_chara_id": 1045,
       "membership": 1,
-      "daily_average": 12267081,
-      "monthly_average": 152747508,
-      "join_time": "2026-08-14T02:09:23",
-      "fan_count": 2147052191,
-      "honor_id": 100901,
-      "last_login_time": "2026-09-26T17:18:18",
-      "leader_chara_dress_id": 103443,
-      "support_card_id": 30107,
-      "team_evaluation_point": 352016,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "daily_average": 10079532,
+      "monthly_average": 94758559,
+      "join_time": "2026-07-06T22:03:49",
+      "fan_count": 1443728257,
+      "honor_id": 407102,
+      "last_login_time": "2026-09-26T18:03:10",
+      "leader_chara_dress_id": 104540,
+      "support_card_id": 30101,
+      "team_evaluation_point": 349261,
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
-        "Nord"
+        "Moon"
       ],
-      "daily_diff": 14365292,
-      "monthly_diff": 330344460,
-      "last_month": 362891238
+      "daily_diff": 0,
+      "monthly_diff": 273396017,
+      "last_month": 290497376
     },
     {
-      "friend_viewer_id": 170196668665,
-      "name": "EpicIceMan",
-      "leader_chara_id": 1004,
+      "friend_viewer_id": 483723407342,
+      "name": "Trin",
+      "leader_chara_id": 1025,
       "membership": 1,
-      "daily_average": 7174288,
-      "monthly_average": 86378405,
-      "join_time": "2026-05-07T05:03:40",
-      "fan_count": 1079676965,
-      "honor_id": 402101,
-      "last_login_time": "2026-09-26T15:44:32",
-      "leader_chara_dress_id": 100430,
-      "support_card_id": 30101,
-      "team_evaluation_point": 300331,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "daily_average": 12033219,
+      "monthly_average": 117433600,
+      "join_time": "2026-05-02T02:16:29",
+      "fan_count": 1224444019,
+      "honor_id": 102004,
+      "last_login_time": "2026-09-26T15:39:20",
+      "leader_chara_dress_id": 102501,
+      "support_card_id": 30097,
+      "team_evaluation_point": 322827,
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
-        "EpicIceMan",
-        "Maverick"
+        "Trin"
       ],
-      "daily_diff": 7363149,
-      "monthly_diff": 156849991,
-      "last_month": 245067749
+      "daily_diff": 0,
+      "monthly_diff": 335346300,
+      "last_month": 349908542
     },
     {
       "friend_viewer_id": 996013148005,
       "name": "FreakofN",
       "leader_chara_id": 1032,
       "membership": 1,
-      "daily_average": 6458205,
+      "daily_average": 6378102,
       "monthly_average": 91707927,
       "join_time": "2026-04-08T10:30:58",
       "fan_count": 926746714,
@@ -727,42 +401,331 @@
       "leader_chara_dress_id": 103201,
       "support_card_id": 30016,
       "team_evaluation_point": 298268,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "FreakofN"
       ],
-      "daily_diff": 4999874,
+      "daily_diff": 0,
       "monthly_diff": 110083802,
       "last_month": 245711689
     },
     {
-      "friend_viewer_id": 260353363016,
-      "name": "N（≧▽≦）",
-      "leader_chara_id": 1007,
-      "membership": 1,
-      "daily_average": 5086536,
-      "monthly_average": 34239129,
-      "join_time": "2026-09-02T01:41:12",
-      "fan_count": 768340703,
-      "honor_id": 101101,
-      "last_login_time": "2026-09-26T12:02:41",
-      "leader_chara_dress_id": 2,
-      "support_card_id": 30016,
-      "team_evaluation_point": 227295,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "friend_viewer_id": 114780844333,
+      "name": "Iviers",
+      "leader_chara_id": 1037,
+      "membership": 2,
+      "daily_average": 8798637,
+      "monthly_average": 114096439,
+      "join_time": "2026-08-02T00:20:27",
+      "fan_count": 1137539547,
+      "honor_id": 105205,
+      "last_login_time": "2026-09-26T16:03:05",
+      "leader_chara_dress_id": 103701,
+      "support_card_id": 30101,
+      "team_evaluation_point": 345525,
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
-        "N（≧▽≦）"
+        "Iviers"
       ],
-      "daily_diff": 11635268,
-      "monthly_diff": 147721726,
-      "last_month": 151515310
+      "daily_diff": 0,
+      "monthly_diff": 199706185,
+      "last_month": 296111435
+    },
+    {
+      "friend_viewer_id": 170196668665,
+      "name": "EpicIceMan",
+      "leader_chara_id": 1004,
+      "membership": 1,
+      "daily_average": 7173720,
+      "monthly_average": 86378405,
+      "join_time": "2026-05-07T05:03:40",
+      "fan_count": 1079676965,
+      "honor_id": 402101,
+      "last_login_time": "2026-09-26T15:44:32",
+      "leader_chara_dress_id": 100430,
+      "support_card_id": 30101,
+      "team_evaluation_point": 300331,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "EpicIceMan",
+        "Maverick"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 156849991,
+      "last_month": 245067749
+    },
+    {
+      "friend_viewer_id": 177048997921,
+      "name": "HUDAILI",
+      "leader_chara_id": 1049,
+      "membership": 1,
+      "daily_average": 7180284,
+      "monthly_average": 77549989,
+      "join_time": "2026-04-01T09:54:06",
+      "fan_count": 1038436651,
+      "honor_id": 310112,
+      "last_login_time": "2026-09-26T18:34:59",
+      "leader_chara_dress_id": 104901,
+      "support_card_id": 30028,
+      "team_evaluation_point": 260105,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "HUDAILI",
+        "Lotus"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 151076264,
+      "last_month": 250895685
+    },
+    {
+      "friend_viewer_id": 208867857943,
+      "name": "Zorua",
+      "leader_chara_id": 1068,
+      "membership": 1,
+      "daily_average": 7935036,
+      "monthly_average": 80452443,
+      "join_time": "2026-07-02T11:19:22",
+      "fan_count": 702415860,
+      "honor_id": 106404,
+      "last_login_time": "2026-09-26T18:32:01",
+      "leader_chara_dress_id": 106801,
+      "support_card_id": 30081,
+      "team_evaluation_point": 338101,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Zorua"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 184002647,
+      "last_month": 260926699
+    },
+    {
+      "friend_viewer_id": 330470415798,
+      "name": "Cieri",
+      "leader_chara_id": 1060,
+      "membership": 1,
+      "daily_average": 8856022,
+      "monthly_average": 112726014,
+      "join_time": "2026-09-03T03:25:23",
+      "fan_count": 1407413659,
+      "honor_id": 104304,
+      "last_login_time": "2026-09-26T12:28:37",
+      "leader_chara_dress_id": 106050,
+      "support_card_id": 30107,
+      "team_evaluation_point": 335022,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Cieri",
+        "Cierir"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 274047615,
+      "last_month": 229175528
+    },
+    {
+      "friend_viewer_id": 375978160276,
+      "name": "Frafnar",
+      "leader_chara_id": 1006,
+      "membership": 1,
+      "daily_average": 12990086,
+      "monthly_average": 116327124,
+      "join_time": "2026-07-06T21:04:22",
+      "fan_count": 1261882369,
+      "honor_id": 102004,
+      "last_login_time": "2026-09-26T14:08:35",
+      "leader_chara_dress_id": 100601,
+      "support_card_id": 30052,
+      "team_evaluation_point": 323730,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Frafnar"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 292387604,
+      "last_month": 437119934
+    },
+    {
+      "friend_viewer_id": 377627950213,
+      "name": "Bloodvvolf",
+      "leader_chara_id": 1016,
+      "membership": 1,
+      "daily_average": 6430316,
+      "monthly_average": 100330697,
+      "join_time": "2026-06-02T03:57:14",
+      "fan_count": 1015303832,
+      "honor_id": 105004,
+      "last_login_time": "2026-09-25T21:02:00",
+      "leader_chara_dress_id": 101601,
+      "support_card_id": 30010,
+      "team_evaluation_point": 282693,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Bloodvvolf"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 141722835,
+      "last_month": 213310530
+    },
+    {
+      "friend_viewer_id": 381950203740,
+      "name": "Billy",
+      "leader_chara_id": 1020,
+      "membership": 1,
+      "daily_average": 9544998,
+      "monthly_average": 115969780,
+      "join_time": "2026-04-03T02:10:44",
+      "fan_count": 1157552182,
+      "honor_id": 410101,
+      "last_login_time": "2026-09-26T14:00:12",
+      "leader_chara_dress_id": 102001,
+      "support_card_id": 30101,
+      "team_evaluation_point": 342288,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Billy"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 272005532,
+      "last_month": 262940167
+    },
+    {
+      "friend_viewer_id": 398758946199,
+      "name": "Cato",
+      "leader_chara_id": 1045,
+      "membership": 1,
+      "daily_average": 7794985,
+      "monthly_average": 73643165,
+      "join_time": "2026-05-13T11:24:00",
+      "fan_count": 831848724,
+      "honor_id": 103604,
+      "last_login_time": "2026-09-26T13:22:40",
+      "leader_chara_dress_id": 104501,
+      "support_card_id": 30052,
+      "team_evaluation_point": 229404,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Cato"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 188293514,
+      "last_month": 252350320
+    },
+    {
+      "friend_viewer_id": 446635486767,
+      "name": "Nord",
+      "leader_chara_id": 1034,
+      "membership": 1,
+      "daily_average": 12343098,
+      "monthly_average": 152747508,
+      "join_time": "2026-08-14T02:09:23",
+      "fan_count": 2147052191,
+      "honor_id": 100901,
+      "last_login_time": "2026-09-26T17:18:18",
+      "leader_chara_dress_id": 103443,
+      "support_card_id": 30107,
+      "team_evaluation_point": 352016,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Nord"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 330344460,
+      "last_month": 362891238
+    },
+    {
+      "friend_viewer_id": 466795375849,
+      "name": "Essential",
+      "leader_chara_id": 1068,
+      "membership": 1,
+      "daily_average": 8455135,
+      "monthly_average": 98202372,
+      "join_time": "2026-07-03T19:35:08",
+      "fan_count": 1204210847,
+      "honor_id": 100705,
+      "last_login_time": "2026-09-26T16:19:54",
+      "leader_chara_dress_id": 106801,
+      "support_card_id": 30052,
+      "team_evaluation_point": 365562,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Essential"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 191033491,
+      "last_month": 281598884
+    },
+    {
+      "friend_viewer_id": 700394693148,
+      "name": "sialan",
+      "leader_chara_id": 1050,
+      "membership": 1,
+      "daily_average": 9266832,
+      "monthly_average": 148039022,
+      "join_time": "2026-09-02T09:34:46",
+      "fan_count": 1533546274,
+      "honor_id": 100803,
+      "last_login_time": "2026-09-26T16:49:02",
+      "leader_chara_dress_id": 105001,
+      "support_card_id": 30101,
+      "team_evaluation_point": 324138,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "sialan"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 211165823,
+      "last_month": 315156397
+    },
+    {
+      "friend_viewer_id": 717136007468,
+      "name": "OctoAnita",
+      "leader_chara_id": 1100,
+      "membership": 1,
+      "daily_average": 8439076,
+      "monthly_average": 90083836,
+      "join_time": "2026-09-06T11:01:22",
+      "fan_count": 1074631589,
+      "honor_id": 104204,
+      "last_login_time": "2026-09-26T13:00:57",
+      "leader_chara_dress_id": 110001,
+      "support_card_id": 30101,
+      "team_evaluation_point": 334647,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "OctoAnita"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 197372798,
+      "last_month": 260850184
+    },
+    {
+      "friend_viewer_id": 776791656743,
+      "name": "Nikola Jokic",
+      "leader_chara_id": 1028,
+      "membership": 1,
+      "daily_average": 4181712,
+      "monthly_average": 15384817,
+      "join_time": "2026-09-04T22:59:31",
+      "fan_count": 491451389,
+      "honor_id": 100704,
+      "last_login_time": "2026-09-26T18:38:10",
+      "leader_chara_dress_id": 102801,
+      "support_card_id": 30036,
+      "team_evaluation_point": 295012,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Nikola Jokic"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 213295294,
+      "last_month": 24463312
     },
     {
       "friend_viewer_id": 887827506170,
       "name": "Lawrence",
       "leader_chara_id": 1016,
       "membership": 1,
-      "daily_average": 10619406,
+      "daily_average": 10590698,
       "monthly_average": 138168032,
       "join_time": "2026-07-02T00:39:45",
       "fan_count": 1404441761,
@@ -771,20 +734,64 @@
       "leader_chara_dress_id": 101601,
       "support_card_id": 30078,
       "team_evaluation_point": 300813,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Lawrence"
       ],
-      "daily_diff": 10782680,
+      "daily_diff": 0,
       "monthly_diff": 282666078,
       "last_month": 310605012
+    },
+    {
+      "friend_viewer_id": 907332833596,
+      "name": "Fabino",
+      "leader_chara_id": 1041,
+      "membership": 3,
+      "daily_average": 12943815,
+      "monthly_average": 137291099,
+      "join_time": "2026-04-02T01:14:12",
+      "fan_count": 1556951617,
+      "honor_id": 100188,
+      "last_login_time": "2026-09-26T09:05:53",
+      "leader_chara_dress_id": 104101,
+      "support_card_id": 30052,
+      "team_evaluation_point": 308607,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "Fabino"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 306347655,
+      "last_month": 419343123
+    },
+    {
+      "friend_viewer_id": 260353363016,
+      "name": "N（≧▽≦）",
+      "leader_chara_id": 1007,
+      "membership": 1,
+      "daily_average": 5229123,
+      "monthly_average": 34239129,
+      "join_time": "2026-09-02T01:41:12",
+      "fan_count": 768340703,
+      "honor_id": 101101,
+      "last_login_time": "2026-09-26T12:02:41",
+      "leader_chara_dress_id": 2,
+      "support_card_id": 30016,
+      "team_evaluation_point": 227295,
+      "updated_at": "2026-09-26T19:00:57.170607",
+      "names": [
+        "N（≧▽≦）"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 147721726,
+      "last_month": 151515310
     },
     {
       "friend_viewer_id": 546151946545,
       "name": "BobHorseracer",
       "leader_chara_id": 1067,
       "membership": 1,
-      "daily_average": 8708736,
+      "daily_average": 8704876,
       "monthly_average": 119247440,
       "join_time": "2026-08-02T18:36:30",
       "fan_count": 1259483282,
@@ -793,11 +800,11 @@
       "leader_chara_dress_id": 106701,
       "support_card_id": 30052,
       "team_evaluation_point": 325527,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "BobHorseracer"
       ],
-      "daily_diff": 13170235,
+      "daily_diff": 0,
       "monthly_diff": 218346183,
       "last_month": 273592242
     },
@@ -828,7 +835,7 @@
       "name": "Raynmapym",
       "leader_chara_id": 1098,
       "membership": 1,
-      "daily_average": 8863621,
+      "daily_average": 8885954,
       "monthly_average": 110201432,
       "join_time": "2026-05-05T23:46:44",
       "fan_count": 1364503210,
@@ -837,11 +844,11 @@
       "leader_chara_dress_id": 109801,
       "support_card_id": 30036,
       "team_evaluation_point": 331953,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Raynmapym"
       ],
-      "daily_diff": 6319097,
+      "daily_diff": 0,
       "monthly_diff": 217284322,
       "last_month": 277762232
     },
@@ -850,7 +857,7 @@
       "name": "Resb",
       "leader_chara_id": 1006,
       "membership": 1,
-      "daily_average": 7471857,
+      "daily_average": 7724533,
       "monthly_average": 77303559,
       "join_time": "2026-07-03T01:10:22",
       "fan_count": 889085351,
@@ -859,11 +866,11 @@
       "leader_chara_dress_id": 100646,
       "support_card_id": 30028,
       "team_evaluation_point": 267578,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Resb"
       ],
-      "daily_diff": 23898096,
+      "daily_diff": 0,
       "monthly_diff": 214120159,
       "last_month": 234627275
     },
@@ -872,7 +879,7 @@
       "name": "Tooru",
       "leader_chara_id": 1021,
       "membership": 1,
-      "daily_average": 8377293,
+      "daily_average": 8473282,
       "monthly_average": 46544787,
       "join_time": "2026-09-03T03:43:59",
       "fan_count": 573451800,
@@ -881,12 +888,12 @@
       "leader_chara_dress_id": 102143,
       "support_card_id": 30028,
       "team_evaluation_point": 315579,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Tooru",
         "Zkarsh"
       ],
-      "daily_diff": 13375983,
+      "daily_diff": 0,
       "monthly_diff": 264651553,
       "last_month": 214754955
     },
@@ -895,21 +902,21 @@
       "name": "Pixelshift",
       "leader_chara_id": 1019,
       "membership": 1,
-      "daily_average": 6954274,
+      "daily_average": 7048654,
       "monthly_average": 80333927,
       "join_time": "2026-06-07T23:25:36",
-      "fan_count": 1173072262,
+      "fan_count": 1174209329,
       "honor_id": 100101,
-      "last_login_time": "2026-09-26T14:35:06",
+      "last_login_time": "2026-09-26T18:56:18",
       "leader_chara_dress_id": 101901,
       "support_card_id": 30052,
       "team_evaluation_point": 340082,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Pixelshift"
       ],
-      "daily_diff": 12887494,
-      "monthly_diff": 184715272,
+      "daily_diff": 0,
+      "monthly_diff": 185852339,
       "last_month": 215848219
     },
     {
@@ -917,7 +924,7 @@
       "name": "jsbs",
       "leader_chara_id": 1060,
       "membership": 1,
-      "daily_average": 6526437,
+      "daily_average": 6562859,
       "monthly_average": 104594413,
       "join_time": "2026-04-04T04:35:14",
       "fan_count": 1030126600,
@@ -926,11 +933,11 @@
       "leader_chara_dress_id": 106050,
       "support_card_id": 30101,
       "team_evaluation_point": 323541,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "jsbs"
       ],
-      "daily_diff": 4859337,
+      "daily_diff": 0,
       "monthly_diff": 153930572,
       "last_month": 211886032
     },
@@ -939,7 +946,7 @@
       "name": "Fabisi",
       "leader_chara_id": 1009,
       "membership": 1,
-      "daily_average": 9800074,
+      "daily_average": 9985222,
       "monthly_average": 0,
       "join_time": "2026-09-08T00:25:07",
       "fan_count": 205690524,
@@ -948,11 +955,11 @@
       "leader_chara_dress_id": 101,
       "support_card_id": 10049,
       "team_evaluation_point": 20407,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Fabisi"
       ],
-      "daily_diff": 13408799,
+      "daily_diff": 0,
       "monthly_diff": 203128022,
       "last_month": 0
     },
@@ -961,7 +968,7 @@
       "name": "Arnamech",
       "leader_chara_id": 1001,
       "membership": 1,
-      "daily_average": 6485146,
+      "daily_average": 6613624,
       "monthly_average": 114876971,
       "join_time": "2026-04-03T14:22:47",
       "fan_count": 1092680911,
@@ -970,11 +977,11 @@
       "leader_chara_dress_id": 100102,
       "support_card_id": 30101,
       "team_evaluation_point": 333566,
-      "updated_at": "2026-09-26T18:50:25.355561",
+      "updated_at": "2026-09-26T19:00:57.170607",
       "names": [
         "Arnamech"
       ],
-      "daily_diff": 14644356,
+      "daily_diff": 0,
       "monthly_diff": 157187826,
       "last_month": 221205840
     },
@@ -1198,6 +1205,14 @@
       "adjusted_fan_gain_cumulative": 187813605
     },
     {
+      "friend_viewer_id": 114780844333,
+      "friend_name": "Iviers",
+      "actual_date": 25,
+      "interpolated_fan_count": 1137531707,
+      "adjusted_interpolated_fan_gain": 11884740,
+      "adjusted_fan_gain_cumulative": 199698345
+    },
+    {
       "friend_viewer_id": 158624380842,
       "friend_name": "NakeGhostie",
       "actual_date": 1,
@@ -1390,6 +1405,14 @@
       "adjusted_fan_gain_cumulative": 115030047
     },
     {
+      "friend_viewer_id": 158624380842,
+      "friend_name": "NakeGhostie",
+      "actual_date": 25,
+      "interpolated_fan_count": 953298124,
+      "adjusted_interpolated_fan_gain": 9373967,
+      "adjusted_fan_gain_cumulative": 124404014
+    },
+    {
       "friend_viewer_id": 164820701923,
       "friend_name": "Fabisi",
       "actual_date": 7,
@@ -1532,6 +1555,14 @@
       "interpolated_fan_count": 192281725,
       "adjusted_interpolated_fan_gain": 13317891,
       "adjusted_fan_gain_cumulative": 189719223
+    },
+    {
+      "friend_viewer_id": 164820701923,
+      "friend_name": "Fabisi",
+      "actual_date": 25,
+      "interpolated_fan_count": 205681684,
+      "adjusted_interpolated_fan_gain": 13399959,
+      "adjusted_fan_gain_cumulative": 203119182
     },
     {
       "friend_viewer_id": 170196668665,
@@ -1726,6 +1757,14 @@
       "adjusted_fan_gain_cumulative": 149486842
     },
     {
+      "friend_viewer_id": 170196668665,
+      "friend_name": "EpicIceMan",
+      "actual_date": 25,
+      "interpolated_fan_count": 1079672111,
+      "adjusted_interpolated_fan_gain": 7358295,
+      "adjusted_fan_gain_cumulative": 156845137
+    },
+    {
       "friend_viewer_id": 177048997921,
       "friend_name": "HUDAILI",
       "actual_date": 1,
@@ -1916,6 +1955,14 @@
       "interpolated_fan_count": 1031380320,
       "adjusted_interpolated_fan_gain": 8128860,
       "adjusted_fan_gain_cumulative": 144019933
+    },
+    {
+      "friend_viewer_id": 177048997921,
+      "friend_name": "HUDAILI",
+      "actual_date": 25,
+      "interpolated_fan_count": 1038431999,
+      "adjusted_interpolated_fan_gain": 7051679,
+      "adjusted_fan_gain_cumulative": 151071612
     },
     {
       "friend_viewer_id": 197087700986,
@@ -2110,6 +2157,14 @@
       "adjusted_fan_gain_cumulative": 171827778
     },
     {
+      "friend_viewer_id": 197087700986,
+      "friend_name": "Pixelshift",
+      "actual_date": 25,
+      "interpolated_fan_count": 1174200082,
+      "adjusted_interpolated_fan_gain": 14015314,
+      "adjusted_fan_gain_cumulative": 185843092
+    },
+    {
       "friend_viewer_id": 208867857943,
       "friend_name": "Zorua",
       "actual_date": 1,
@@ -2300,6 +2355,14 @@
       "interpolated_fan_count": 693913491,
       "adjusted_interpolated_fan_gain": 7532546,
       "adjusted_fan_gain_cumulative": 175500278
+    },
+    {
+      "friend_viewer_id": 208867857943,
+      "friend_name": "Zorua",
+      "actual_date": 25,
+      "interpolated_fan_count": 702410254,
+      "adjusted_interpolated_fan_gain": 8496763,
+      "adjusted_fan_gain_cumulative": 183997041
     },
     {
       "friend_viewer_id": 222646828956,
@@ -2494,6 +2557,14 @@
       "adjusted_fan_gain_cumulative": 251275570
     },
     {
+      "friend_viewer_id": 222646828956,
+      "friend_name": "Tooru",
+      "actual_date": 25,
+      "interpolated_fan_count": 573442981,
+      "adjusted_interpolated_fan_gain": 13367164,
+      "adjusted_fan_gain_cumulative": 264642734
+    },
+    {
       "friend_viewer_id": 260353363016,
       "friend_name": "N（≧▽≦）",
       "actual_date": 1,
@@ -2684,6 +2755,14 @@
       "interpolated_fan_count": 756705435,
       "adjusted_interpolated_fan_gain": 12928826,
       "adjusted_fan_gain_cumulative": 136086458
+    },
+    {
+      "friend_viewer_id": 260353363016,
+      "friend_name": "N（≧▽≦）",
+      "actual_date": 25,
+      "interpolated_fan_count": 768333032,
+      "adjusted_interpolated_fan_gain": 11627597,
+      "adjusted_fan_gain_cumulative": 147714055
     },
     {
       "friend_viewer_id": 272532017258,
@@ -2878,6 +2957,14 @@
       "adjusted_fan_gain_cumulative": 263876861
     },
     {
+      "friend_viewer_id": 272532017258,
+      "friend_name": "Moon",
+      "actual_date": 25,
+      "interpolated_fan_count": 1443721982,
+      "adjusted_interpolated_fan_gain": 9512881,
+      "adjusted_fan_gain_cumulative": 273389742
+    },
+    {
       "friend_viewer_id": 330470415798,
       "friend_name": "Cieri",
       "actual_date": 1,
@@ -3068,6 +3155,14 @@
       "interpolated_fan_count": 1391271746,
       "adjusted_interpolated_fan_gain": 13939184,
       "adjusted_fan_gain_cumulative": 257905702
+    },
+    {
+      "friend_viewer_id": 330470415798,
+      "friend_name": "Cieri",
+      "actual_date": 25,
+      "interpolated_fan_count": 1407403016,
+      "adjusted_interpolated_fan_gain": 16131270,
+      "adjusted_fan_gain_cumulative": 274036972
     },
     {
       "friend_viewer_id": 375978160276,
@@ -3262,6 +3357,14 @@
       "adjusted_fan_gain_cumulative": 277334822
     },
     {
+      "friend_viewer_id": 375978160276,
+      "friend_name": "Frafnar",
+      "actual_date": 25,
+      "interpolated_fan_count": 1261872446,
+      "adjusted_interpolated_fan_gain": 15042859,
+      "adjusted_fan_gain_cumulative": 292377681
+    },
+    {
       "friend_viewer_id": 377627950213,
       "friend_name": "Bloodvvolf",
       "actual_date": 1,
@@ -3452,6 +3555,14 @@
       "interpolated_fan_count": 1013937832,
       "adjusted_interpolated_fan_gain": 10453439,
       "adjusted_fan_gain_cumulative": 140356835
+    },
+    {
+      "friend_viewer_id": 377627950213,
+      "friend_name": "Bloodvvolf",
+      "actual_date": 25,
+      "interpolated_fan_count": 1015302933,
+      "adjusted_interpolated_fan_gain": 1365101,
+      "adjusted_fan_gain_cumulative": 141721936
     },
     {
       "friend_viewer_id": 381950203740,
@@ -3646,6 +3757,14 @@
       "adjusted_fan_gain_cumulative": 262034745
     },
     {
+      "friend_viewer_id": 381950203740,
+      "friend_name": "Billy",
+      "actual_date": 25,
+      "interpolated_fan_count": 1157545608,
+      "adjusted_interpolated_fan_gain": 9964213,
+      "adjusted_fan_gain_cumulative": 271998958
+    },
+    {
       "friend_viewer_id": 398758946199,
       "friend_name": "Cato",
       "actual_date": 1,
@@ -3836,6 +3955,14 @@
       "interpolated_fan_count": 819929071,
       "adjusted_interpolated_fan_gain": 6436449,
       "adjusted_fan_gain_cumulative": 176373861
+    },
+    {
+      "friend_viewer_id": 398758946199,
+      "friend_name": "Cato",
+      "actual_date": 25,
+      "interpolated_fan_count": 831840864,
+      "adjusted_interpolated_fan_gain": 11911793,
+      "adjusted_fan_gain_cumulative": 188285654
     },
     {
       "friend_viewer_id": 423115346790,
@@ -4030,6 +4157,14 @@
       "adjusted_fan_gain_cumulative": 210965225
     },
     {
+      "friend_viewer_id": 423115346790,
+      "friend_name": "Raynmapym",
+      "actual_date": 25,
+      "interpolated_fan_count": 1364499045,
+      "adjusted_interpolated_fan_gain": 6314932,
+      "adjusted_fan_gain_cumulative": 217280157
+    },
+    {
       "friend_viewer_id": 446635486767,
       "friend_name": "Nord",
       "actual_date": 1,
@@ -4220,6 +4355,14 @@
       "interpolated_fan_count": 2132686899,
       "adjusted_interpolated_fan_gain": 16448038,
       "adjusted_fan_gain_cumulative": 315979168
+    },
+    {
+      "friend_viewer_id": 446635486767,
+      "friend_name": "Nord",
+      "actual_date": 25,
+      "interpolated_fan_count": 2147042721,
+      "adjusted_interpolated_fan_gain": 14355822,
+      "adjusted_fan_gain_cumulative": 330334990
     },
     {
       "friend_viewer_id": 466795375849,
@@ -4414,6 +4557,14 @@
       "adjusted_fan_gain_cumulative": 183433530
     },
     {
+      "friend_viewer_id": 466795375849,
+      "friend_name": "Essential",
+      "actual_date": 25,
+      "interpolated_fan_count": 1204205837,
+      "adjusted_interpolated_fan_gain": 7594951,
+      "adjusted_fan_gain_cumulative": 191028481
+    },
+    {
       "friend_viewer_id": 483723407342,
       "friend_name": "Trin",
       "actual_date": 1,
@@ -4604,6 +4755,14 @@
       "interpolated_fan_count": 1201016205,
       "adjusted_interpolated_fan_gain": 23930417,
       "adjusted_fan_gain_cumulative": 311918486
+    },
+    {
+      "friend_viewer_id": 483723407342,
+      "friend_name": "Trin",
+      "actual_date": 25,
+      "interpolated_fan_count": 1224428573,
+      "adjusted_interpolated_fan_gain": 23412368,
+      "adjusted_fan_gain_cumulative": 335330854
     },
     {
       "friend_viewer_id": 515371722743,
@@ -4798,6 +4957,14 @@
       "adjusted_fan_gain_cumulative": 123928699
     },
     {
+      "friend_viewer_id": 515371722743,
+      "friend_name": "Alczak",
+      "actual_date": 25,
+      "interpolated_fan_count": 1204121941,
+      "adjusted_interpolated_fan_gain": 10852713,
+      "adjusted_fan_gain_cumulative": 134781412
+    },
+    {
       "friend_viewer_id": 546151946545,
       "friend_name": "BobHorseracer",
       "actual_date": 1,
@@ -4988,6 +5155,14 @@
       "interpolated_fan_count": 1246313047,
       "adjusted_interpolated_fan_gain": 8496468,
       "adjusted_fan_gain_cumulative": 205175948
+    },
+    {
+      "friend_viewer_id": 546151946545,
+      "friend_name": "BobHorseracer",
+      "actual_date": 25,
+      "interpolated_fan_count": 1259474598,
+      "adjusted_interpolated_fan_gain": 13161551,
+      "adjusted_fan_gain_cumulative": 218337499
     },
     {
       "friend_viewer_id": 569440782062,
@@ -5182,6 +5357,14 @@
       "adjusted_fan_gain_cumulative": 149071235
     },
     {
+      "friend_viewer_id": 569440782062,
+      "friend_name": "jsbs",
+      "actual_date": 25,
+      "interpolated_fan_count": 1030123397,
+      "adjusted_interpolated_fan_gain": 4856134,
+      "adjusted_fan_gain_cumulative": 153927369
+    },
+    {
       "friend_viewer_id": 700394693148,
       "friend_name": "sialan",
       "actual_date": 1,
@@ -5374,6 +5557,14 @@
       "adjusted_fan_gain_cumulative": 194519345
     },
     {
+      "friend_viewer_id": 700394693148,
+      "friend_name": "sialan",
+      "actual_date": 25,
+      "interpolated_fan_count": 1533535300,
+      "adjusted_interpolated_fan_gain": 16635504,
+      "adjusted_fan_gain_cumulative": 211154849
+    },
+    {
       "friend_viewer_id": 717136007468,
       "friend_name": "OctoAnita",
       "actual_date": 4,
@@ -5540,6 +5731,14 @@
       "interpolated_fan_count": 1059372507,
       "adjusted_interpolated_fan_gain": 12306786,
       "adjusted_fan_gain_cumulative": 182113716
+    },
+    {
+      "friend_viewer_id": 717136007468,
+      "friend_name": "OctoAnita",
+      "actual_date": 25,
+      "interpolated_fan_count": 1074621528,
+      "adjusted_interpolated_fan_gain": 15249021,
+      "adjusted_fan_gain_cumulative": 197362737
     },
     {
       "friend_viewer_id": 776791656743,
@@ -5716,6 +5915,14 @@
       "interpolated_fan_count": 479480511,
       "adjusted_interpolated_fan_gain": 13187734,
       "adjusted_fan_gain_cumulative": 201520770
+    },
+    {
+      "friend_viewer_id": 776791656743,
+      "friend_name": "Nikola Jokic",
+      "actual_date": 25,
+      "interpolated_fan_count": 491443497,
+      "adjusted_interpolated_fan_gain": 11962986,
+      "adjusted_fan_gain_cumulative": 213483756
     },
     {
       "friend_viewer_id": 887827506170,
@@ -5910,6 +6117,14 @@
       "adjusted_fan_gain_cumulative": 271883398
     },
     {
+      "friend_viewer_id": 887827506170,
+      "friend_name": "Lawrence",
+      "actual_date": 25,
+      "interpolated_fan_count": 1404434652,
+      "adjusted_interpolated_fan_gain": 10775571,
+      "adjusted_fan_gain_cumulative": 282658969
+    },
+    {
       "friend_viewer_id": 896279355196,
       "friend_name": "Resb",
       "actual_date": 1,
@@ -6100,6 +6315,14 @@
       "interpolated_fan_count": 865187255,
       "adjusted_interpolated_fan_gain": 21369086,
       "adjusted_fan_gain_cumulative": 190222063
+    },
+    {
+      "friend_viewer_id": 896279355196,
+      "friend_name": "Resb",
+      "actual_date": 25,
+      "interpolated_fan_count": 889069595,
+      "adjusted_interpolated_fan_gain": 23882340,
+      "adjusted_fan_gain_cumulative": 214104403
     },
     {
       "friend_viewer_id": 907332833596,
@@ -6294,6 +6517,14 @@
       "adjusted_fan_gain_cumulative": 292566701
     },
     {
+      "friend_viewer_id": 907332833596,
+      "friend_name": "Fabino",
+      "actual_date": 25,
+      "interpolated_fan_count": 1556942532,
+      "adjusted_interpolated_fan_gain": 13771869,
+      "adjusted_fan_gain_cumulative": 306338570
+    },
+    {
       "friend_viewer_id": 957256649183,
       "friend_name": "Arnamech",
       "actual_date": 1,
@@ -6486,6 +6717,14 @@
       "adjusted_fan_gain_cumulative": 142543470
     },
     {
+      "friend_viewer_id": 957256649183,
+      "friend_name": "Arnamech",
+      "actual_date": 25,
+      "interpolated_fan_count": 1092671256,
+      "adjusted_interpolated_fan_gain": 14634701,
+      "adjusted_fan_gain_cumulative": 157178171
+    },
+    {
       "friend_viewer_id": 996013148005,
       "friend_name": "FreakofN",
       "actual_date": 1,
@@ -6676,6 +6915,14 @@
       "interpolated_fan_count": 921746840,
       "adjusted_interpolated_fan_gain": 2052573,
       "adjusted_fan_gain_cumulative": 105083928
+    },
+    {
+      "friend_viewer_id": 996013148005,
+      "friend_name": "FreakofN",
+      "actual_date": 25,
+      "interpolated_fan_count": 926743417,
+      "adjusted_interpolated_fan_gain": 4996577,
+      "adjusted_fan_gain_cumulative": 110080505
     }
   ],
   "month_filter": [
