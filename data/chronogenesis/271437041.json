@@ -5,18 +5,19 @@
       "leader_viewer_id": 993598903888,
       "name": "Dominare",
       "comment": "Dominator Family ｜Discord： ＠mikufans．",
-      "member_num": 1,
+      "member_num": 2,
       "join_style": 2,
       "policy": 8,
       "make_time": "2026-09-25T13:28:48",
       "circle_user_array": [
+        649948659066,
         993598903888
       ],
       "daily_average": 0,
       "monthly_average": 0,
       "fan_count": 0,
       "rank": 0,
-      "updated_at": "2026-10-01T19:29:47.642900",
+      "updated_at": "2026-10-02T00:38:11.319043",
       "is_active": true,
       "rank_diff": 0,
       "names": [
@@ -27,6 +28,13 @@
     }
   ],
   "club_daily_history": [
+    {
+      "rank": 0,
+      "rank_gain": 0,
+      "interpolated_fan_count": 0,
+      "interpolated_fan_gain": 0,
+      "actual_date": 30
+    },
     {
       "rank": 0,
       "rank_gain": 0,
@@ -76,6 +84,13 @@
       "rank_gain": 0,
       "fan_count": 0,
       "monthly_fan_gain": 0,
+      "year_month": 202609
+    },
+    {
+      "rank": 0,
+      "rank_gain": 0,
+      "fan_count": 0,
+      "monthly_fan_gain": 0,
       "year_month": 202608
     }
   ],
@@ -90,20 +105,50 @@
       "join_time": "2026-09-25T13:28:48",
       "fan_count": 566753,
       "honor_id": 100101,
-      "last_login_time": "2026-09-25T13:26:51",
+      "last_login_time": "2026-10-02T00:00:33",
       "leader_chara_dress_id": 101743,
       "support_card_id": 10032,
       "team_evaluation_point": 21765,
-      "updated_at": "2026-10-01T19:29:47.642900",
+      "updated_at": "2026-10-02T00:38:11.319043",
       "names": [
         "domi"
       ],
       "daily_diff": 0,
       "monthly_diff": 0,
-      "last_month": 0
+      "last_month": 1
+    },
+    {
+      "friend_viewer_id": 649948659066,
+      "name": "Oceanlab",
+      "leader_chara_id": 1007,
+      "membership": 1,
+      "daily_average": 7578697,
+      "monthly_average": 151013398,
+      "join_time": "2026-10-02T00:24:30",
+      "fan_count": 1414865163,
+      "honor_id": 410101,
+      "last_login_time": "2026-10-01T22:40:49",
+      "leader_chara_dress_id": 100730,
+      "support_card_id": 30101,
+      "team_evaluation_point": 356448,
+      "updated_at": "2026-10-02T00:38:11.319043",
+      "names": [
+        "Oceanlab"
+      ],
+      "daily_diff": 0,
+      "monthly_diff": 0,
+      "last_month": 227360922
     }
   ],
   "club_friend_history": [
+    {
+      "friend_viewer_id": 649948659066,
+      "friend_name": "Oceanlab",
+      "actual_date": 30,
+      "interpolated_fan_count": 1414462978,
+      "adjusted_interpolated_fan_gain": 5153555,
+      "adjusted_fan_gain_cumulative": 5153555
+    },
     {
       "friend_viewer_id": 993598903888,
       "friend_name": "domi",
