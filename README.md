@@ -25,14 +25,14 @@ Edit `config/frontend.json`. Clubs inherit the target assigned to their tier:
   "S+": 300000000,
   "S": 220000000,
   "A+": 90000000,
-  "A": 60000000,
+  "A": 65000000,
   "B+": 30000000
 }
 ```
 
 To give one club a temporary exception, add `"targetOverride": 123000000` to that club. Without an override, every club in the same tier automatically shares the tier target.
 
-The frontend and Chronogenesis updater both define 15 clubs. DomiMommy (`556583325`) inherits the shared S+ target, and Dominare (`271437041`) inherits the shared A+ target. The updater creates their `data/chronogenesis/*.json` files on its next successful run.
+The frontend and Chronogenesis updater both define 15 clubs. Dominate (`147185239`) is assigned to A+ and inherits the shared 90 million target. All A clubs inherit the shared 65 million target.
 
 ## Protected Chronogenesis boundary
 
