@@ -1537,7 +1537,7 @@ const { useState, useEffect, useRef } = React;
       const allMembers = data?.members || [];
       const activeMembers = allMembers.filter((m) => m.isActive !== false);
       const tc = viewTierColors[club.tier] || viewTierColors["B+"];
-      const clubName = data?.clubName || club.name;
+      const clubName = club.name || data?.clubName;
       const supportsMemberDailyFans = activeMembers.some((m) => (Array.isArray(m.dailyFans) && m.dailyFans.length) || (Array.isArray(m.precomputedDailyGainSeries) && m.precomputedDailyGainSeries.length));
       const displayFetch = data?.refreshedAt || data?.sourceUpdatedAt || data?.lastFetch || null;
       const displayFetchLabel = "Updated";
@@ -1874,7 +1874,7 @@ const { useState, useEffect, useRef } = React;
         const clubDailyPctSeries = clubTarget > 0 ? clubDailySeries.map((v) => (v / clubTarget) * 100) : [];
         const ri = getClubRankInfo(entry.id);
         return {
-          ...entry, clubName: cdata?.clubName || entry.name, activeMembers: decorated.length,
+          ...entry, clubName: entry.name || cdata?.clubName, activeMembers: decorated.length,
           totalFans: decorated.reduce((sum, member) => sum + (member.fans || 0), 0),
           totalMonthly: totalM, totalDaily, previousDaily, dailyTrendDelta, totalProjected: totalP,
           totalExpected: Math.round((decorated.length * entry.target / Math.max(dim, 1)) * today),
@@ -1902,7 +1902,7 @@ const { useState, useEffect, useRef } = React;
       }, {});
 
       const networkMembers = networkClubs.filter((entry) => entry.id && clubData[entry.id]).flatMap((entry) => {
-        const members = (clubData[entry.id]?.members || []).filter((member) => member.isActive !== false).map((member) => ({ ...decorateMember(member, entry.target), clubName: clubData[entry.id]?.clubName || entry.name, clubTier: entry.tier, clubTarget: entry.target }));
+        const members = (clubData[entry.id]?.members || []).filter((member) => member.isActive !== false).map((member) => ({ ...decorateMember(member, entry.target), clubName: entry.name || clubData[entry.id]?.clubName, clubTier: entry.tier, clubTarget: entry.target }));
         return members;
       }).sort((a, b) => { const monthDiff = (b.monthlyGain ?? Number.NEGATIVE_INFINITY) - (a.monthlyGain ?? Number.NEGATIVE_INFINITY); if (monthDiff !== 0) return monthDiff; const projectedDiff = (b.projected ?? Number.NEGATIVE_INFINITY) - (a.projected ?? Number.NEGATIVE_INFINITY); if (projectedDiff !== 0) return projectedDiff; return (a.name || "").localeCompare(b.name || ""); });
 
