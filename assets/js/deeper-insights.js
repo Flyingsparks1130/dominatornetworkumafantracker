@@ -471,11 +471,17 @@
     if (!thresholdData || typeof thresholdData !== "object") return unavailable("missing", "Official cutoff history has not been collected yet.");
     if (String(thresholdData.month || "") !== String(monthKey || "")) return unavailable("month-mismatch", "Official cutoff history belongs to a different month.");
     if (!thresholdData.currentMonthActive) return unavailable("awaiting", "UMA is still reporting carried-forward prior-month cutoffs, so an official rank outlook is withheld.");
+    const activationDay = number(thresholdData.activationDay, 0);
     const day = clamp(Math.floor(number(analysisDay, snapshot.maxAvailableDay)), 1, snapshot.dim);
     const days = Array.isArray(thresholdData.days) ? thresholdData.days : [];
-    const observations = days.filter((entry) => number(entry?.day, 0) <= day && Array.isArray(entry?.thresholds) && entry.thresholds.length);
-    const activationDay = number(thresholdData.activationDay, 0);
     if (!activationDay || day < activationDay) return unavailable("awaiting", "Waiting for current-month UMA cutoffs.");
+    const observations = days.filter((entry) => {
+      const observationDay = number(entry?.day, 0);
+      return observationDay >= activationDay
+        && observationDay <= day
+        && Array.isArray(entry?.thresholds)
+        && entry.thresholds.length;
+    });
     if (observations.length < 3) return unavailable("collecting", `Collecting official cutoff observations (${observations.length}/3).`);
     const latest = observations[observations.length - 1];
     const metadataByName = new Map((thresholdData?.latest?.thresholds || []).map((row) => [String(row?.name || ""), row]));
@@ -501,17 +507,18 @@
       const trendProjection = row.cutoff + recentDelta * Math.max(0, snapshot.dim - elapsed);
       const trajectory = paceProjection * 0.65 + trendProjection * 0.35;
       const prior = row.prior != null ? row.prior : row.cutoff;
-      const stageWeight = elapsed / snapshot.dim < 0.33 ? 0.60 : elapsed / snapshot.dim < 0.60 ? 0.70 : elapsed / snapshot.dim < 0.80 ? 0.80 : 0.90;
+      const monthProgress = elapsed / snapshot.dim;
+      const stageWeight = monthProgress <= 0.25 ? 0.75 : monthProgress <= 0.50 ? 0.85 : monthProgress <= 0.75 ? 0.92 : 0.97;
       return { ...row, projectedCutoff: Math.round(Math.max(row.cutoff, trajectory * stageWeight + prior * (1 - stageWeight))) };
     });
-    // The cutoff at a tier's lower rank is the best public anchor. Interpolate
-    // logarithmically between neighbouring anchors; it is intentionally an
+    // A published minimum is the entry line at a tier's last qualifying rank.
+    // Use that rank as the public anchor and interpolate logarithmically
+    // between neighbouring anchors; it is intentionally an
     // approximate place, not a claim that UMA exposed a full leaderboard.
-    const anchors = projectedRows.map((row) => ({ rank: row.from, fans: row.projectedCutoff, tier: row.name })).sort((a, b) => b.fans - a.fans);
+    const anchors = projectedRows.map((row) => ({ rank: row.to, fans: row.projectedCutoff, tier: row.name })).sort((a, b) => b.fans - a.fans);
     let estimate = anchors[0]?.rank || null;
-    let tier = anchors[anchors.length - 1]?.tier || null;
-    if (projectedFans >= anchors[0].fans) { estimate = anchors[0].rank; tier = anchors[0].tier; }
-    else if (projectedFans <= anchors[anchors.length - 1].fans) { estimate = anchors[anchors.length - 1].rank; tier = anchors[anchors.length - 1].tier; }
+    if (projectedFans >= anchors[0].fans) estimate = anchors[0].rank;
+    else if (projectedFans <= anchors[anchors.length - 1].fans) estimate = anchors[anchors.length - 1].rank;
     else {
       for (let index = 0; index < anchors.length - 1; index += 1) {
         const higher = anchors[index];
@@ -520,20 +527,23 @@
           const fanSpan = Math.log(higher.fans) - Math.log(lower.fans);
           const progress = fanSpan ? (Math.log(higher.fans) - Math.log(projectedFans)) / fanSpan : 0;
           estimate = Math.round(higher.rank + (lower.rank - higher.rank) * progress);
-          tier = higher.tier;
           break;
         }
       }
     }
     const historicalRank = number(targetForecast.projectedRank);
-    const projectedRank = historicalRank != null ? Math.round(estimate * 0.75 + historicalRank * 0.25) : estimate;
+    const projectedRank = historicalRank != null ? Math.round(estimate * 0.90 + historicalRank * 0.10) : estimate;
+    const projectedTier = projectedRows.find((row) => projectedRank >= row.from && projectedRank <= row.to)?.name
+      || (projectedRank < projectedRows[0].from ? projectedRows[0].name : projectedRows[projectedRows.length - 1].name);
     return {
       ready: Number.isFinite(projectedRank),
       status: "ready",
-      message: "Uses official tier cutoffs plus this club's recent rank movement.",
+      message: "Uses 90% official quota-derived rank and 10% recent club rank movement.",
       projectedRank: Math.max(1, projectedRank),
-      projectedTier: tier,
-      projectedCutoff: projectedRows.find((row) => row.name === tier)?.projectedCutoff || null,
+      projectedTier,
+      projectedCutoff: projectedRows.find((row) => row.name === projectedTier)?.projectedCutoff || null,
+      thresholdRank: estimate,
+      historicalRank,
       observedCount: observations.length,
       asOfDay: elapsed,
     };

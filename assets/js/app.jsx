@@ -257,10 +257,10 @@ const { useState, useEffect, useRef } = React;
 
     function getThresholdForecastWeight(day, monthLength) {
       const progress = Math.max(0, Math.min(1, Number(day || 1) / Math.max(1, Number(monthLength || 1))));
-      if (progress <= 0.25) return 0.60;
-      if (progress <= 0.50) return 0.70;
-      if (progress <= 0.75) return 0.80;
-      return 0.90;
+      if (progress <= 0.25) return 0.75;
+      if (progress <= 0.50) return 0.85;
+      if (progress <= 0.75) return 0.92;
+      return 0.97;
     }
 
     function buildRankThresholdForecast(feed, expectedMonth, displayedDay, monthLength) {
@@ -429,7 +429,7 @@ const { useState, useEffect, useRef } = React;
       const historicalRank = projectHistoricalRank(clubRankHistory, monthKey, displayedDay, monthLength);
       const estimatedRank = historicalRank == null
         ? thresholdRank
-        : Math.round((thresholdRank * 0.75) + (historicalRank * 0.25));
+        : Math.round((thresholdRank * 0.90) + (historicalRank * 0.10));
       return {
         rank: Math.max(1, estimatedRank),
         thresholdRank,
@@ -2885,7 +2885,7 @@ const { useState, useEffect, useRef } = React;
                       <td style={S.td}>
                         <div style={{ marginBottom: 6 }}>{entry.currentMonthlyRank != null ? <MonthlyRankBadge rank={entry.currentMonthlyRank} delta={entry.rankDelta} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} /> : <span style={{ color: "#ae9aa5" }}>Current rank —</span>}</div>
                         {officialRankForecast ? (
-                          <div title={`75% threshold-based rank estimate (${officialRankForecast.thresholdRank}) and 25% recent rank-history estimate (${officialRankForecast.historicalRank ?? "unavailable"}).`} style={{ display: "flex", alignItems: "center", gap: 5, color: "#ffd0d8", fontSize: 10, fontWeight: 800 }}>
+                          <div title={`90% global quota-derived rank (${officialRankForecast.thresholdRank}) and 10% recent rank-movement estimate (${officialRankForecast.historicalRank ?? "unavailable"}).`} style={{ display: "flex", alignItems: "center", gap: 5, color: "#ffd0d8", fontSize: 10, fontWeight: 800 }}>
                             {projectedOfficialTier && <TierIcon tier={projectedOfficialTier} size={14} showFallbackText={false} rankingConfig={viewRankingConfig} rankIconPath={viewRankIconPath} />}
                             Projected ≈ #{officialRankForecast.rank.toLocaleString()}
                             <span style={{ color: "#ae9aa5", fontWeight: 600 }}>· {officialRankForecast.confidence}</span>
