@@ -2407,23 +2407,199 @@ const { useState, useEffect, useRef } = React;
         return message;
       }
 
-      function buildWeeklyComparisonDiscord() {
+      function buildWeeklyComparisonExportData() {
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        const previousWeek = monthWeeks.find((w) => w.number === (currentWeek?.number || 1) - 1) || null;
-        if (!previousWeek || !currentWeek) return "Not enough weeks to compare yet.";
-        const getWeekGain = (member, week) => { const cs = member.cumulativeSeries || []; const endVal = cs[Math.min(week.endDay - 1, cs.length - 1)] ?? 0; const startVal = week.startDay > 1 ? (cs[week.startDay - 2] ?? 0) : 0; return endVal - startVal; };
-        const comparisons = decoratedMembers.map((m) => { const prevGain = getWeekGain(m, previousWeek); const currGain = getWeekGain(m, currentWeek); return { name: m.name, prevGain, currGain, diff: currGain - prevGain }; }).sort((a, b) => b.diff - a.diff);
-        const improved = comparisons.filter((c) => c.diff > 0); const declined = comparisons.filter((c) => c.diff < 0);
-        const lines = [`📊 **[${club.tier}] ${club.name} — Weekly Comparison** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `W${previousWeek.number} (${getWeekLabel(previousWeek, year, monthIndex)}) vs W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)})`, ""];
-        if (improved.length > 0) { lines.push(`📈 **Improved** (${improved.length}):`); improved.slice(0, 10).forEach((c) => lines.push(`  ↑ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (improved.length > 10) lines.push(`  … and ${improved.length - 10} more`); lines.push(""); }
-        if (declined.length > 0) { lines.push(`📉 **Declined** (${declined.length}):`); declined.slice(0, 10).forEach((c) => lines.push(`  ↓ **${c.name}** — W${previousWeek.number}: ${fmt(c.prevGain)} → W${currentWeek.number}: ${fmt(c.currGain)} (${fmtSigned(c.diff)})`)); if (declined.length > 10) lines.push(`  … and ${declined.length - 10} more`); }
-        lines.push("", `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`); let msg = lines.join("\n"); if (msg.length > 3900) msg = msg.slice(0, 3897) + "…"; return msg;
+        const previousWeek = monthWeeks.find((week) => week.number === (currentWeek?.number || 1) - 1) || null;
+        const title = `📊 **[${club.tier}] ${club.name} — Weekly Report** | ${ds}`;
+        const sourceLine = `🗂️ Source: ${getSourceLabel()}`;
+        const footer = `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`;
+
+        if (!previousWeek || !currentWeek) {
+          const message = [title, sourceLine, "A previous week is not available yet. The first comparison unlocks in Week 2.", "", footer].join("\n");
+          return { fullMessage: message, textOnlyMessage: message, pngMessage: message };
+        }
+
+        const currentObservedEndDay = Math.min(today, currentWeek.endDay);
+        const currentObservedDays = Math.max(0, currentObservedEndDay - currentWeek.startDay + 1);
+        const matchedDays = Math.min(previousWeek.dayCount, currentObservedDays);
+        if (matchedDays <= 0) {
+          const message = [title, sourceLine, "The current week does not have a recorded day yet.", "", footer].join("\n");
+          return { fullMessage: message, textOnlyMessage: message, pngMessage: message };
+        }
+
+        const previousMatchedEndDay = previousWeek.startDay + matchedDays - 1;
+        const currentMatchedEndDay = currentWeek.startDay + matchedDays - 1;
+        const getMatchedLabel = (week, endDay) => `${getDateLabel(year, monthIndex, week.startDay)} – ${getDateLabel(year, monthIndex, endDay)}`;
+        const getMatchedGain = (member, week) => (member.dailyGainSeries || [])
+          .slice(Math.max(0, week.startDay - 1), Math.max(0, week.startDay - 1 + matchedDays))
+          .reduce((sum, value) => sum + (Number(value) || 0), 0);
+        const perMemberDailyTarget = club.target / Math.max(dim, 1);
+        const perMemberMatchedTarget = Math.round(perMemberDailyTarget * matchedDays);
+        const stableThreshold = 0.05;
+
+        const comparisons = decoratedMembers.map((member) => {
+          const previousGain = getMatchedGain(member, previousWeek);
+          const currentGain = getMatchedGain(member, currentWeek);
+          const previousDailyAverage = previousGain / matchedDays;
+          const currentDailyAverage = currentGain / matchedDays;
+          const dailyAverageDelta = currentDailyAverage - previousDailyAverage;
+          const changeRatio = previousDailyAverage > 0
+            ? dailyAverageDelta / previousDailyAverage
+            : currentDailyAverage > 0 ? Infinity : 0;
+          const previousUnderPlan = previousGain < perMemberMatchedTarget;
+          const currentUnderPlan = currentGain < perMemberMatchedTarget;
+          const newlyUnderPlan = currentUnderPlan && !previousUnderPlan;
+          const isStable = Number.isFinite(changeRatio) && Math.abs(changeRatio) < stableThreshold;
+          const movement = newlyUnderPlan
+            ? "newly-under"
+            : isStable ? "stable"
+            : dailyAverageDelta > 0 ? "improved"
+            : dailyAverageDelta < 0 ? "declined"
+            : "stable";
+          return {
+            name: member.name,
+            previousGain,
+            currentGain,
+            previousDailyAverage,
+            currentDailyAverage,
+            dailyAverageDelta,
+            changeRatio,
+            planDelta: currentGain - perMemberMatchedTarget,
+            movement,
+          };
+        });
+
+        const improved = comparisons.filter((entry) => entry.movement === "improved").sort((a, b) => b.dailyAverageDelta - a.dailyAverageDelta);
+        const stable = comparisons.filter((entry) => entry.movement === "stable").sort((a, b) => Math.abs(b.dailyAverageDelta) - Math.abs(a.dailyAverageDelta));
+        const declined = comparisons.filter((entry) => entry.movement === "declined").sort((a, b) => a.dailyAverageDelta - b.dailyAverageDelta);
+        const newlyUnderPlan = comparisons.filter((entry) => entry.movement === "newly-under").sort((a, b) => a.planDelta - b.planDelta);
+        const needsAttention = [...newlyUnderPlan, ...declined].sort((a, b) => a.dailyAverageDelta - b.dailyAverageDelta);
+
+        const previousClubGain = comparisons.reduce((sum, entry) => sum + entry.previousGain, 0);
+        const currentClubGain = comparisons.reduce((sum, entry) => sum + entry.currentGain, 0);
+        const previousClubDailyAverage = previousClubGain / matchedDays;
+        const currentClubDailyAverage = currentClubGain / matchedDays;
+        const clubDailyAverageDelta = currentClubDailyAverage - previousClubDailyAverage;
+        const clubChangeRatio = previousClubDailyAverage > 0 ? clubDailyAverageDelta / previousClubDailyAverage : currentClubDailyAverage > 0 ? Infinity : 0;
+        const clubTargetThroughMatchedDays = Math.round(perMemberMatchedTarget * comparisons.length);
+        const clubPlanDelta = currentClubGain - clubTargetThroughMatchedDays;
+        const comparisonLine = `W${previousWeek.number} (${getMatchedLabel(previousWeek, previousMatchedEndDay)}) vs W${currentWeek.number} (${getMatchedLabel(currentWeek, currentMatchedEndDay)}) · matched ${matchedDays} day${matchedDays === 1 ? "" : "s"}`;
+        const currentWeekState = currentObservedDays < currentWeek.dayCount
+          ? `Current week is partial: ${currentObservedDays}/${currentWeek.dayCount} days recorded.`
+          : `Current week is complete: ${currentObservedDays}/${currentWeek.dayCount} days recorded.`;
+
+        const formatChangePercent = (entry) => {
+          if (!Number.isFinite(entry.changeRatio)) return "NEW";
+          return `${entry.changeRatio >= 0 ? "+" : ""}${(entry.changeRatio * 100).toFixed(1)}%`;
+        };
+        const rankMap = rankHistory[cid] || {};
+        const previousRank = rankMap[formatDateKey(year, monthIndex + 1, previousMatchedEndDay)]?.rank ?? null;
+        const currentRank = rankMap[formatDateKey(year, monthIndex + 1, currentMatchedEndDay)]?.rank ?? null;
+        const rankDelta = previousRank != null && currentRank != null ? previousRank - currentRank : null;
+        const rankLine = currentRank == null
+          ? null
+          : `🌐 Rank: #${Number(currentRank).toLocaleString()}${rankDelta == null || rankDelta === 0 ? "" : ` ${rankDelta > 0 ? "▲" : "▼"}${Math.abs(rankDelta)}`}`;
+
+        const messageLines = [
+          title,
+          sourceLine,
+          comparisonLine,
+          `ℹ️ ${currentWeekState}`,
+          "",
+          "**CLUB SUMMARY**",
+          `Weekly gain: ${fmt(previousClubGain)} → ${fmt(currentClubGain)} (${fmtSigned(currentClubGain - previousClubGain)})`,
+          `Daily average: ${fmt(previousClubDailyAverage)} → ${fmt(currentClubDailyAverage)} (${fmtSigned(clubDailyAverageDelta)} · ${formatChangePercent({ changeRatio: clubChangeRatio })})`,
+          `${clubPlanDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubPlanDelta)} against ${fmt(clubTargetThroughMatchedDays)} target`,
+        ];
+        if (rankLine) messageLines.push(rankLine);
+        messageLines.push(
+          "",
+          "**MEMBER MOVEMENT**",
+          `🟢 Improved: ${improved.length} · ⚪ Stable: ${stable.length} · 🟡 Declined: ${declined.length} · 🔴 Newly under plan: ${newlyUnderPlan.length}`,
+        );
+
+        if (improved.length) {
+          messageLines.push("", "📈 **Top improvements**");
+          improved.slice(0, 3).forEach((entry) => messageLines.push(`↑ **${entry.name}** — ${fmt(entry.currentDailyAverage)}/day · ${formatChangePercent(entry)} · ${fmtSigned(entry.planDelta)} vs plan`));
+        }
+        messageLines.push("", "⚠️ **Needs attention**");
+        if (needsAttention.length) {
+          needsAttention.slice(0, 3).forEach((entry) => messageLines.push(`${entry.movement === "newly-under" ? "❗" : "↓"} **${entry.name}** — ${fmt(entry.currentDailyAverage)}/day · ${formatChangePercent(entry)} · ${fmtSigned(entry.planDelta)} vs plan`));
+        } else {
+          messageLines.push("✅ No members declined beyond the 5% stable range.");
+        }
+        messageLines.push("", "> Full matched-period member comparison is included in the PNG.", footer);
+
+        const charDisplayWidth = (char) => {
+          const code = char?.codePointAt(0) ?? 0;
+          return (
+            (code >= 0x1100 && code <= 0x115F) ||
+            (code >= 0x2E80 && code <= 0xA4CF) ||
+            (code >= 0xAC00 && code <= 0xD7A3) ||
+            (code >= 0xF900 && code <= 0xFAFF) ||
+            (code >= 0xFF00 && code <= 0xFF60) ||
+            (code >= 0x1F300 && code <= 0x1FAFF)
+          ) ? 2 : 1;
+        };
+        const displayWidth = (value) => Array.from(String(value ?? "")).reduce((sum, char) => sum + charDisplayWidth(char), 0);
+        const fitCell = (value, width, alignRight = false) => {
+          const chars = Array.from(String(value ?? ""));
+          let text = "";
+          let used = 0;
+          for (const char of chars) {
+            const charWidth = charDisplayWidth(char);
+            if (used + charWidth > width) break;
+            text += char;
+            used += charWidth;
+          }
+          if (used < displayWidth(value) && width > 1) {
+            while (displayWidth(text) > width - 1) text = Array.from(text).slice(0, -1).join("");
+            text += "…";
+          }
+          const padding = " ".repeat(Math.max(0, width - displayWidth(text)));
+          return alignRight ? `${padding}${text}` : `${text}${padding}`;
+        };
+        const movementIcon = (entry) => entry.movement === "newly-under" ? "❗" : entry.movement === "improved" ? "✅" : entry.movement === "declined" ? "⚠️" : "•";
+        const pngRows = [
+          ...newlyUnderPlan,
+          ...declined,
+          ...stable,
+          ...improved,
+        ].map((entry) => `${movementIcon(entry)} ${fitCell(entry.name, 18)} | ${fitCell(fmt(entry.previousDailyAverage), 9, true)} | ${fitCell(fmt(entry.currentDailyAverage), 9, true)} | ${fitCell(fmtSigned(entry.dailyAverageDelta), 9, true)} | ${fitCell(formatChangePercent(entry), 7, true)} | ${fitCell(fmtSigned(entry.planDelta), 9, true)}`);
+        const pngMessage = [
+          `📊 [${club.tier}] ${club.name} — Weekly Report | ${ds}`,
+          `🗂️ Source: ${getSourceLabel()}`,
+          comparisonLine,
+          currentWeekState,
+          "",
+          `CLUB GAIN       ${fitCell(fmt(previousClubGain), 10, true)} → ${fitCell(fmt(currentClubGain), 10, true)}  (${fmtSigned(currentClubGain - previousClubGain)})`,
+          `DAILY AVERAGE   ${fitCell(fmt(previousClubDailyAverage), 10, true)} → ${fitCell(fmt(currentClubDailyAverage), 10, true)}  (${fmtSigned(clubDailyAverageDelta)} · ${formatChangePercent({ changeRatio: clubChangeRatio })})`,
+          `TARGET PACE     ${fitCell(fmt(clubTargetThroughMatchedDays), 10, true)} · ${clubPlanDelta >= 0 ? "ahead" : "behind"} ${fmtSigned(clubPlanDelta)}`,
+          rankLine ? rankLine.replace(/\*\*/g, "") : "",
+          "",
+          `MOVEMENT        Improved ${improved.length} · Stable ${stable.length} · Declined ${declined.length} · Newly under ${newlyUnderPlan.length}`,
+          "",
+          `${fitCell("MEMBER", 21)} | ${fitCell("PREV/DAY", 9, true)} | ${fitCell("CURR/DAY", 9, true)} | ${fitCell("Δ/DAY", 9, true)} | ${fitCell("Δ%", 7, true)} | ${fitCell("VS PLAN", 9, true)}`,
+          `${"─".repeat(21)}-+-${"─".repeat(9)}-+-${"─".repeat(9)}-+-${"─".repeat(9)}-+-${"─".repeat(7)}-+-${"─".repeat(9)}`,
+          ...pngRows,
+          "",
+          `> Dominator Network Tracker · ${getDiscordPingLabel()}`,
+        ].filter((line, index, lines) => line || (index > 0 && lines[index - 1] !== "")).join("\n");
+
+        let fullMessage = messageLines.join("\n");
+        if (fullMessage.length > 3900) fullMessage = fullMessage.slice(0, 3897) + "…";
+        return { fullMessage, textOnlyMessage: fullMessage, pngMessage };
       }
 
       async function copyWeeklyDiscord() {
-        if (!isDiscordExportsEnabled || !navigator.clipboard?.writeText) return;
-        await navigator.clipboard.writeText(buildWeeklyComparisonDiscord());
-        setWeeklyCopied(true);
+        const exportData = buildWeeklyComparisonExportData();
+        const result = await exportDiscordPayload(
+          exportData,
+          "weekly-comparison.png",
+          () => renderDiscordMessagePng(exportData.pngMessage, 2)
+        );
+        if (!result) return;
+        setWeeklyCopied(result);
         setTimeout(() => setWeeklyCopied(false), 2200);
       }
       async function copyReminderDiscord() {
@@ -2667,7 +2843,7 @@ const { useState, useEffect, useRef } = React;
 
               {view === "club" && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? "✓ Weekly Copied!" : "📊 Weekly Comparison"}</button>
+                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly + PNG" : weeklyCopied === "shared" ? "✓ Weekly Shared" : "✓ Weekly Copied!") : "📊 Weekly Comparison"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
                 </div>
