@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { execFileSync } from "node:child_process";
 
 const DATA_DIR = path.join("data", "chronogenesis");
 const ARCHIVE_DIR = path.join(DATA_DIR, "archive");
 const CONFIG_DIR = path.join(ARCHIVE_DIR, "config");
 const INDEX_PATH = path.join("index.html");
 const TIME_ZONE = "Asia/Bangkok";
+const MONTH_KEY_PATTERN = /^(\d{4})-(\d{2})$/;
 
 fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
 fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -39,6 +41,74 @@ function getPreviousBangkokMonth(now = new Date()) {
   return { year, month, key: `${year}-${pad2(month)}` };
 }
 
+function parseMonthKey(monthKey) {
+  const match = String(monthKey || "").match(MONTH_KEY_PATTERN);
+  if (!match) {
+    throw new Error(`Invalid month "${monthKey}". Expected YYYY-MM.`);
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid month "${monthKey}". Month must be between 01 and 12.`);
+  }
+
+  return { year, month, key: `${year}-${pad2(month)}` };
+}
+
+function parseArgs(argv) {
+  const options = {
+    monthKey: null,
+    sourceRef: null,
+    allowIncomplete: false,
+  };
+
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+
+    if (arg === "--allow-incomplete") {
+      options.allowIncomplete = true;
+      continue;
+    }
+
+    if (arg === "--month" || arg === "--source-ref") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      index++;
+      if (arg === "--month") options.monthKey = value;
+      if (arg === "--source-ref") options.sourceRef = value;
+      continue;
+    }
+
+    if (arg.startsWith("--month=")) {
+      options.monthKey = arg.slice("--month=".length);
+      continue;
+    }
+
+    if (arg.startsWith("--source-ref=")) {
+      options.sourceRef = arg.slice("--source-ref=".length);
+      continue;
+    }
+
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  if (options.monthKey) parseMonthKey(options.monthKey);
+
+  if (options.sourceRef) {
+    if (!/^[0-9A-Za-z][0-9A-Za-z._\/-]*$/.test(options.sourceRef)) {
+      throw new Error(`Invalid Git source ref: ${options.sourceRef}`);
+    }
+    if (!options.monthKey) {
+      throw new Error("--source-ref requires an explicit --month");
+    }
+  }
+
+  return options;
+}
+
 function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
@@ -50,6 +120,64 @@ function readJson(filePath) {
 function writeJson(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
+}
+
+function writeJsonIfChanged(filePath, data) {
+  const next = JSON.stringify(data, null, 2) + "\n";
+  const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
+  if (current === next) return false;
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, next);
+  return true;
+}
+
+function verifySourceRef(sourceRef) {
+  if (!sourceRef) return;
+  execFileSync("git", ["rev-parse", "--verify", `${sourceRef}^{commit}`], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function listSourceFiles(sourceRef) {
+  if (!sourceRef) {
+    return fs
+      .readdirSync(DATA_DIR)
+      .filter((fileName) => {
+        const fullPath = path.join(DATA_DIR, fileName);
+        return fs.statSync(fullPath).isFile() && /^\d+\.json$/.test(fileName);
+      })
+      .sort();
+  }
+
+  const dataPath = DATA_DIR.split(path.sep).join(path.posix.sep);
+  const output = execFileSync(
+    "git",
+    ["ls-tree", "-r", "--name-only", sourceRef, "--", dataPath],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  );
+
+  return output
+    .split(/\r?\n/)
+    .filter((repoPath) => new RegExp(`^${dataPath}/\\d+\\.json$`).test(repoPath))
+    .map((repoPath) => path.posix.basename(repoPath))
+    .sort();
+}
+
+function readSourceJson(fileName, sourceRef) {
+  if (!sourceRef) {
+    return readJson(path.join(DATA_DIR, fileName));
+  }
+
+  const repoPath = path.posix.join("data", "chronogenesis", fileName);
+  const source = execFileSync("git", ["show", `${sourceRef}:${repoPath}`], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 50 * 1024 * 1024,
+  });
+
+  return JSON.parse(source);
 }
 
 function extractConstValue(source, name) {
@@ -154,9 +282,17 @@ function getMaxClubDailyHistoryActualDate(json, dim) {
   return getMaxActualDateFromRows(json?.club_daily_history, dim);
 }
 
-function getSharedActualDate(json, dim) {
+function getActiveMemberCoverage(json, dim) {
   const clubRoot = getClubRoot(json);
-  if (!clubRoot) return 0;
+  if (!clubRoot) {
+    return {
+      sharedActualDate: 0,
+      activeProfileCount: 0,
+      activeProfilesWithFinalDay: 0,
+      missingFinalDayViewerIds: [],
+      rosterCoverageComplete: false,
+    };
+  }
 
   const friendProfiles = Array.isArray(json?.club_friend_profile) ? json.club_friend_profile : [];
   const friendHistory = Array.isArray(json?.club_friend_history) ? json.club_friend_history : [];
@@ -184,18 +320,34 @@ function getSharedActualDate(json, dim) {
     .map((profile) => String(profile?.friend_viewer_id ?? ""))
     .filter((viewerId) => viewerId && activeRosterIds.has(viewerId));
 
-  if (!activeProfileViewerIds.length) return 0;
-
   let sharedMax = 0;
-  for (let day = 1; day <= dim; day++) {
-    const everyoneHasDay = activeProfileViewerIds.every((viewerId) =>
-      historyDaysByViewerId[viewerId]?.has(day)
-    );
+  if (activeProfileViewerIds.length) {
+    for (let day = 1; day <= dim; day++) {
+      const everyoneHasDay = activeProfileViewerIds.every((viewerId) =>
+        historyDaysByViewerId[viewerId]?.has(day)
+      );
 
-    if (everyoneHasDay) sharedMax = day;
+      if (everyoneHasDay) sharedMax = day;
+    }
   }
 
-  return sharedMax;
+  const missingFinalDayViewerIds = activeProfileViewerIds.filter(
+    (viewerId) => !historyDaysByViewerId[viewerId]?.has(dim)
+  );
+
+  return {
+    sharedActualDate: sharedMax,
+    activeProfileCount: activeProfileViewerIds.length,
+    activeProfilesWithFinalDay:
+      activeProfileViewerIds.length - missingFinalDayViewerIds.length,
+    missingFinalDayViewerIds,
+    rosterCoverageComplete:
+      activeProfileViewerIds.length > 0 && missingFinalDayViewerIds.length === 0,
+  };
+}
+
+function getSharedActualDate(json, dim) {
+  return getActiveMemberCoverage(json, dim).sharedActualDate;
 }
 
 function archiveIsAlreadyLocked(archivePath, monthKey, dim) {
@@ -217,8 +369,7 @@ function archiveIsAlreadyLocked(archivePath, monthKey, dim) {
     );
 
     const archiveShared = Number(
-      archiveMeta.completedActualDate ??
-      getSharedActualDate(archived, dim)
+      archiveMeta.completedActualDate ?? getSharedActualDate(archived, dim)
     );
 
     const hasFinalClubDailyRow = hasActualDate(archived?.club_daily_history, dim);
@@ -227,7 +378,6 @@ function archiveIsAlreadyLocked(archivePath, monthKey, dim) {
       archiveMeta.source === "chronogenesis" &&
       archiveMeta.month === monthKey &&
       archiveMeta.locked === true &&
-      archiveShared >= dim &&
       archiveFriendMax >= dim &&
       archiveClubDailyMax >= dim &&
       hasFinalClubDailyRow;
@@ -285,8 +435,10 @@ function updateArchiveManifest() {
     clubMap.get(clubId).push(monthKey);
   }
 
-  const manifest = {
-    generatedAt: new Date().toISOString(),
+  const manifestPath = path.join(ARCHIVE_DIR, "manifest.json");
+  const indexPath = path.join(ARCHIVE_DIR, "index.json");
+  const existingManifest = fs.existsSync(manifestPath) ? readJson(manifestPath) : null;
+  const manifestCore = {
     files,
     months: [...monthMap.values()].sort((a, b) => b.key.localeCompare(a.key)),
     clubs: Object.fromEntries(
@@ -296,54 +448,70 @@ function updateArchiveManifest() {
       ? fs.readdirSync(CONFIG_DIR).filter((file) => /^\d{4}-\d{2}\.json$/.test(file)).sort()
       : [],
   };
+  const existingCore = existingManifest
+    ? {
+        files: existingManifest.files,
+        months: existingManifest.months,
+        clubs: existingManifest.clubs,
+        configFiles: existingManifest.configFiles,
+      }
+    : null;
+  const archiveSetChanged =
+    !existingCore || JSON.stringify(existingCore) !== JSON.stringify(manifestCore);
+  const manifest = {
+    generatedAt:
+      archiveSetChanged || !existingManifest?.generatedAt
+        ? new Date().toISOString()
+        : existingManifest.generatedAt,
+    ...manifestCore,
+  };
 
-  writeJson(path.join(ARCHIVE_DIR, "manifest.json"), manifest);
-  writeJson(path.join(ARCHIVE_DIR, "index.json"), manifest);
+  writeJsonIfChanged(manifestPath, manifest);
+  writeJsonIfChanged(indexPath, manifest);
 }
 
-function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
-  if (!fileName.endsWith(".json")) return;
-  if (fileName === "index.json" || fileName === "manifest.json") return;
-
-  const sourcePath = path.join(DATA_DIR, fileName);
-  const stat = fs.statSync(sourcePath);
-  if (!stat.isFile()) return;
-
+function archiveOneLiveFile(fileName, targetMonth, frontendConfig, sourceRef) {
   const fallbackClubId = path.basename(fileName, ".json");
-  const json = readJson(sourcePath);
+  const json = readSourceJson(fileName, sourceRef);
   const clubId = getClubIdFromJson(json, fallbackClubId);
+  if (clubId !== fallbackClubId) {
+    throw new Error(
+      `Club id mismatch in ${fileName}: filename=${fallbackClubId}, payload=${clubId}`
+    );
+  }
 
-  const dim = daysInMonth(previousMonth.year, previousMonth.month);
+  const dim = daysInMonth(targetMonth.year, targetMonth.month);
 
-  const sharedActualDate = getSharedActualDate(json, dim);
+  const memberCoverage = getActiveMemberCoverage(json, dim);
+  const sharedActualDate = memberCoverage.sharedActualDate;
   const maxFriendHistoryActualDate = getMaxFriendHistoryActualDate(json, dim);
   const maxClubDailyHistoryActualDate = getMaxClubDailyHistoryActualDate(json, dim);
   const hasFinalClubDailyRow = hasActualDate(json?.club_daily_history, dim);
 
-  const archiveFileName = `${clubId}_${previousMonth.key}.json`;
+  const archiveFileName = `${clubId}_${targetMonth.key}.json`;
   const archivePath = path.join(ARCHIVE_DIR, archiveFileName);
 
   console.log(
-    `${clubId}: previousMonth=${previousMonth.key}, ` +
+    `${clubId}: targetMonth=${targetMonth.key}, ` +
     `sharedActualDate=${sharedActualDate}, ` +
     `friendMax=${maxFriendHistoryActualDate}, ` +
     `clubDailyMax=${maxClubDailyHistoryActualDate}, ` +
+    `finalDayRoster=${memberCoverage.activeProfilesWithFinalDay}/${memberCoverage.activeProfileCount}, ` +
     `dim=${dim}`
   );
 
-  if (archiveIsAlreadyLocked(archivePath, previousMonth.key, dim)) {
+  if (archiveIsAlreadyLocked(archivePath, targetMonth.key, dim)) {
     console.log(`  locked already: ${archivePath}`);
-    return;
-  }
-
-  if (sharedActualDate < dim) {
-    console.log("  skip: sharedActualDate is not complete yet");
-    return;
+    return { clubId, status: "locked", archivePath };
   }
 
   if (maxFriendHistoryActualDate < dim) {
     console.log("  skip: club_friend_history is not complete yet");
-    return;
+    return {
+      clubId,
+      status: "incomplete",
+      reason: `club_friend_history max day is ${maxFriendHistoryActualDate}; expected ${dim}`,
+    };
   }
 
   if (maxClubDailyHistoryActualDate < dim || !hasFinalClubDailyRow) {
@@ -351,7 +519,20 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
       `  skip: club_daily_history is not complete yet ` +
       `(clubDailyMax=${maxClubDailyHistoryActualDate}, hasDay${dim}=${hasFinalClubDailyRow})`
     );
-    return;
+    return {
+      clubId,
+      status: "incomplete",
+      reason:
+        `club_daily_history max day is ${maxClubDailyHistoryActualDate}; ` +
+        `has day ${dim}: ${hasFinalClubDailyRow}`,
+    };
+  }
+
+  if (!memberCoverage.rosterCoverageComplete) {
+    console.log(
+      `  warning: ${memberCoverage.missingFinalDayViewerIds.length} current roster ` +
+      `profile(s) do not have day ${dim}; archiving the completed club payload anyway`
+    );
   }
 
   const archivedJson = {
@@ -359,21 +540,25 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
     _archive: {
       source: "chronogenesis",
       clubId,
-      month: previousMonth.key,
-      year: previousMonth.year,
-      monthNumber: previousMonth.month,
+      month: targetMonth.key,
+      year: targetMonth.year,
+      monthNumber: targetMonth.month,
 
       completedActualDate: sharedActualDate,
       maxActualDate: maxFriendHistoryActualDate,
       maxFriendHistoryActualDate,
       maxClubDailyHistoryActualDate,
+      memberCoverage,
 
       hasFinalClubDailyRow,
       daysInMonth: dim,
       locked: true,
       lockedAt: new Date().toISOString(),
       timeZone: TIME_ZONE,
-      sourceFile: path.posix.join("data", "chronogenesis", fileName),
+      sourceFile: sourceRef
+        ? `git:${sourceRef}:${path.posix.join("data", "chronogenesis", fileName)}`
+        : path.posix.join("data", "chronogenesis", fileName),
+      sourceRef: sourceRef || null,
       archiveFile: path.posix.join("data", "chronogenesis", "archive", archiveFileName),
 
       frontendConfig: frontendConfig
@@ -387,6 +572,7 @@ function archiveOneLiveFile(fileName, previousMonth, frontendConfig) {
 
   writeJson(archivePath, archivedJson);
   console.log(`  archived: ${archivePath}`);
+  return { clubId, status: "archived", archivePath };
 }
 
 function main() {
@@ -395,20 +581,103 @@ function main() {
   }
 
   const previousMonth = getPreviousBangkokMonth(new Date());
-  const frontendConfig = readFrontendConfigForMonth(previousMonth.key);
+  const options = parseArgs(process.argv.slice(2));
+  const targetMonth = options.monthKey
+    ? parseMonthKey(options.monthKey)
+    : previousMonth;
 
-  const liveFiles = fs
-    .readdirSync(DATA_DIR)
-    .filter((fileName) => {
-      const fullPath = path.join(DATA_DIR, fileName);
-      return fs.statSync(fullPath).isFile() && fileName.endsWith(".json");
-    });
+  if (
+    options.monthKey &&
+    targetMonth.key !== previousMonth.key &&
+    !options.sourceRef
+  ) {
+    throw new Error(
+      `Refusing to backfill ${targetMonth.key} from current live files. ` +
+      "Provide --source-ref for the historical Git commit that contains that month's payload."
+    );
+  }
+
+  verifySourceRef(options.sourceRef);
+  const frontendConfig = readFrontendConfigForMonth(targetMonth.key);
+  const liveFiles = listSourceFiles(options.sourceRef);
+  const results = [];
+
+  console.log(
+    `Archive source: ${options.sourceRef ? `Git ref ${options.sourceRef}` : "current live files"}`
+  );
+  console.log(`Archive target month: ${targetMonth.key}`);
 
   for (const fileName of liveFiles) {
-    archiveOneLiveFile(fileName, previousMonth, frontendConfig);
+    try {
+      results.push(
+        archiveOneLiveFile(
+          fileName,
+          targetMonth,
+          frontendConfig,
+          options.sourceRef
+        )
+      );
+    } catch (error) {
+      const clubId = path.basename(fileName, ".json");
+      console.error(`  error: could not archive ${clubId}: ${error.message}`);
+      results.push({ clubId, status: "error", reason: error.message });
+    }
   }
 
   updateArchiveManifest();
+
+  const dim = daysInMonth(targetMonth.year, targetMonth.month);
+  const expectedClubIds = new Set(
+    (Array.isArray(frontendConfig?.clubs) ? frontendConfig.clubs : [])
+      .map((club) => String(club?.id ?? ""))
+      .filter(Boolean)
+  );
+  const missingExpectedClubIds = [...expectedClubIds].filter((clubId) => {
+    const archivePath = path.join(
+      ARCHIVE_DIR,
+      `${clubId}_${targetMonth.key}.json`
+    );
+    return !archiveIsAlreadyLocked(archivePath, targetMonth.key, dim);
+  });
+  const failedResults = results.filter(
+    (result) => result?.status === "incomplete" || result?.status === "error"
+  );
+  const archivedCount = results.filter((result) => result?.status === "archived").length;
+  const lockedCount = results.filter((result) => result?.status === "locked").length;
+
+  console.log(
+    `Archive summary for ${targetMonth.key}: ` +
+    `archived=${archivedCount}, locked=${lockedCount}, ` +
+    `incompleteOrErrored=${failedResults.length}, ` +
+    `missingExpected=${missingExpectedClubIds.length}`
+  );
+
+  if (missingExpectedClubIds.length) {
+    console.error(`Missing expected club archives: ${missingExpectedClubIds.join(", ")}`);
+  }
+
+  const bangkokToday = getBangkokDateParts(new Date());
+  const graceWindowOpen = !options.monthKey && bangkokToday.day === 1;
+  if (
+    !options.allowIncomplete &&
+    !graceWindowOpen &&
+    (missingExpectedClubIds.length > 0 || failedResults.length > 0)
+  ) {
+    process.exitCode = 1;
+  } else if (
+    graceWindowOpen &&
+    (missingExpectedClubIds.length > 0 || failedResults.length > 0)
+  ) {
+    console.warn(
+      "Archive is still inside the Bangkok first-day grace window; " +
+      "later scheduled attempts will retry before an incomplete run is failed."
+    );
+  }
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(`Archive failed: ${error.message}`);
+  process.exitCode = 1;
+}

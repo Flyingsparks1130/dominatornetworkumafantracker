@@ -11,9 +11,32 @@ const DEBUG_DIR = path.join(process.cwd(), "scripts", "debug");
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+const configuredMaxAttempts = Number(process.env.CHRONOGENESIS_MAX_ATTEMPTS || 4);
+const configuredRetryBaseMs = Number(
+  process.env.CHRONOGENESIS_RETRY_BASE_MS || 5_000
+);
+const MAX_ATTEMPTS = Number.isFinite(configuredMaxAttempts)
+  ? Math.min(8, Math.max(1, Math.floor(configuredMaxAttempts)))
+  : 4;
+const RETRY_BASE_MS = Number.isFinite(configuredRetryBaseMs)
+  ? Math.max(1_000, configuredRetryBaseMs)
+  : 5_000;
 
 function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function parseRetryAfter(value) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+
+  const retryAt = Date.parse(value);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 0;
 }
 
 async function saveDebugResponse(clubId, label, body, contentType = "text/plain") {
@@ -29,7 +52,23 @@ async function saveDebugResponse(clubId, label, body, contentType = "text/plain"
   }
 }
 
-async function fetchClubJson(club) {
+async function clearDebugResponses(clubId) {
+  try {
+    const entries = await fs.readdir(DEBUG_DIR);
+    const prefix = `${clubId}-`;
+    await Promise.all(
+      entries
+        .filter((entry) => entry.startsWith(prefix))
+        .map((entry) => fs.unlink(path.join(DEBUG_DIR, entry)))
+    );
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn(`  ⚠️ Could not clear old debug responses for ${clubId}: ${err.message}`);
+    }
+  }
+}
+
+async function fetchClubJsonOnce(club) {
   if (!club?.id) {
     throw new Error(`Missing id for ${club?.name || "unknown club"}`);
   }
@@ -49,17 +88,31 @@ async function fetchClubJson(club) {
     Accept: "application/json",
   };
 
-  const response = await fetch(apiUrl, {
-    method: "GET",
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(apiUrl, {
+      method: "GET",
+      headers,
+    });
+  } catch (err) {
+    err.retryable = true;
+    throw err;
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
 
   if (!response.ok) {
     await saveDebugResponse(club.id, `http-${response.status}`, text, contentType);
-    throw new Error(`HTTP ${response.status} for ${club.id}`);
+    const error = new Error(`HTTP ${response.status} for ${club.id}`);
+    error.status = response.status;
+    error.retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
+    error.retryable =
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500 ||
+      (response.status === 403 && /cloudflare|rate.?limit|temporar/i.test(text));
+    throw error;
   }
 
   let parsed;
@@ -67,15 +120,48 @@ async function fetchClubJson(club) {
     parsed = JSON.parse(text);
   } catch (err) {
     await saveDebugResponse(club.id, "invalid-json", text, contentType);
-    throw new Error(`Response is not valid JSON for ${club.id}: ${err.message}`);
+    const parseError = new Error(
+      `Response is not valid JSON for ${club.id}: ${err.message}`
+    );
+    parseError.retryable = true;
+    throw parseError;
   }
 
   if (!isObject(parsed)) {
     await saveDebugResponse(club.id, "unexpected-shape", text, contentType);
-    throw new Error(`Response is not a JSON object for ${club.id}`);
+    const shapeError = new Error(`Response is not a JSON object for ${club.id}`);
+    shapeError.retryable = true;
+    throw shapeError;
   }
 
   return parsed;
+}
+
+async function fetchClubJson(club) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const payload = await fetchClubJsonOnce(club);
+      await clearDebugResponses(club.id);
+      return payload;
+    } catch (err) {
+      lastError = err;
+      if (!err.retryable || attempt === MAX_ATTEMPTS) break;
+
+      const delayMs = Math.min(
+        60_000,
+        Math.max(err.retryAfterMs || 0, RETRY_BASE_MS * 2 ** (attempt - 1))
+      );
+      console.warn(
+        `  ⚠️ Attempt ${attempt}/${MAX_ATTEMPTS} failed for ${club.id}: ` +
+        `${err.message}. Retrying in ${Math.ceil(delayMs / 1_000)}s.`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
 }
 
 async function saveClubJson(club, payload) {
@@ -98,10 +184,12 @@ async function main() {
   }
 
   await fs.mkdir(DATA_ROOT, { recursive: true });
+  const failures = [];
 
   for (const club of clubs) {
     if (!club?.id) {
       console.error("❌ FAILED: missing club id in config entry");
+      failures.push({ id: "unknown", message: "missing club id in config entry" });
       continue;
     }
 
@@ -113,7 +201,15 @@ async function main() {
     } catch (err) {
       console.error(`❌ FAILED: ${club.id}`);
       console.error(err.message);
+      failures.push({ id: String(club.id), message: err.message });
     }
+  }
+
+  if (failures.length) {
+    throw new Error(
+      `${failures.length} club update(s) failed: ` +
+      failures.map((failure) => `${failure.id} (${failure.message})`).join(", ")
+    );
   }
 }
 
@@ -121,13 +217,3 @@ main().catch((err) => {
   console.error("FATAL ERROR:", err);
   process.exit(1);
 });
-    
-    
-
-    
-          
-  
-
-    
-  
-  
