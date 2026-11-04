@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: update-chronogenesis
+  group: chronogenesis-data
   cancel-in-progress: false
 
 env:
@@ -33,15 +33,19 @@ jobs:
           mkdir -p scripts/debug
 
       - name: Run Chronogenesis updater
+        id: update
+        continue-on-error: true
         env:
           CHRONOGENESIS_API_KEY: ${{ secrets.CHRONOGENESIS_API_KEY }}
           CHRONOGENESIS_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
         run: node scripts/update-chronogenesis.mjs
 
       - name: Snapshot current Chronogenesis frontend config
+        if: always()
         run: node scripts/snapshot-chronogenesis-config.mjs
 
       - name: Commit and push updated data
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -54,4 +58,23 @@ jobs:
           fi
 
           git commit -m "Update Chronogenesis data"
-          git push
+
+          for attempt in 1 2 3; do
+            if ! git pull --rebase origin main; then
+              git rebase --abort || true
+              exit 1
+            fi
+            if git push; then
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+
+          echo "Could not push Chronogenesis update after 3 attempts"
+          exit 1
+
+      - name: Fail when any club update failed
+        if: steps.update.outcome == 'failure'
+        run: |
+          echo "One or more club updates failed after retries. Successful club data was still committed."
+          exit 1

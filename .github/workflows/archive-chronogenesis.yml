@@ -1,13 +1,24 @@
 name: Archive completed Chronogenesis month
 
 on:
+  schedule:
+    - cron: "20 15,16,17 1 * *"
   workflow_dispatch:
+    inputs:
+      month:
+        description: "Optional archive month in YYYY-MM format"
+        required: false
+        type: string
+      source_ref:
+        description: "Required historical Git ref when backfilling an older month"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: archive-chronogenesis
+  group: chronogenesis-data
   cancel-in-progress: false
 
 env:
@@ -20,6 +31,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -32,7 +45,20 @@ jobs:
           mkdir -p data/chronogenesis/archive/config
 
       - name: Archive completed Chronogenesis month
-        run: node scripts/archive-chronogenesis-complete-month.mjs
+        id: archive
+        continue-on-error: true
+        env:
+          ARCHIVE_MONTH: ${{ inputs.month || '' }}
+          ARCHIVE_SOURCE_REF: ${{ inputs.source_ref || '' }}
+        run: |
+          args=()
+          if [ -n "$ARCHIVE_MONTH" ]; then
+            args+=(--month "$ARCHIVE_MONTH")
+          fi
+          if [ -n "$ARCHIVE_SOURCE_REF" ]; then
+            args+=(--source-ref "$ARCHIVE_SOURCE_REF")
+          fi
+          node scripts/archive-chronogenesis-complete-month.mjs "${args[@]}"
 
       - name: Commit and push archive files
         run: |
@@ -47,4 +73,23 @@ jobs:
           fi
 
           git commit -m "Archive completed Chronogenesis month"
-          git push
+
+          for attempt in 1 2 3; do
+            if ! git pull --rebase origin main; then
+              git rebase --abort || true
+              exit 1
+            fi
+            if git push; then
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+
+          echo "Could not push archive commit after 3 attempts"
+          exit 1
+
+      - name: Fail when expected archives are incomplete
+        if: steps.archive.outcome == 'failure'
+        run: |
+          echo "One or more expected club archives were not completed. See the archive step for details."
+          exit 1
