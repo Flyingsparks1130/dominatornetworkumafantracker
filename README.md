@@ -48,6 +48,20 @@ The following operational paths remain the existing source of truth and should n
 
 `index.html` intentionally retains a non-executing `chronogenesis-snapshot-compat` block because the existing snapshot script parses those declarations. The browser uses `config/frontend.json` for the live site.
 
+### Archive safeguards and recovery
+
+The month-end archive runs automatically three times on the first UTC day of each month. A club archive is locked once both `club_friend_history` and `club_daily_history` contain the final calendar day. Current-roster turnover is recorded as member-coverage metadata but does not block storage of an otherwise complete club payload.
+
+Archive and refresh jobs share one concurrency group and retry push races. Month-end attempts receive a Bangkok first-day grace window while Chronogenesis finishes its final rows; after that window, the job fails visibly if an expected club is still missing. The refresh job retries temporary Chronogenesis failures and commits successful club updates before reporting any remaining failures.
+
+To backfill a historical month, use the archive workflow inputs or run:
+
+```bash
+node scripts/archive-chronogenesis-complete-month.mjs --month YYYY-MM --source-ref COMMIT_SHA
+```
+
+The script refuses to backfill an older month from current live files. `COMMIT_SHA` must identify the historical update containing that month’s final-day payload.
+
 ## Local preview
 
 Because the app fetches JSON, preview it through a local HTTP server rather than opening the HTML with a `file://` URL:
