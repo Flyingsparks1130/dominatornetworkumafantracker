@@ -2294,6 +2294,13 @@ const { useState, useEffect, useRef } = React;
           drawLabel("Club rank", x + 22, y + 20);
 
           const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
+          const rankDetail = report.rankChange == null
+            ? "Unavailable"
+            : report.rankChange > 0
+              ? `▲${Math.abs(report.rankChange).toLocaleString()} today`
+              : report.rankChange < 0
+                ? `▼${Math.abs(report.rankChange).toLocaleString()} today`
+                : "No change";
           const rankIconSize = 46;
           const valueX = x + 22;
           if (currentRankIconImage) {
@@ -2305,7 +2312,7 @@ const { useState, useEffect, useRef } = React;
 
           setFont(650, 18);
           ctx.fillStyle = detailColor;
-          ctx.fillText(fitText(report.rankChangeLabel, w - 44), x + 22, y + 106);
+          ctx.fillText(rankDetail, x + 22, y + 106);
         };
 
         const background = ctx.createLinearGradient(0, 0, width, height);
@@ -2350,9 +2357,9 @@ const { useState, useEffect, useRef } = React;
         const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
         const rankDetailColor = report.rankChange > 0 ? "#65e5ad" : report.rankChange < 0 ? "#ff9292" : "#a9adc2";
         drawRankMetricCard({ x: outerPadding, y, w: cardWidth, accent: rankAccent, detailColor: rankDetailColor });
-        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Combined active-member gain", accent: "#60a5fa" });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Combined month-to-date gain", accent: tc.text });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of elapsed target" : "Behind elapsed target", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
+        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Today total", accent: "#60a5fa" });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Month to date", accent: tc.text });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
 
         y += metricHeight + sectionGap;
         fillRounded(outerPadding, y, metricsWidth, statusHeight, 16, "#141526", "#282a42");
@@ -2386,22 +2393,29 @@ const { useState, useEffect, useRef } = React;
         ctx.textBaseline = "top";
 
         y += statusHeight + sectionGap;
+        const statusColumnWidth = 142;
+        const numericGap = 24;
+        const numericLeft = outerPadding + 420 + statusColumnWidth + 44;
+        const numericRight = width - outerPadding - 22;
+        const numericColumnWidth = (numericRight - numericLeft - (numericGap * 2)) / 3;
         const column = {
           member: outerPadding + 22,
           status: outerPadding + 420,
-          daily: outerPadding + 650,
-          month: outerPadding + 820,
-          pace: width - outerPadding - 22,
+          statusCenter: outerPadding + 420 + (statusColumnWidth / 2),
+          dailyRight: numericLeft + numericColumnWidth,
+          monthRight: numericLeft + (numericColumnWidth * 2) + numericGap,
+          paceRight: numericRight,
         };
         fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
         ctx.textBaseline = "middle";
         const tableHeaderCenterY = y + (tableHeaderHeight / 2);
         drawLabel("Member", column.member, tableHeaderCenterY);
-        drawLabel("Status", column.status, tableHeaderCenterY);
-        drawLabel("Today", column.daily, tableHeaderCenterY);
-        drawLabel("Month", column.month, tableHeaderCenterY);
+        ctx.textAlign = "center";
+        drawLabel("Status", column.statusCenter, tableHeaderCenterY);
         ctx.textAlign = "right";
-        drawLabel("Vs pace", column.pace, tableHeaderCenterY);
+        drawLabel("Today", column.dailyRight, tableHeaderCenterY);
+        drawLabel("Month", column.monthRight, tableHeaderCenterY);
+        drawLabel("Vs pace", column.paceRight, tableHeaderCenterY);
         ctx.textAlign = "left";
         y += tableHeaderHeight;
 
@@ -2418,20 +2432,20 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = "#eef0f8";
           ctx.fillText(fitText(row.name, 360), column.member, rowCenterY);
 
-          fillRounded(column.status, y + ((rowHeight - 36) / 2), 142, 36, 18, status.bg, status.border);
+          fillRounded(column.status, y + ((rowHeight - 36) / 2), statusColumnWidth, 36, 18, status.bg, status.border);
           setFont(750, 16);
           ctx.fillStyle = status.color;
           ctx.textAlign = "center";
-          ctx.fillText(status.label.toUpperCase(), column.status + 71, rowCenterY);
+          ctx.fillText(status.label.toUpperCase(), column.statusCenter, rowCenterY);
 
           const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
           setFont(700, 23, mono);
           ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
-          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, rowCenterY);
-          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, rowCenterY);
+          ctx.fillText(fmtSigned(row.dailyGain), column.dailyRight, rowCenterY);
+          ctx.fillText(fmtSigned(row.monthlyGain), column.monthRight, rowCenterY);
           ctx.fillStyle = hasComparisonData ? (row.paceDelta >= 0 ? "#65e5ad" : "#ff9292") : "#9ca3af";
-          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, rowCenterY);
+          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.paceRight, rowCenterY);
           ctx.textAlign = "left";
           y += rowHeight;
         });
