@@ -2300,14 +2300,14 @@ const { useState, useEffect, useRef } = React;
               : report.rankChange < 0
                 ? `▼${Math.abs(report.rankChange).toLocaleString()} today`
                 : "No change";
-          const rankIconSize = 58;
+          const rankIconSize = 64;
           const valueX = x + 22;
           if (currentRankIconImage) {
-            ctx.drawImage(currentRankIconImage, valueX, y + 38, rankIconSize, rankIconSize);
+            ctx.drawImage(currentRankIconImage, valueX, y + 35, rankIconSize, rankIconSize);
           }
-          setFont(800, 38);
+          setFont(800, 44);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(rankText, valueX + (currentRankIconImage ? rankIconSize + 10 : 0), y + 49);
+          ctx.fillText(rankText, valueX + (currentRankIconImage ? rankIconSize + 10 : 0), y + 45);
 
           setFont(650, 18);
           ctx.fillStyle = detailColor;
@@ -2344,7 +2344,9 @@ const { useState, useEffect, useRef } = React;
         drawLabel("Dominator Network · Daily Report", headerTextX, y + 4, tc.text);
         setFont(850, 42);
         ctx.fillStyle = "#f8fafc";
-        ctx.fillText(fitText(club.name, width - headerTextX - outerPadding), headerTextX, y + 31);
+        ctx.textAlign = "center";
+        ctx.fillText(fitText(club.name, width - 360), width / 2, y + 31);
+        ctx.textAlign = "left";
         setFont(550, 20);
         ctx.fillStyle = "#a9adc2";
         ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
@@ -2629,15 +2631,51 @@ const { useState, useEffect, useRef } = React;
         setTimeout(() => setCopied(false), 2200);
       }
 
-      function buildReminderDiscord() {
+      function buildReminderExportData() {
         const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         const underPlanMembers = [...decoratedMembers].filter((member) => member.plan.statusKey !== "on-track").sort((a, b) => (a.plan.delta ?? 0) - (b.plan.delta ?? 0));
         const lines = [`🔔 **[${club.tier}] ${club.name} — Under Plan Reminder** | ${ds}`, `🗂️ Source: ${getSourceLabel()}`, `Members still under plan this week. Push for pace before ${getWeekLabel(currentWeek, year, monthIndex)} ends.`, ""];
-        if (!underPlanMembers.length) { lines.push("✅ Everyone is currently on track."); return lines.join("\n"); }
+        if (!underPlanMembers.length) lines.push("✅ Everyone is currently on track.");
         underPlanMembers.forEach((member) => { const meta = STATUS_META[member.plan.statusKey] || STATUS_META["behind"]; lines.push(`${meta.icon} **${member.name}** — ${deltaText(member.plan.delta)} vs plan · ${fmt(member.fansNeededForPlan)} still needed this month`); });
         const footer = `\n> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`; let message = lines.join("\n") + footer;
         if (message.length > 3900) { const trimmed = []; for (const line of lines) { const candidate = [...trimmed, line].join("\n") + footer; if (candidate.length > 3900) break; trimmed.push(line); } const omitted = Math.max(0, underPlanMembers.length - Math.max(0, trimmed.length - 3)); if (omitted > 0) trimmed.push(`… ${omitted} more members omitted to stay under Discord limit`); message = trimmed.join("\n") + footer; }
-        return message;
+        const dailyReport = getDiscordExportData().reportMeta || {};
+        const behindCount = underPlanMembers.filter((member) => member.plan.statusKey === "behind").length;
+        const criticalCount = underPlanMembers.filter((member) => member.plan.statusKey === "critical").length;
+        const combinedGap = underPlanMembers.reduce((sum, member) => sum + Number(member.plan.delta ?? 0), 0);
+        const totalStillNeeded = underPlanMembers.reduce((sum, member) => sum + Number(member.fansNeededForPlan ?? 0), 0);
+        return {
+          fullMessage: message,
+          textOnlyMessage: message,
+          tableRows: underPlanMembers.map((member) => ({
+            name: member.name,
+            statusKey: member.plan.statusKey,
+            dailyGain: member.dailyGain ?? 0,
+            monthlyGain: member.monthlyGain ?? 0,
+            paceDelta: member.plan.delta ?? 0,
+            stillNeeded: member.fansNeededForPlan ?? 0,
+          })),
+          reportMeta: {
+            dateLabel: ds,
+            dayLabel: `Day ${today} of ${dim}`,
+            sourceLabel: getSourceLabel(),
+            pingLabel: getDiscordPingLabel(),
+            periodLabel: `Week ${currentWeek?.number || 1} · ${getWeekLabel(currentWeek, year, monthIndex)}`,
+            activeLabel: `${decoratedMembers.length}/${viewMaxMembers} active`,
+            targetLabel: `${fmt(club.target)} / member`,
+            rankValue: dailyReport.rankValue ?? null,
+            rankChange: dailyReport.rankChange ?? null,
+            underPlan: underPlanMembers.length,
+            behind: behindCount,
+            critical: criticalCount,
+            combinedGap: fmtSigned(combinedGap),
+            stillNeeded: fmt(totalStillNeeded),
+          },
+        };
+      }
+
+      function buildReminderDiscord() {
+        return buildReminderExportData().fullMessage;
       }
 
       function buildWeeklyComparisonExportData() {
@@ -3000,7 +3038,9 @@ const { useState, useEffect, useRef } = React;
         drawLabel("Dominator Network · Weekly Report", headerTextX, y + 4, tc.text);
         setFont(850, 42);
         ctx.fillStyle = "#f8fafc";
-        ctx.fillText(fitText(club.name, width - headerTextX - outerPadding), headerTextX, y + 31);
+        ctx.textAlign = "center";
+        ctx.fillText(fitText(club.name, width - 360), width / 2, y + 31);
+        ctx.textAlign = "left";
         setFont(550, 20);
         ctx.fillStyle = "#a9adc2";
         ctx.fillText(`${report.periodLabel}  ·  ${report.observedLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
@@ -3015,11 +3055,11 @@ const { useState, useEffect, useRef } = React;
         fillRounded(outerPadding, y, 5, metricHeight, 3, rankAccent);
         drawLabel("Club rank", outerPadding + 22, y + 20);
         const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
-        const rankIconSize = 58;
-        if (currentRankIconImage) ctx.drawImage(currentRankIconImage, outerPadding + 22, y + 38, rankIconSize, rankIconSize);
-        setFont(800, 38);
+        const rankIconSize = 64;
+        if (currentRankIconImage) ctx.drawImage(currentRankIconImage, outerPadding + 22, y + 35, rankIconSize, rankIconSize);
+        setFont(800, 44);
         ctx.fillStyle = "#f8fafc";
-        ctx.fillText(rankText, outerPadding + 22 + (currentRankIconImage ? rankIconSize + 10 : 0), y + 49);
+        ctx.fillText(rankText, outerPadding + 22 + (currentRankIconImage ? rankIconSize + 10 : 0), y + 45);
         setFont(650, 18);
         ctx.fillStyle = rankDetailColor;
         const rankDetail = report.rankDelta == null ? "Unavailable" : report.rankDelta > 0 ? `▲${Math.abs(report.rankDelta)} this week` : report.rankDelta < 0 ? `▼${Math.abs(report.rankDelta)} this week` : "No change";
@@ -3148,12 +3188,276 @@ const { useState, useEffect, useRef } = React;
         setWeeklyCopied(result);
         setTimeout(() => setWeeklyCopied(false), 2200);
       }
+
+      async function renderReminderPng(exportData, scale = 2) {
+        const report = exportData?.reportMeta;
+        const rows = Array.isArray(exportData?.tableRows) ? exportData.tableRows : [];
+        if (!report) return null;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        const loadCanvasImage = (url) => new Promise((resolve) => {
+          if (!url) return resolve(null);
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => resolve(null);
+          image.src = url;
+        });
+        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
+        const currentRankTier = getTierForRank(report.rankValue, viewRankingConfig);
+        const currentRankIconUrl = getRankIconUrl(currentRankTier, viewRankingConfig, viewRankIconPath);
+        const tierIconImage = await loadCanvasImage(tierIconUrl);
+        const currentRankIconImage = currentRankIconUrl === tierIconUrl
+          ? tierIconImage
+          : await loadCanvasImage(currentRankIconUrl);
+
+        const width = 1160;
+        const outerPadding = 44;
+        const headerHeight = 162;
+        const metricHeight = 152;
+        const metricGap = 14;
+        const summaryHeight = 76;
+        const tableHeaderHeight = 66;
+        const rowHeight = 76;
+        const footerHeight = 78;
+        const sectionGap = 22;
+        const displayRowCount = Math.max(1, rows.length);
+        const height = outerPadding + headerHeight + sectionGap + metricHeight + sectionGap + summaryHeight + sectionGap + tableHeaderHeight + (displayRowCount * rowHeight) + footerHeight + outerPadding;
+        canvas.width = Math.ceil(width * scale);
+        canvas.height = Math.ceil(height * scale);
+        ctx.scale(scale, scale);
+        ctx.textBaseline = "top";
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        const roundedRect = (x, y, w, h, r) => {
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + w - r, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+          ctx.lineTo(x + w, y + h - r);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          ctx.lineTo(x + r, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+        };
+        const fillRounded = (x, y, w, h, r, fill, stroke = null) => {
+          roundedRect(x, y, w, h, r);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        };
+        const setFont = (weight, size, family = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif") => {
+          ctx.font = `${weight} ${size}px ${family}`;
+        };
+        const fitText = (value, maxWidth) => {
+          const text = String(value ?? "");
+          if (ctx.measureText(text).width <= maxWidth) return text;
+          let output = text;
+          while (output.length > 1 && ctx.measureText(`${output}…`).width > maxWidth) output = output.slice(0, -1);
+          return `${output}…`;
+        };
+        const drawLabel = (label, x, y, color = "#8f93ad") => {
+          setFont(700, 16);
+          ctx.fillStyle = color;
+          ctx.fillText(String(label).toUpperCase(), x, y);
+        };
+        const drawMetricCard = ({ x, y, w, label, value, detail, accent, detailColor = "#9ca3af" }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, accent);
+          drawLabel(label, x + 22, y + 20);
+          setFont(800, 38);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(value, x + 22, y + 49);
+          setFont(650, 18);
+          ctx.fillStyle = detailColor;
+          ctx.fillText(fitText(detail, w - 44), x + 22, y + 106);
+        };
+
+        const background = ctx.createLinearGradient(0, 0, width, height);
+        background.addColorStop(0, "#090a14");
+        background.addColorStop(0.55, "#0d0d1b");
+        background.addColorStop(1, "#111225");
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, width, height);
+        const glow = ctx.createRadialGradient(width - 140, 80, 0, width - 140, 80, 380);
+        glow.addColorStop(0, "#f59e0b42");
+        glow.addColorStop(1, "#00000000");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, 520);
+
+        let y = outerPadding;
+        const headerIconSize = 84;
+        const headerTextX = outerPadding + 108;
+        if (tierIconImage) {
+          ctx.drawImage(tierIconImage, outerPadding, y + 5, headerIconSize, headerIconSize);
+        } else {
+          fillRounded(outerPadding, y + 5, headerIconSize, headerIconSize, 22, tc.bar, tc.border);
+          setFont(900, 26);
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "center";
+          ctx.fillText(club.tier, outerPadding + (headerIconSize / 2), y + 32);
+          ctx.textAlign = "left";
+        }
+        drawLabel("Dominator Network · Under-Plan Reminder", headerTextX, y + 4, "#fbbf24");
+        setFont(850, 42);
+        ctx.fillStyle = "#f8fafc";
+        ctx.textAlign = "center";
+        ctx.fillText(fitText(club.name, width - 360), width / 2, y + 31);
+        ctx.textAlign = "left";
+        setFont(550, 20);
+        ctx.fillStyle = "#a9adc2";
+        ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
+        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, headerTextX, y + 119);
+
+        y += headerHeight + sectionGap;
+        const metricsWidth = width - (outerPadding * 2);
+        const cardWidth = (metricsWidth - (metricGap * 3)) / 4;
+        const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
+        const rankDetailColor = report.rankChange > 0 ? "#65e5ad" : report.rankChange < 0 ? "#ff9292" : "#a9adc2";
+        fillRounded(outerPadding, y, cardWidth, metricHeight, 18, "#17182a", "#2a2c45");
+        fillRounded(outerPadding, y, 5, metricHeight, 3, rankAccent);
+        drawLabel("Club rank", outerPadding + 22, y + 20);
+        const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
+        const rankIconSize = 64;
+        if (currentRankIconImage) ctx.drawImage(currentRankIconImage, outerPadding + 22, y + 35, rankIconSize, rankIconSize);
+        setFont(800, 44);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(rankText, outerPadding + 22 + (currentRankIconImage ? rankIconSize + 10 : 0), y + 45);
+        setFont(650, 18);
+        ctx.fillStyle = rankDetailColor;
+        const rankDetail = report.rankChange == null ? "Unavailable" : report.rankChange > 0 ? `▲${Math.abs(report.rankChange)} today` : report.rankChange < 0 ? `▼${Math.abs(report.rankChange)} today` : "No change";
+        ctx.fillText(rankDetail, outerPadding + 22, y + 106);
+        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Needs attention", value: String(report.underPlan), detail: "Members under pace", accent: "#f59e0b", detailColor: report.underPlan ? "#fbbf24" : "#65e5ad" });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Combined gap", value: report.combinedGap, detail: "Vs elapsed pace", accent: "#f87171", detailColor: report.underPlan ? "#ff9292" : "#65e5ad" });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Still needed", value: report.stillNeeded, detail: "To monthly quota", accent: tc.text });
+
+        y += metricHeight + sectionGap;
+        fillRounded(outerPadding, y, metricsWidth, summaryHeight, 16, "#141526", "#282a42");
+        const summaryCenterY = y + (summaryHeight / 2);
+        ctx.textBaseline = "middle";
+        drawLabel("Action summary", outerPadding + 22, summaryCenterY);
+        const summaryItems = [
+          { label: "BEHIND", value: report.behind, color: "#fbbf24" },
+          { label: "CRITICAL", value: report.critical, color: "#f87171" },
+          { label: "WEEK ENDS", value: currentWeek?.endDay ?? "—", color: "#60a5fa" },
+          { label: "TODAY", value: today, color: "#c4c7d7" },
+        ];
+        const summaryLabelWidth = 220;
+        const summaryGroupWidth = (metricsWidth - summaryLabelWidth) / summaryItems.length;
+        summaryItems.forEach((item, index) => {
+          const centerX = outerPadding + summaryLabelWidth + (summaryGroupWidth * (index + 0.5));
+          const dotX = centerX - 48;
+          ctx.fillStyle = item.color;
+          ctx.beginPath();
+          ctx.arc(dotX, summaryCenterY, 7, 0, Math.PI * 2);
+          ctx.fill();
+          setFont(800, 30);
+          ctx.textAlign = "right";
+          ctx.fillText(String(item.value), dotX + 55, summaryCenterY);
+          setFont(700, 14);
+          ctx.fillStyle = "#9297af";
+          ctx.textAlign = "left";
+          ctx.fillText(item.label, dotX + 67, summaryCenterY);
+        });
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+
+        y += summaryHeight + sectionGap;
+        const statusWidth = 142;
+        const column = {
+          member: outerPadding + 22,
+          status: outerPadding + 320,
+          statusCenter: outerPadding + 320 + (statusWidth / 2),
+          dailyRight: outerPadding + 600,
+          monthRight: outerPadding + 750,
+          paceRight: outerPadding + 900,
+          neededRight: width - outerPadding - 22,
+        };
+        fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
+        ctx.textBaseline = "middle";
+        const headerCenterY = y + (tableHeaderHeight / 2);
+        drawLabel("Member", column.member, headerCenterY);
+        ctx.textAlign = "center";
+        drawLabel("Status", column.statusCenter, headerCenterY);
+        ctx.textAlign = "right";
+        drawLabel("Today", column.dailyRight, headerCenterY);
+        drawLabel("Month", column.monthRight, headerCenterY);
+        drawLabel("Vs pace", column.paceRight, headerCenterY);
+        drawLabel("Still needed", column.neededRight, headerCenterY);
+        ctx.textAlign = "left";
+        y += tableHeaderHeight;
+
+        if (!rows.length) {
+          ctx.fillStyle = "#111221";
+          ctx.fillRect(outerPadding, y, metricsWidth, rowHeight);
+          ctx.textBaseline = "middle";
+          setFont(750, 26);
+          ctx.fillStyle = "#65e5ad";
+          ctx.textAlign = "center";
+          ctx.fillText("Everyone is currently on track.", width / 2, y + (rowHeight / 2));
+          ctx.textAlign = "left";
+          y += rowHeight;
+        } else {
+          rows.forEach((row, index) => {
+            const status = getDisplayStatusMeta(row.statusKey);
+            const rowFill = index % 2 === 0 ? "#111221" : "#0d0e1a";
+            const rowCenterY = y + (rowHeight / 2);
+            ctx.fillStyle = rowFill;
+            ctx.fillRect(outerPadding, y, metricsWidth, rowHeight);
+            ctx.fillStyle = status.color;
+            ctx.fillRect(outerPadding, y, 4, rowHeight);
+            setFont(700, 27);
+            ctx.fillStyle = "#eef0f8";
+            ctx.fillText(fitText(row.name, 250), column.member, rowCenterY);
+            fillRounded(column.status, y + ((rowHeight - 38) / 2), statusWidth, 38, 19, status.bg, status.border);
+            setFont(750, 17);
+            ctx.fillStyle = status.color;
+            ctx.textAlign = "center";
+            ctx.fillText(status.label.toUpperCase(), column.statusCenter, rowCenterY);
+            const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+            setFont(700, 23, mono);
+            ctx.fillStyle = "#d8dbea";
+            ctx.textAlign = "right";
+            ctx.fillText(fmtSigned(row.dailyGain), column.dailyRight, rowCenterY);
+            ctx.fillText(fmtSigned(row.monthlyGain), column.monthRight, rowCenterY);
+            ctx.fillStyle = "#ff9292";
+            ctx.fillText(fmtSigned(row.paceDelta), column.paceRight, rowCenterY);
+            ctx.fillStyle = "#fbbf24";
+            ctx.fillText(fmt(row.stillNeeded), column.neededRight, rowCenterY);
+            ctx.textAlign = "left";
+            y += rowHeight;
+          });
+        }
+
+        ctx.textBaseline = "top";
+        ctx.strokeStyle = "#292b43";
+        ctx.beginPath();
+        ctx.moveTo(outerPadding, y);
+        ctx.lineTo(width - outerPadding, y);
+        ctx.stroke();
+        setFont(700, 17);
+        ctx.fillStyle = "#858aa3";
+        ctx.fillText("Dominator Network Tracker", outerPadding, y + 28);
+        ctx.textAlign = "right";
+        ctx.fillText(`${report.periodLabel} · ${report.dateLabel}`, width - outerPadding, y + 28);
+        ctx.textAlign = "left";
+        return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+
       async function copyReminderDiscord() {
-        const message = buildReminderDiscord();
+        const exportData = buildReminderExportData();
         const result = await exportDiscordPayload(
-          { fullMessage: message, textOnlyMessage: message },
+          exportData,
           "under-plan-reminder.png",
-          () => renderDiscordMessagePng(message, 2)
+          () => renderReminderPng(exportData, 2)
         );
         if (!result) return;
         setReminderCopied(result);
