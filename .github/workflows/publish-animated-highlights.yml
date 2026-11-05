@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/publish-animated-highlights.yml"
       - "assets/js/app.jsx"
+      - "assets/images/animation-hosts/**"
       - "assets/vendor/gif.js/**"
       - "club.html"
       - "scripts/generate-animated-highlights.mjs"
