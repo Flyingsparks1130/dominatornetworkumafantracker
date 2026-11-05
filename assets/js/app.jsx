@@ -2201,16 +2201,28 @@ const { useState, useEffect, useRef } = React;
         const ctx = canvas.getContext("2d");
         if (!ctx) return null;
 
+        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
+        const tierIconImage = await new Promise((resolve) => {
+          if (!tierIconUrl) {
+            resolve(null);
+            return;
+          }
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => resolve(null);
+          image.src = tierIconUrl;
+        });
+
         const width = 1160;
         const outerPadding = 44;
-        const headerHeight = 138;
-        const metricHeight = 124;
+        const headerHeight = 162;
+        const metricHeight = 152;
         const metricGap = 14;
-        const statusHeight = 82;
-        const tableHeaderHeight = 54;
-        const rowHeight = 46;
-        const footerHeight = 66;
-        const sectionGap = 20;
+        const statusHeight = 104;
+        const tableHeaderHeight = 66;
+        const rowHeight = 58;
+        const footerHeight = 78;
+        const sectionGap = 22;
         const height = outerPadding + headerHeight + sectionGap + metricHeight + sectionGap + statusHeight + sectionGap + tableHeaderHeight + (exportData.tableRows.length * rowHeight) + footerHeight + outerPadding;
 
         canvas.width = Math.ceil(width * scale);
@@ -2218,6 +2230,8 @@ const { useState, useEffect, useRef } = React;
 
         ctx.scale(scale, scale);
         ctx.textBaseline = "top";
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
 
         const roundedRect = (x, y, w, h, r) => {
           ctx.beginPath();
@@ -2253,20 +2267,20 @@ const { useState, useEffect, useRef } = React;
           return `${output}…`;
         };
         const drawLabel = (label, x, y, color = "#8f93ad") => {
-          setFont(700, 13);
+          setFont(700, 16);
           ctx.fillStyle = color;
           ctx.fillText(String(label).toUpperCase(), x, y);
         };
         const drawMetricCard = ({ x, y, w, label, value, detail, accent, detailColor = "#9ca3af" }) => {
           fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
           fillRounded(x, y, 5, metricHeight, 3, accent);
-          drawLabel(label, x + 22, y + 18);
-          setFont(800, 30);
+          drawLabel(label, x + 22, y + 20);
+          setFont(800, 38);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(value, x + 22, y + 43);
-          setFont(650, 15);
+          ctx.fillText(value, x + 22, y + 49);
+          setFont(650, 18);
           ctx.fillStyle = detailColor;
-          ctx.fillText(fitText(detail, w - 44), x + 22, y + 88);
+          ctx.fillText(fitText(detail, w - 44), x + 22, y + 106);
         };
 
         const background = ctx.createLinearGradient(0, 0, width, height);
@@ -2283,27 +2297,27 @@ const { useState, useEffect, useRef } = React;
         ctx.fillRect(0, 0, width, 520);
 
         let y = outerPadding;
-        fillRounded(outerPadding, y, 68, 68, 18, tc.bar, tc.border);
-        setFont(900, 24);
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.fillText("DN", outerPadding + 34, y + 19);
-        ctx.textAlign = "left";
+        const headerIconSize = 84;
+        const headerTextX = outerPadding + 108;
+        if (tierIconImage) {
+          ctx.drawImage(tierIconImage, outerPadding, y + 5, headerIconSize, headerIconSize);
+        } else {
+          fillRounded(outerPadding, y + 5, headerIconSize, headerIconSize, 22, tc.bar, tc.border);
+          setFont(900, 26);
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "center";
+          ctx.fillText(club.tier, outerPadding + (headerIconSize / 2), y + 32);
+          ctx.textAlign = "left";
+        }
 
-        drawLabel("Dominator Network · Daily Report", outerPadding + 88, y + 4, tc.text);
-        setFont(850, 34);
+        drawLabel("Dominator Network · Daily Report", headerTextX, y + 4, tc.text);
+        setFont(850, 42);
         ctx.fillStyle = "#f8fafc";
-        ctx.fillText(fitText(`[${club.tier}] ${club.name}`, 620), outerPadding + 88, y + 29);
-        setFont(550, 16);
+        ctx.fillText(fitText(club.name, width - headerTextX - outerPadding), headerTextX, y + 31);
+        setFont(550, 20);
         ctx.fillStyle = "#a9adc2";
-        ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, outerPadding + 88, y + 78);
-        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, outerPadding + 88, y + 102);
-
-        fillRounded(width - outerPadding - 176, y + 5, 176, 54, 16, "#ffffff0d", "#ffffff1f");
-        drawLabel("Report status", width - outerPadding - 156, y + 16);
-        setFont(750, 15);
-        ctx.fillStyle = "#34d399";
-        ctx.fillText("● READY TO SHARE", width - outerPadding - 156, y + 34);
+        ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
+        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, headerTextX, y + 119);
 
         y += headerHeight + sectionGap;
         const metricsWidth = width - (outerPadding * 2);
@@ -2317,23 +2331,23 @@ const { useState, useEffect, useRef } = React;
 
         y += metricHeight + sectionGap;
         fillRounded(outerPadding, y, metricsWidth, statusHeight, 18, "#141526", "#282a42");
-        drawLabel("Member health", outerPadding + 22, y + 17);
+        drawLabel("Member health", outerPadding + 22, y + 20);
         const statusItems = [
           { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
           { label: "BEHIND", value: report.behind, color: "#fbbf24" },
           { label: "CRITICAL", value: report.critical, color: "#f87171" },
         ];
         statusItems.forEach((item, index) => {
-          const x = outerPadding + 300 + (index * 230);
+          const x = outerPadding + 280 + (index * 240);
           ctx.fillStyle = item.color;
           ctx.beginPath();
-          ctx.arc(x, y + 42, 6, 0, Math.PI * 2);
+          ctx.arc(x, y + 54, 7, 0, Math.PI * 2);
           ctx.fill();
-          setFont(800, 25);
-          ctx.fillText(String(item.value), x + 16, y + 25);
-          setFont(700, 13);
+          setFont(800, 32);
+          ctx.fillText(String(item.value), x + 18, y + 32);
+          setFont(700, 16);
           ctx.fillStyle = "#9297af";
-          ctx.fillText(item.label, x + 55, y + 33);
+          ctx.fillText(item.label, x + 67, y + 43);
         });
 
         y += statusHeight + sectionGap;
@@ -2345,12 +2359,12 @@ const { useState, useEffect, useRef } = React;
           pace: width - outerPadding - 22,
         };
         fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
-        drawLabel("Member", column.member, y + 19);
-        drawLabel("Status", column.status, y + 19);
-        drawLabel("Today", column.daily, y + 19);
-        drawLabel("Month", column.month, y + 19);
+        drawLabel("Member", column.member, y + 23);
+        drawLabel("Status", column.status, y + 23);
+        drawLabel("Today", column.daily, y + 23);
+        drawLabel("Month", column.month, y + 23);
         ctx.textAlign = "right";
-        drawLabel("Vs pace", column.pace, y + 19);
+        drawLabel("Vs pace", column.pace, y + 23);
         ctx.textAlign = "left";
         y += tableHeaderHeight;
 
@@ -2362,24 +2376,24 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = status.color;
           ctx.fillRect(outerPadding, y, 4, rowHeight);
 
-          setFont(700, 16);
+          setFont(700, 20);
           ctx.fillStyle = "#eef0f8";
-          ctx.fillText(fitText(row.name, 360), column.member, y + 13);
+          ctx.fillText(fitText(row.name, 360), column.member, y + 17);
 
-          fillRounded(column.status, y + 10, 124, 26, 13, status.bg, status.border);
-          setFont(750, 12);
+          fillRounded(column.status, y + 13, 132, 32, 16, status.bg, status.border);
+          setFont(750, 14);
           ctx.fillStyle = status.color;
           ctx.textAlign = "center";
-          ctx.fillText(status.label.toUpperCase(), column.status + 62, y + 16);
+          ctx.fillText(status.label.toUpperCase(), column.status + 66, y + 20);
 
           const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-          setFont(700, 15, mono);
+          setFont(700, 19, mono);
           ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
-          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, y + 14);
-          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, y + 14);
+          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, y + 18);
+          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, y + 18);
           ctx.fillStyle = hasComparisonData ? (row.paceDelta >= 0 ? "#65e5ad" : "#ff9292") : "#9ca3af";
-          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, y + 14);
+          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, y + 18);
           ctx.textAlign = "left";
           y += rowHeight;
         });
@@ -2390,11 +2404,11 @@ const { useState, useEffect, useRef } = React;
         ctx.lineTo(width - outerPadding, y);
         ctx.stroke();
 
-        setFont(700, 14);
+        setFont(700, 17);
         ctx.fillStyle = "#858aa3";
-        ctx.fillText("Dominator Network Tracker", outerPadding, y + 25);
+        ctx.fillText("Dominator Network Tracker", outerPadding, y + 28);
         ctx.textAlign = "right";
-        ctx.fillText(`${report.sourceLabel} · ${report.dateLabel}`, width - outerPadding, y + 25);
+        ctx.fillText(`${report.sourceLabel} · ${report.dateLabel}`, width - outerPadding, y + 28);
         ctx.textAlign = "left";
 
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
