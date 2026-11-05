@@ -2568,15 +2568,16 @@ const { useState, useEffect, useRef } = React;
           ? recentSeven.reduce((sum, value) => sum + Math.pow(value - avgSeven, 2), 0) / recentSeven.length
           : 0;
         const consistencyScore = avgSeven > 0 ? Math.max(0, Math.min(100, Math.round(100 - ((Math.sqrt(variance) / avgSeven) * 100)))) : 0;
+        const consistencyLabel = consistencyScore >= 82 ? "Very steady" : consistencyScore >= 65 ? "Mostly steady" : "Uneven";
         const targetValue = Number(report.targetValue || (Number(club.target || 0) * activeCount));
         const dailyTarget = targetValue / Math.max(1, dim);
         const currentDaily = Number(report.dailyValue || 0);
         const previousDaily = Number(report.previousDailyValue || 0);
         const acceleration = report.dailyTrendDelta == null ? currentDaily - previousDaily : Number(report.dailyTrendDelta || 0);
         const accelerationPercent = previousDaily > 0 ? (acceleration / previousDaily) * 100 : null;
-        const momentumScore = dailyTarget > 0 ? Math.round((currentDaily / dailyTarget) * 100) : 0;
+        const dailyPaceRatio = dailyTarget > 0 ? currentDaily / dailyTarget : 0;
+        const paceDifference = currentDaily - dailyTarget;
         const acceleratingMembers = rows.filter((row) => Number(row.dailyGain || 0) > Number(row.rolling3DayAvg || 0)).length;
-        const trendDirection = acceleration > 0 ? "Accelerating" : acceleration < 0 ? "Cooling" : "Holding steady";
 
         const belowPaceRows = rows.filter((row) => Number(row.paceDelta || 0) < 0);
         const priorityRows = (belowPaceRows.length ? belowPaceRows : [...rows])
@@ -2586,7 +2587,6 @@ const { useState, useEffect, useRef } = React;
         const remainingDays = Math.max(0, Number(report.daysRemaining ?? (dim - today)));
         const recoveryDaily = remainingDays > 0 ? recoveryLoad / remainingDays : recoveryLoad;
         const stalledMembers = rows.filter((row) => Number(row.stagnantDays || 0) >= 2).length;
-        const closestRecovery = [...belowPaceRows].sort((a, b) => Number(b.paceDelta || 0) - Number(a.paceDelta || 0))[0] || null;
 
         const monthValue = Number(report.monthValue || 0);
         const projectedValue = Number(report.projectedValue || 0);
@@ -2601,9 +2601,9 @@ const { useState, useEffect, useRef } = React;
         const bufferDays = avgThree > 0 ? forecastGap / avgThree : 0;
 
         const chapters = [
-          { title: "Overall Performance", kicker: "How the club is moving", accent: "#60a5fa", bubble: "Read the rhythm!" },
-          { title: "Needs Attention", kicker: "Members to focus on today", accent: "#fbbf24", bubble: "Let's check the team!" },
-          { title: "Deeper Analysis", kicker: "Where this pace could finish", accent: "#a78bfa", bubble: "Now the future!" },
+          { eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: "Here's today!" },
+          { eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "The three members furthest behind their elapsed monthly pace.", accent: "#fbbf24", bubble: "Let's focus!" },
+          { eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: "Looking ahead!" },
         ];
 
         const easeOut = (value) => 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
@@ -2656,92 +2656,122 @@ const { useState, useEffect, useRef } = React;
           fillRounded(x, y, w, h, 17, "#121321", "#292b43");
           fillRounded(x, y, 5, h, 3, accent);
         };
-        const drawChapterTabs = (activeIndex, reveal) => {
-          const tabY = 122;
-          const tabW = 282;
-          chapters.forEach((chapter, index) => {
-            const x = 38 + (index * 301);
-            const active = index === activeIndex;
-            ctx.save();
-            ctx.globalAlpha = reveal;
-            fillRounded(x, tabY, tabW, 36, 18, active ? alpha(chapter.accent, 0.18) : "#111221", active ? alpha(chapter.accent, 0.72) : "#272940");
-            setFont(780, 12);
-            ctx.fillStyle = active ? chapter.accent : "#777c95";
-            ctx.textAlign = "center";
-            ctx.fillText((index + 1) + " · " + chapter.title.toUpperCase(), x + (tabW / 2), tabY + 10);
-            ctx.restore();
-          });
-          ctx.textAlign = "left";
+        const drawSmallCard = (x, y, w, label, value, detail, accent, valueColor = "#f8fafc") => {
+          fillRounded(x, y, w, 97, 14, "#17182a", "#2b2d47");
+          drawLabel(label, x + 14, y + 14, accent);
+          setFont(850, 23);
+          ctx.fillStyle = valueColor;
+          ctx.fillText(fitText(value, w - 28), x + 14, y + 35);
+          setFont(630, 10);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText(fitText(detail, w - 28), x + 14, y + 72);
         };
         const drawHeader = (chapterIndex, frame) => {
           const chapter = chapters[chapterIndex];
-          if (tierIcon) ctx.drawImage(tierIcon, 38, 25, 74, 74);
+          if (tierIcon) ctx.drawImage(tierIcon, 32, 17, 72, 72);
           else {
-            fillRounded(38, 25, 74, 74, 19, tc.bar, tc.border);
-            setFont(900, 24);
+            fillRounded(32, 17, 72, 72, 18, tc.bar, tc.border);
+            setFont(900, 22);
             ctx.fillStyle = "#fff";
             ctx.textAlign = "center";
-            ctx.fillText(club.tier, 75, 48);
+            ctx.textBaseline = "middle";
+            ctx.fillText(club.tier, 68, 53);
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
           }
-          ctx.textAlign = "center";
-          drawLabel("Dominator Network · Animated Insight Story", 470, 18, chapter.accent);
-          setFont(900, 35);
+
+          drawLabel("DOMINATOR NETWORK · DAILY CLUB STORY", 118, 15, chapter.accent);
+          setFont(900, 32);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fitText(club.name, 520), 470, 41);
-          setFont(650, 14);
+          ctx.fillText(fitText(club.name, 500), 118, 32);
+          setFont(650, 13);
           ctx.fillStyle = "#a8acc1";
-          ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 470, 88);
-          ctx.textAlign = "left";
+          ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 118, 72);
 
           if (animationHost) {
-            const bob = Math.sin(frame * 0.38) * 4;
-            const hostHeight = 112;
+            const bob = Math.sin(frame * 0.32) * 3;
+            const hostHeight = 88;
             const hostWidth = hostHeight * (animationHost.width / animationHost.height);
-            ctx.drawImage(animationHost, 840, 7 + bob, hostWidth, hostHeight);
-            fillRounded(673, 36 + bob, 160, 38, 19, alpha(chapter.accent, 0.15), alpha(chapter.accent, 0.52));
+            fillRounded(677, 28 + bob, 166, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
             setFont(750, 12);
-            ctx.fillStyle = "#f0edf9";
+            ctx.fillStyle = "#eef0f8";
             ctx.textAlign = "center";
-            ctx.fillText(chapter.bubble, 753, 48 + bob);
+            ctx.textBaseline = "middle";
+            ctx.fillText(chapter.bubble, 760, 46 + bob);
             ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.drawImage(animationHost, 862, 5 + bob, hostWidth, hostHeight);
           }
-        };
-        const drawStatBox = (x, y, w, title, value, detail, accent, reveal, valueColor = "#f8fafc") => {
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          const lift = (1 - reveal) * 12;
-          fillRounded(x, y + lift, w, 92, 14, "#17182a", "#2b2d47");
-          drawLabel(title, x + 16, y + lift + 14, accent);
-          setFont(860, 26);
-          ctx.fillStyle = valueColor;
-          ctx.fillText(fitText(value, w - 32), x + 16, y + lift + 36);
-          setFont(640, 11);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText(fitText(detail, w - 32), x + 16, y + lift + 70);
-          ctx.restore();
-        };
 
-        const drawMomentum = (reveal) => {
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          drawPanel(38, 176, 570, 310, "#60a5fa");
-          drawLabel("Seven-day output curve", 58, 193, "#60a5fa");
-          setFont(650, 12);
-          ctx.fillStyle = "#858aa3";
-          ctx.textAlign = "right";
-          ctx.fillText("Daily club output vs daily quota pace", 588, 193);
-          ctx.textAlign = "left";
-
-          const plotX = 64;
-          const plotY = 230;
-          const plotW = 518;
-          const plotH = 135;
-          const values = recentSeven.length ? recentSeven : [0];
-          const maxValue = Math.max(dailyTarget, ...values, 1);
           ctx.strokeStyle = "#25273d";
           ctx.lineWidth = 1;
-          for (let line = 0; line < 4; line += 1) {
-            const lineY = plotY + ((plotH / 3) * line);
+          ctx.beginPath();
+          ctx.moveTo(32, 105);
+          ctx.lineTo(928, 105);
+          ctx.stroke();
+        };
+        const drawSceneIntro = (sceneIndex) => {
+          const chapter = chapters[sceneIndex];
+          drawLabel(chapter.eyebrow, 32, 122, chapter.accent);
+          setFont(900, 28);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(chapter.title, 32, 140);
+          setFont(640, 13);
+          ctx.fillStyle = "#a7abc0";
+          ctx.fillText(chapter.subtitle, 32, 177);
+
+          chapters.forEach((entry, index) => {
+            const x = 772 + (index * 52);
+            fillRounded(x, 143, 42, 6, 3, index === sceneIndex ? entry.accent : "#292b43");
+          });
+          setFont(750, 11);
+          ctx.fillStyle = chapter.accent;
+          ctx.textAlign = "right";
+          ctx.fillText((sceneIndex + 1) + " OF 3", 928, 164);
+          ctx.textAlign = "left";
+        };
+        const drawPerformanceScene = () => {
+          const accent = chapters[0].accent;
+          drawPanel(32, 218, 330, 267, accent);
+          drawLabel("TODAY'S CLUB TOTAL", 54, 239, accent);
+          setFont(900, 42);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(fmt(currentDaily), 54, 264);
+          setFont(650, 13);
+          ctx.fillStyle = "#9ca1b8";
+          ctx.fillText("Daily pace needed: " + fmt(dailyTarget), 54, 316);
+
+          const barWidth = 286;
+          fillRounded(54, 345, barWidth, 14, 7, "#272940");
+          fillRounded(54, 345, Math.max(8, barWidth * Math.min(1, dailyPaceRatio)), 14, 7, dailyPaceRatio >= 1 ? "#34d399" : "#60a5fa");
+          setFont(850, 18);
+          ctx.fillStyle = dailyPaceRatio >= 1 ? "#65e5ad" : "#fbbf24";
+          ctx.fillText(Math.round(dailyPaceRatio * 100) + "% of today's needed pace", 54, 373);
+
+          fillRounded(54, 408, 286, 55, 12, dailyPaceRatio >= 1 ? "#34d39916" : "#fbbf2416", dailyPaceRatio >= 1 ? "#34d39966" : "#fbbf2466");
+          drawLabel(dailyPaceRatio >= 1 ? "AHEAD TODAY" : "STILL NEEDED TODAY", 70, 420, dailyPaceRatio >= 1 ? "#34d399" : "#fbbf24");
+          setFont(850, 20);
+          ctx.fillStyle = dailyPaceRatio >= 1 ? "#65e5ad" : "#ffcf54";
+          ctx.fillText(fmt(Math.abs(paceDifference)), 70, 440);
+
+          drawPanel(380, 218, 548, 158, accent);
+          drawLabel("LAST 7 DAYS", 400, 235, accent);
+          setFont(620, 11);
+          ctx.fillStyle = "#858aa3";
+          ctx.textAlign = "right";
+          ctx.fillText("Dashed line = daily pace needed", 908, 235);
+          ctx.textAlign = "left";
+
+          const values = recentSeven.length ? recentSeven : [0];
+          const plotX = 404;
+          const plotY = 263;
+          const plotW = 500;
+          const plotH = 80;
+          const maxValue = Math.max(dailyTarget, ...values, 1);
+          for (let line = 0; line < 3; line += 1) {
+            const lineY = plotY + ((plotH / 2) * line);
+            ctx.strokeStyle = "#25273d";
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(plotX, lineY);
             ctx.lineTo(plotX + plotW, lineY);
@@ -2749,34 +2779,18 @@ const { useState, useEffect, useRef } = React;
           }
           const targetY = plotY + plotH - ((dailyTarget / maxValue) * plotH);
           ctx.save();
-          ctx.setLineDash([7, 6]);
-          ctx.strokeStyle = "#fbbf2488";
+          ctx.setLineDash([6, 5]);
+          ctx.strokeStyle = "#fbbf24aa";
           ctx.beginPath();
           ctx.moveTo(plotX, targetY);
           ctx.lineTo(plotX + plotW, targetY);
           ctx.stroke();
           ctx.restore();
-          setFont(650, 10);
-          ctx.fillStyle = "#fbbf24";
-          ctx.fillText("PACE", plotX + 4, targetY - 14);
 
-          const points = values.map((value, index) => {
-            const x = values.length === 1 ? plotX + (plotW / 2) : plotX + ((plotW / (values.length - 1)) * index);
-            const y = plotY + plotH - ((value / maxValue) * plotH);
-            return { x, y, value };
-          });
-          if (points.length > 1) {
-            const chartGradient = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
-            chartGradient.addColorStop(0, "#60a5fa55");
-            chartGradient.addColorStop(1, "#60a5fa00");
-            ctx.beginPath();
-            ctx.moveTo(points[0].x, plotY + plotH);
-            points.forEach((point) => ctx.lineTo(point.x, point.y));
-            ctx.lineTo(points[points.length - 1].x, plotY + plotH);
-            ctx.closePath();
-            ctx.fillStyle = chartGradient;
-            ctx.fill();
-          }
+          const points = values.map((value, index) => ({
+            x: values.length === 1 ? plotX + (plotW / 2) : plotX + ((plotW / (values.length - 1)) * index),
+            y: plotY + plotH - ((value / maxValue) * plotH),
+          }));
           ctx.strokeStyle = "#78b7ff";
           ctx.lineWidth = 4;
           ctx.lineJoin = "round";
@@ -2787,179 +2801,170 @@ const { useState, useEffect, useRef } = React;
           });
           ctx.stroke();
           points.forEach((point, index) => {
-            ctx.fillStyle = index === points.length - 1 ? "#f8fafc" : "#60a5fa";
+            ctx.fillStyle = index === points.length - 1 ? "#f8fafc" : accent;
             ctx.beginPath();
-            ctx.arc(point.x, point.y, index === points.length - 1 ? 6 : 4, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, index === points.length - 1 ? 5 : 3.5, 0, Math.PI * 2);
             ctx.fill();
             setFont(650, 9);
             ctx.fillStyle = "#858aa3";
             ctx.textAlign = "center";
-            const dayNumber = today - values.length + index + 1;
-            ctx.fillText("D" + dayNumber, point.x, plotY + plotH + 12);
+            ctx.fillText("D" + (today - values.length + index + 1), point.x, 350);
           });
           ctx.textAlign = "left";
 
-          drawStatBox(58, 396, 162, "Acceleration", accelerationPercent == null ? "—" : (accelerationPercent >= 0 ? "+" : "") + accelerationPercent.toFixed(1) + "%", fmtSigned(acceleration) + " vs yesterday", acceleration >= 0 ? "#34d399" : "#f87171", reveal, acceleration >= 0 ? "#65e5ad" : "#ff9292");
-          drawStatBox(229, 396, 162, "3-day rhythm", fmt(avgThree), "Average daily output", "#60a5fa", reveal);
-          drawStatBox(400, 396, 188, "Direction", trendDirection, acceleratingMembers + "/" + activeCount + " members accelerating", acceleration >= 0 ? "#34d399" : "#fbbf24", reveal);
-          ctx.restore();
-
-          drawPanel(626, 176, 296, 310, "#60a5fa");
-          drawLabel("Momentum score", 648, 195, "#60a5fa");
-          const gaugeCenterX = 774;
-          const gaugeCenterY = 300;
-          const gaugeRadius = 78;
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          ctx.lineWidth = 16;
-          ctx.lineCap = "round";
-          ctx.strokeStyle = "#24263b";
-          ctx.beginPath();
-          ctx.arc(gaugeCenterX, gaugeCenterY, gaugeRadius, Math.PI * 0.78, Math.PI * 2.22);
-          ctx.stroke();
-          const gaugeRatio = Math.max(0, Math.min(1, momentumScore / 180));
-          ctx.strokeStyle = momentumScore >= 100 ? "#34d399" : "#fbbf24";
-          ctx.beginPath();
-          ctx.arc(gaugeCenterX, gaugeCenterY, gaugeRadius, Math.PI * 0.78, (Math.PI * 0.78) + ((Math.PI * 1.44) * gaugeRatio));
-          ctx.stroke();
-          ctx.lineCap = "butt";
-          setFont(900, 41);
-          ctx.fillStyle = "#f8fafc";
-          ctx.textAlign = "center";
-          ctx.fillText(String(momentumScore), gaugeCenterX, 276);
-          setFont(700, 12);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText("PACE INDEX", gaugeCenterX, 326);
-          ctx.textAlign = "left";
-          drawLabel("Consistency", 654, 404, "#a78bfa");
-          setFont(850, 29);
-          ctx.fillStyle = "#d8b4fe";
-          ctx.fillText(consistencyScore + "/100", 654, 428);
-          setFont(640, 11);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText("Lower day-to-day volatility scores higher", 654, 463);
-          ctx.restore();
+          const cardWidth = 176;
+          drawSmallCard(380, 388, cardWidth, "VS YESTERDAY", accelerationPercent == null ? "—" : (accelerationPercent >= 0 ? "+" : "") + accelerationPercent.toFixed(1) + "%", fmtSigned(acceleration) + " change", acceleration >= 0 ? "#34d399" : "#f87171", acceleration >= 0 ? "#65e5ad" : "#ff9292");
+          drawSmallCard(566, 388, cardWidth, "MEMBERS IMPROVING", acceleratingMembers + " / " + activeCount, "Above their 3-day average", "#60a5fa");
+          drawSmallCard(752, 388, cardWidth, "OUTPUT CONSISTENCY", consistencyLabel, consistencyScore + "/100 steadiness", "#a78bfa", "#d8b4fe");
         };
+        const drawAttentionScene = () => {
+          const accent = chapters[1].accent;
+          drawPanel(32, 218, 896, 76, accent);
+          const summaryItems = [
+            { value: String(belowPaceRows.length), label: "MEMBERS BELOW PACE" },
+            { value: fmt(recoveryDaily), label: "EXTRA CLUB OUTPUT / DAY" },
+            { value: String(stalledMembers), label: "QUIET FOR 2+ DAYS" },
+          ];
+          summaryItems.forEach((item, index) => {
+            const left = 52 + (index * 294);
+            if (index > 0) {
+              ctx.fillStyle = "#2b2d47";
+              ctx.fillRect(left - 18, 234, 1, 44);
+            }
+            setFont(900, 28);
+            ctx.fillStyle = index === 2 && stalledMembers > 0 ? "#ffcf54" : "#f8fafc";
+            ctx.fillText(item.value, left, 231);
+            drawLabel(item.label, left, 267, accent);
+          });
 
-        const drawOfficerWatch = (reveal) => {
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          drawPanel(38, 176, 286, 310, "#fbbf24");
-          drawLabel("Attention overview", 58, 195, "#fbbf24");
-          setFont(900, 36);
-          ctx.fillStyle = recoveryLoad > 0 ? "#ffcf54" : "#65e5ad";
-          ctx.fillText(fmt(recoveryLoad), 58, 228);
-          setFont(650, 12);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText("Combined gap for members below pace", 58, 274);
-          fillRounded(58, 307, 246, 1, 1, "#2b2d47");
-          drawLabel("Daily recovery needed", 58, 329, "#fbbf24");
-          setFont(850, 25);
-          ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fmt(recoveryDaily), 58, 354);
-          setFont(640, 11);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText("Extra output per day to close current gaps", 58, 386);
-          drawLabel("Stalled members", 58, 421, "#fbbf24");
-          setFont(850, 25);
-          ctx.fillStyle = stalledMembers ? "#ffcf54" : "#65e5ad";
-          ctx.fillText(String(stalledMembers), 58, 446);
-          setFont(640, 11);
-          ctx.fillStyle = "#9297af";
-          ctx.fillText(stalledMembers ? "Two or more quiet days" : "No multi-day stalls detected", 96, 453);
-          ctx.restore();
-
-          drawPanel(342, 176, 580, 310, "#fbbf24");
-          drawLabel("Priority members", 362, 195, "#fbbf24");
-          setFont(650, 12);
-          ctx.fillStyle = "#858aa3";
+          drawPanel(32, 310, 896, 175, accent);
+          drawLabel("TODAY'S PRIORITY MEMBERS", 52, 324, accent);
+          setFont(620, 10);
+          ctx.fillStyle = "#8388a0";
           ctx.textAlign = "right";
-          ctx.fillText(closestRecovery ? closestRecovery.name + " is closest to recovery" : "No member is below pace", 902, 195);
+          ctx.fillText(belowPaceRows.length ? "Sorted by largest pace gap" : "Everyone is currently at pace", 908, 324);
           ctx.textAlign = "left";
-          const maxDeficit = Math.max(1, ...priorityRows.map((row) => Math.max(0, -Number(row.paceDelta || 0))));
+
+          const columns = [
+            { label: "MEMBER", x: 70, align: "left" },
+            { label: "GAP VS PACE", x: 398, align: "center" },
+            { label: "RECENT DAILY AVG", x: 610, align: "center" },
+            { label: "OUTLOOK", x: 828, align: "center" },
+          ];
+          columns.forEach((column) => {
+            setFont(800, 10);
+            ctx.fillStyle = "#747991";
+            ctx.textAlign = column.align;
+            ctx.fillText(column.label, column.x, 345);
+          });
+          ctx.textAlign = "left";
+
           priorityRows.forEach((row, index) => {
-            const rowY = 228 + (index * 82);
+            const rowY = 365 + (index * 39);
             const deficit = Math.max(0, -Number(row.paceDelta || 0));
+            const quietDays = Number(row.stagnantDays || 0);
             const color = deficit > 0 ? "#fbbf24" : "#34d399";
-            fillRounded(362, rowY, 540, 68, 13, index % 2 === 0 ? "#17182a" : "#141522", "#292b43");
-            fillRounded(362, rowY, 5, 68, 3, color);
-            fillRounded(378, rowY + 17, 34, 34, 17, alpha(color, 0.16), alpha(color, 0.5));
-            setFont(850, 15);
+            fillRounded(52, rowY, 856, 34, 10, index % 2 === 0 ? "#17182a" : "#141522", "#272940");
+            fillRounded(52, rowY, 4, 34, 2, color);
+            ctx.textBaseline = "middle";
+
+            fillRounded(66, rowY + 7, 20, 20, 10, alpha(color, 0.16), alpha(color, 0.5));
+            setFont(800, 10);
             ctx.fillStyle = color;
             ctx.textAlign = "center";
-            ctx.fillText(String(index + 1), 395, rowY + 25);
-            ctx.textAlign = "left";
-            setFont(820, 18);
-            ctx.fillStyle = "#eef0f8";
-            ctx.fillText(fitText(row.name, 150), 426, rowY + 12);
-            setFont(640, 10);
-            ctx.fillStyle = "#9297af";
-            const runway = row.daysToTarget == null ? "No current runway" : row.daysToTarget + " days to quota at 3-day rate";
-            ctx.fillText(fitText(runway, 185), 426, rowY + 40);
-            drawLabel("Gap", 640, rowY + 13, color);
-            setFont(820, 18);
-            ctx.fillStyle = deficit > 0 ? "#ffb06b" : "#65e5ad";
-            ctx.textAlign = "right";
-            ctx.fillText(deficit > 0 ? "-" + fmt(deficit) : "Recovered", 742, rowY + 34);
-            ctx.textAlign = "left";
-            drawLabel("Activity", 770, rowY + 13, Number(row.stagnantDays || 0) >= 2 ? "#fbbf24" : "#8f93ad");
-            setFont(820, 18);
-            ctx.fillStyle = Number(row.stagnantDays || 0) >= 2 ? "#ffcf54" : "#d8dbea";
-            ctx.textAlign = "right";
-            ctx.fillText(Number(row.stagnantDays || 0) >= 2 ? Number(row.stagnantDays || 0) + "D QUIET" : "ACTIVE", 878, rowY + 34);
-            ctx.textAlign = "left";
-            const barW = 140 * (deficit / maxDeficit);
-            fillRounded(426, rowY + 57, 140, 3, 2, "#292b43");
-            fillRounded(426, rowY + 57, barW, 3, 2, color);
-          });
-          ctx.restore();
-        };
+            ctx.fillText(String(index + 1), 76, rowY + 17);
 
-        const drawForecastLab = (reveal) => {
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          drawPanel(38, 176, 520, 310, "#a78bfa");
-          drawLabel("Finish range", 58, 195, "#a78bfa");
+            setFont(820, 15);
+            ctx.fillStyle = "#eef0f8";
+            ctx.textAlign = "left";
+            ctx.fillText(fitText(row.name, 230), 96, rowY + 17);
+
+            setFont(800, 14);
+            ctx.fillStyle = deficit > 0 ? "#ffcf54" : "#65e5ad";
+            ctx.textAlign = "center";
+            ctx.fillText(deficit > 0 ? "-" + fmt(deficit) : "AT PACE", 398, rowY + 17);
+
+            ctx.fillStyle = "#d8dbea";
+            ctx.fillText(fmt(Number(row.rolling3DayAvg || 0)) + " / day", 610, rowY + 17);
+
+            const outlook = quietDays >= 2
+              ? quietDays + "D QUIET"
+              : row.daysToTarget == null
+                ? "NEW PACE NEEDED"
+                : row.daysToTarget + "D TO QUOTA";
+            ctx.fillStyle = quietDays >= 2 ? "#ffcf54" : "#aeb3c8";
+            ctx.fillText(outlook, 828, rowY + 17);
+
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+          });
+        };
+        const drawForecastScene = () => {
+          const accent = chapters[2].accent;
+          drawPanel(32, 218, 330, 267, accent);
+          drawLabel("PROJECTED FINISH VS TARGET", 54, 239, accent);
+          setFont(900, 40);
+          ctx.fillStyle = forecastGap >= 0 ? "#65e5ad" : "#ff9292";
+          ctx.fillText(fmtSigned(forecastGap), 54, 264);
+          setFont(700, 13);
+          ctx.fillStyle = forecastGap >= 0 ? "#34d399" : "#f87171";
+          ctx.fillText(forecastGap >= 0 ? "Projected above target" : "Projected below target", 54, 313);
+
+          fillRounded(54, 346, 286, 62, 12, "#17182a", "#2b2d47");
+          drawLabel("CURRENT FORECAST", 70, 359, "#a78bfa");
+          setFont(850, 24);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(fmt(baseProjection), 70, 379);
+
           setFont(650, 12);
+          ctx.fillStyle = "#969bb2";
+          ctx.fillText("Monthly target: " + fmt(targetValue), 54, 426);
+          ctx.fillText("Current month total: " + fmt(monthValue), 54, 450);
+
+          drawPanel(380, 218, 548, 170, accent);
+          drawLabel("POSSIBLE MONTH-END RANGE", 400, 235, accent);
+          setFont(620, 11);
           ctx.fillStyle = "#858aa3";
           ctx.textAlign = "right";
-          ctx.fillText("Built from the latest three daily outputs", 538, 195);
+          ctx.fillText("Based on the latest 3 daily totals", 908, 235);
           ctx.textAlign = "left";
+
           const scenarios = [
-            { label: "Conservative", value: conservativeProjection, color: "#fbbf24" },
-            { label: "Member forecast", value: baseProjection, color: "#a78bfa" },
-            { label: "Stretch", value: stretchProjection, color: "#34d399" },
+            { label: "Recent low repeats", value: conservativeProjection, color: "#fbbf24" },
+            { label: "Current projection", value: baseProjection, color: "#a78bfa" },
+            { label: "Recent high repeats", value: stretchProjection, color: "#34d399" },
           ];
           const chartMax = Math.max(targetValue, ...scenarios.map((entry) => entry.value), 1);
           scenarios.forEach((entry, index) => {
-            const y = 240 + (index * 70);
-            drawLabel(entry.label, 58, y, entry.color);
-            setFont(820, 20);
-            ctx.fillStyle = "#eef0f8";
-            ctx.textAlign = "right";
-            ctx.fillText(fmt(entry.value), 530, y - 3);
-            ctx.textAlign = "left";
-            fillRounded(58, y + 28, 472, 12, 6, "#24263b");
-            fillRounded(58, y + 28, Math.max(8, 472 * (entry.value / chartMax)), 12, 6, alpha(entry.color, 0.82));
-            const targetX = 58 + (472 * (targetValue / chartMax));
+            const y = 270 + (index * 37);
+            setFont(700, 11);
+            ctx.fillStyle = "#aeb3c8";
+            ctx.fillText(entry.label, 400, y);
+            fillRounded(548, y + 1, 250, 12, 6, "#272940");
+            fillRounded(548, y + 1, Math.max(8, 250 * (entry.value / chartMax)), 12, 6, alpha(entry.color, 0.85));
+            const targetX = 548 + (250 * (targetValue / chartMax));
             ctx.fillStyle = "#f8fafc";
-            ctx.fillRect(targetX - 1, y + 21, 2, 26);
+            ctx.fillRect(targetX - 1, y - 3, 2, 20);
+            setFont(800, 12);
+            ctx.fillStyle = entry.color;
+            ctx.textAlign = "right";
+            ctx.fillText(fmt(entry.value), 908, y - 1);
+            ctx.textAlign = "left";
           });
-          setFont(650, 10);
-          ctx.fillStyle = "#f8fafc";
+          setFont(650, 9);
+          ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
-          ctx.fillText("TARGET " + fmt(targetValue), 530, 456);
+          ctx.fillText("WHITE MARKER = TARGET " + fmt(targetValue), 908, 367);
           ctx.textAlign = "left";
-          ctx.restore();
 
-          drawPanel(576, 176, 346, 310, "#a78bfa");
-          drawStatBox(596, 198, 306, "Projected cushion", fmtSigned(forecastGap), forecastGap >= 0 ? "Member-level forecast above target" : "Member-level forecast below target", forecastGap >= 0 ? "#34d399" : "#f87171", reveal, forecastGap >= 0 ? "#65e5ad" : "#ff9292");
-          drawStatBox(596, 300, 306, "Required team rhythm", fmt(requiredDaily), remainingDays + " days left to reach the club quota", "#60a5fa", reveal);
-          drawStatBox(596, 402, 306, "Buffer in days", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + "d", bufferDays >= 0 ? "Current forecast can absorb slower days" : "Equivalent recovery days still needed", "#a78bfa", reveal, bufferDays >= 0 ? "#d8b4fe" : "#ff9292");
+          const cardWidth = 176;
+          drawSmallCard(380, 400, cardWidth, "DAYS LEFT", String(remainingDays), "Days remaining this month", "#60a5fa");
+          drawSmallCard(566, 400, cardWidth, "NEEDED FROM HERE", fmt(requiredDaily), "Club output needed per day", "#a78bfa");
+          drawSmallCard(752, 400, cardWidth, "FORECAST BUFFER", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + " days", bufferDays >= 0 ? "Room above target pace" : "Recovery still needed", forecastGap >= 0 ? "#34d399" : "#f87171", forecastGap >= 0 ? "#65e5ad" : "#ff9292");
         };
 
-        const totalFrames = 96;
-        const sceneLength = 32;
+        const totalFrames = 108;
+        const sceneLength = 36;
         const gif = new window.GIF({
           workers: 2,
           quality: 13,
@@ -2974,9 +2979,8 @@ const { useState, useEffect, useRef } = React;
           const sceneIndex = Math.min(2, Math.floor(frame / sceneLength));
           const localFrame = frame - (sceneIndex * sceneLength);
           const chapter = chapters[sceneIndex];
-          const revealIn = phase(localFrame, 0, 6);
-          const transition = sceneIndex < 2 ? phase(localFrame, 24, 7) : 0;
-          const sceneReveal = revealIn * (1 - transition);
+          const transition = phase(localFrame, 28, 7);
+          const contentOpacity = 1 - (transition * 0.96);
 
           const background = ctx.createLinearGradient(0, 0, width, height);
           background.addColorStop(0, "#080914");
@@ -2984,56 +2988,66 @@ const { useState, useEffect, useRef } = React;
           background.addColorStop(1, "#141126");
           ctx.fillStyle = background;
           ctx.fillRect(0, 0, width, height);
-          const glow = ctx.createRadialGradient(width - 120, 55, 0, width - 120, 55, 430);
-          glow.addColorStop(0, alpha(chapter.accent, 0.24));
+          const glow = ctx.createRadialGradient(width - 110, 45, 0, width - 110, 45, 420);
+          glow.addColorStop(0, alpha(chapter.accent, 0.22));
           glow.addColorStop(1, "#00000000");
           ctx.fillStyle = glow;
           ctx.fillRect(0, 0, width, height);
 
+          ctx.textBaseline = "top";
+          ctx.textAlign = "left";
           drawHeader(sceneIndex, frame);
-          drawChapterTabs(sceneIndex, revealIn);
-          if (sceneIndex === 0) drawMomentum(sceneReveal);
-          else if (sceneIndex === 1) drawOfficerWatch(sceneReveal);
-          else drawForecastLab(sceneReveal);
 
-          if (transition > 0.01 && animationHost) {
+          ctx.save();
+          ctx.globalAlpha = contentOpacity;
+          drawSceneIntro(sceneIndex);
+          if (sceneIndex === 0) drawPerformanceScene();
+          else if (sceneIndex === 1) drawAttentionScene();
+          else drawForecastScene();
+          ctx.restore();
+
+          if (transition > 0.01) {
+            const nextIndex = (sceneIndex + 1) % chapters.length;
+            const nextChapter = chapters[nextIndex];
             ctx.save();
             ctx.globalAlpha = transition;
-            ctx.fillStyle = alpha("#090a14", 0.7 * transition);
-            ctx.fillRect(0, 112, width, height - 112);
-            const nextChapter = chapters[sceneIndex + 1];
-            const flyHeight = 320;
-            const flyWidth = flyHeight * (animationHost.width / animationHost.height);
-            const flyX = lerp(805, -flyWidth - 30, transition);
-            const flyY = 145 + (Math.sin(transition * Math.PI * 2) * 46);
-            for (let trail = 3; trail >= 1; trail -= 1) {
-              ctx.globalAlpha = transition * (0.08 * trail);
-              ctx.drawImage(animationHost, flyX + (trail * 46), flyY + (trail * 8), flyWidth, flyHeight);
+            ctx.fillStyle = alpha("#090a14", 0.9);
+            ctx.fillRect(0, 106, width, height - 106);
+
+            if (animationHost) {
+              const flyHeight = lerp(110, 235, transition);
+              const flyWidth = flyHeight * (animationHost.width / animationHost.height);
+              const flyX = lerp(844, 270, transition);
+              const flyY = lerp(35, 205, transition) + (Math.sin(transition * Math.PI) * -22);
+              for (let trail = 3; trail >= 1; trail -= 1) {
+                ctx.globalAlpha = transition * (0.06 * trail);
+                ctx.drawImage(animationHost, flyX + (trail * 32), flyY - (trail * 6), flyWidth, flyHeight);
+              }
+              ctx.globalAlpha = transition;
+              ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
             }
-            ctx.globalAlpha = transition;
-            ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
-            ctx.textAlign = "center";
-            drawLabel("Next chapter", 650, 231, nextChapter.accent);
-            setFont(900, 38);
+
+            fillRounded(500, 218, 392, 154, 20, "#151627ee", alpha(nextChapter.accent, 0.7));
+            drawLabel("UP NEXT · " + (nextIndex + 1) + " OF 3", 526, 242, nextChapter.accent);
+            setFont(900, 29);
             ctx.fillStyle = "#f8fafc";
-            ctx.fillText(nextChapter.title, 650, 260);
-            setFont(650, 14);
+            ctx.fillText(nextChapter.title, 526, 271);
+            setFont(640, 13);
             ctx.fillStyle = "#aeb2c8";
-            ctx.fillText(nextChapter.kicker, 650, 310);
-            ctx.textAlign = "left";
+            ctx.fillText(fitText(nextChapter.subtitle, 330), 526, 319);
             ctx.restore();
           }
 
-          setFont(650, 11);
+          setFont(650, 10);
           ctx.fillStyle = "#737890";
-          ctx.fillText("Dominator Network Tracker · Animated Insights", 38, 517);
+          ctx.textBaseline = "top";
+          ctx.fillText("Dominator Network Tracker · Member Daily Story", 32, 516);
           ctx.textAlign = "right";
-          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.title, 922, 517);
+          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.eyebrow, 928, 516);
           ctx.textAlign = "left";
           gif.addFrame(canvas, { copy: true, delay: 150 });
         }
 
-        gif.addFrame(canvas, { copy: true, delay: 1200 });
         return await new Promise((resolve, reject) => {
           gif.on("finished", resolve);
           gif.on("abort", () => reject(new Error("GIF rendering was cancelled.")));
@@ -4391,9 +4405,9 @@ const { useState, useEffect, useRef } = React;
                     <div style={{ color: "#d8b4fe", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Animated Insight Story</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
                       {[
-                        { label: "Overall Performance", icon: "📈", color: "#60a5fa" },
-                        { label: "Needs Attention", icon: "⚠️", color: "#fbbf24" },
-                        { label: "Deeper Analysis", icon: "🔎", color: "#a78bfa" },
+                        { label: "Today's Performance", icon: "📈", color: "#60a5fa" },
+                        { label: "Member Check-In", icon: "⚠️", color: "#fbbf24" },
+                        { label: "Month-End Outlook", icon: "🔎", color: "#a78bfa" },
                       ].map((chapter, index) => (
                         <span key={chapter.label} style={{ border: `1px solid ${chapter.color}55`, background: `${chapter.color}12`, color: chapter.color, borderRadius: 999, padding: "6px 11px", fontSize: 11, fontWeight: 800 }}>
                           {index + 1} · {chapter.icon} {chapter.label}
@@ -4438,7 +4452,7 @@ const { useState, useEffect, useRef } = React;
                                   : "🔗 Copy Hosted GIF Link"}
                       </button>
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One GIF slowly cycles through all three chapters with Gentildonna guiding each transition. The attachment action hides the URL; unsupported browsers download the GIF for drag-and-drop into Discord.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One plain-language GIF answers three questions: how the club did today, who needs attention, and where the month is heading. Gentildonna guides each transition. The attachment action hides the URL; unsupported browsers download the GIF for drag-and-drop into Discord.</div>}
                   </div>
                 </div>
               )}
