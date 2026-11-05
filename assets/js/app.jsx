@@ -1482,7 +1482,7 @@ const { useState, useEffect, useRef } = React;
       const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
-      const animationAssetCacheRef = useRef({ url: "", file: null, promise: null });
+      const animationAssetCacheRef = useRef({ key: "", file: null, promise: null });
       const scheduledRefreshCycleRef = useRef(null);
       const scheduledRefreshTimeoutsRef = useRef([]);
 
@@ -3173,61 +3173,46 @@ const { useState, useEffect, useRef } = React;
         return {
           filename,
           label: "Animated Insight Story",
-          url: "https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/" + filename + "?v=" + cacheKey,
+          cacheKey: `${club.id || club.name}-${cacheKey}`,
         };
       }
 
-      async function loadHostedAnimationFile(asset = getAnimationAsset()) {
+      async function loadAnimationFile(asset = getAnimationAsset()) {
         const cached = animationAssetCacheRef.current;
-        if (cached.url === asset.url && cached.file) return cached.file;
-        if (cached.url === asset.url && cached.promise) return cached.promise;
+        if (cached.key === asset.cacheKey && cached.file) return cached.file;
+        if (cached.key === asset.cacheKey && cached.promise) return cached.promise;
 
-        const promise = fetch(asset.url, { cache: "force-cache" })
-          .then((response) => {
-            if (!response.ok) throw new Error("GIF request failed (" + response.status + ").");
-            return response.blob();
-          })
-          .then((sourceBlob) => {
-            const gifBlob = sourceBlob.type === "image/gif"
-              ? sourceBlob
-              : new Blob([sourceBlob], { type: "image/gif" });
+        const promise = Promise.resolve()
+          .then(async () => {
+            const gifBlob = await renderAnimatedInsightStory(getDiscordExportData());
+            if (!gifBlob) throw new Error("The animated report could not be created.");
             const file = new File([gifBlob], asset.filename, { type: "image/gif" });
-            animationAssetCacheRef.current = { url: asset.url, file, promise: Promise.resolve(file) };
+            animationAssetCacheRef.current = { key: asset.cacheKey, file, promise: Promise.resolve(file) };
             return file;
           })
           .catch((error) => {
-            if (animationAssetCacheRef.current.url === asset.url) {
-              animationAssetCacheRef.current = { url: "", file: null, promise: null };
+            if (animationAssetCacheRef.current.key === asset.cacheKey) {
+              animationAssetCacheRef.current = { key: "", file: null, promise: null };
             }
             throw error;
           });
 
-        animationAssetCacheRef.current = { url: asset.url, file: null, promise };
+        animationAssetCacheRef.current = { key: asset.cacheKey, file: null, promise };
         return promise;
       }
-
-      useEffect(() => {
-        if (animationBuildMode || isArchiveView || view !== "club") return undefined;
-        const asset = getAnimationAsset();
-        const timer = window.setTimeout(() => {
-          loadHostedAnimationFile(asset).catch(() => {});
-        }, 600);
-        return () => window.clearTimeout(timer);
-      }, [animationBuildMode, isArchiveView, view, club.name, formatLocalDateKey(dataDate)]);
 
       async function copyAnimatedGifAttachment() {
         const busyStates = ["rendering", "preparing-file", "sharing-file"];
         if (busyStates.includes(animationExportState)) return;
 
         const asset = getAnimationAsset();
-        const forceShare = animationExportState === "ready-share";
         try {
           setErr("");
-          setAnimationExportState("preparing-file");
-          const file = await loadHostedAnimationFile(asset);
+          const hasCachedFile = animationAssetCacheRef.current.key === asset.cacheKey && animationAssetCacheRef.current.file;
+          setAnimationExportState(hasCachedFile ? "preparing-file" : "rendering");
+          const file = await loadAnimationFile(asset);
           const canAttemptGifClipboard = Boolean(
-            !forceShare
-            && navigator.clipboard?.write
+            navigator.clipboard?.write
             && window.ClipboardItem
             && (typeof window.ClipboardItem.supports !== "function" || window.ClipboardItem.supports("image/gif"))
           );
@@ -4597,10 +4582,12 @@ const { useState, useEffect, useRef } = React;
                         <button
                           style={{ ...S.btn(true, animationExportState === "copied-file" || animationExportState === "shared-file" ? "#059669" : animationExportState === "error" ? "#ef4444" : animationExportState === "ready-share" ? "#f59e0b" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
                           onClick={copyAnimatedGifAttachment}
-                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["preparing-file", "sharing-file"].includes(animationExportState)}
-                          title="Copies the animated GIF file when the browser supports GIF clipboard data. Otherwise opens the native file share sheet so you can choose Discord."
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file", "sharing-file"].includes(animationExportState)}
+                          title="Builds the animated GIF in this browser, then copies the file when supported or opens the native file share sheet."
                         >
-                          {animationExportState === "preparing-file"
+                          {animationExportState === "rendering"
+                            ? "⏳ Building Animated GIF…"
+                            : animationExportState === "preparing-file"
                             ? "⏳ Preparing Animated GIF…"
                             : animationExportState === "sharing-file"
                               ? "📤 Opening Share Sheet…"
@@ -4616,7 +4603,7 @@ const { useState, useEffect, useRef } = React;
                         </button>
                       )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One button, one GIF file: supported browsers copy it for Discord paste; otherwise the site opens the native file share sheet where file sharing is available. No visible link is copied and no download is started.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One button, one GIF file: the tracker builds it in your browser, then copies it for Discord paste where supported or opens the native file share sheet. If prompted after the first build, tap once more to finish sharing. No link is copied and no download is started.</div>}
                   </div>
                 </div>
               )}
