@@ -2071,6 +2071,30 @@ const { useState, useEffect, useRef } = React;
         const totalDailyLabel = fmtSigned(totalDaily);
         const totalMonthLabel = `${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`;
 
+        const rankMap = rankHistory[cid] || {};
+        const currentRankEntry = rankMap[formatDateKey(year, monthIndex + 1, today)] || null;
+        const previousRankEntry = today > 1 ? (rankMap[formatDateKey(year, monthIndex + 1, today - 1)] || null) : null;
+        const currentRankValue = Number(currentRankEntry?.rank);
+        const previousRankValue = Number(previousRankEntry?.rank);
+        const storedRankChange = Number(currentRankEntry?.rank_gain);
+        const computedRankChange = Number.isFinite(currentRankValue) && Number.isFinite(previousRankValue)
+          ? previousRankValue - currentRankValue
+          : null;
+        const rankChange = currentRankEntry?.rank_gain != null && Number.isFinite(storedRankChange)
+          ? storedRankChange
+          : computedRankChange;
+        const rankValue = Number.isFinite(currentRankValue) && currentRankValue > 0 ? currentRankValue : null;
+        const rankChangeLabel = rankChange == null
+          ? "change unavailable"
+          : rankChange > 0
+            ? `▲${Math.abs(rankChange).toLocaleString()} vs prior day`
+            : rankChange < 0
+              ? `▼${Math.abs(rankChange).toLocaleString()} vs prior day`
+              : "— no change vs prior day";
+        const rankSummaryLine = rankValue == null
+          ? "🌐 Club Rank: —"
+          : `🌐 Club Rank: #${rankValue.toLocaleString()} · ${rankChange > 0 ? "🟢 " : rankChange < 0 ? "🔴 " : ""}${rankChangeLabel}`;
+
         const COL_MEMBER = Math.max(
           getDisplayWidth("MEMBER"),
           getDisplayWidth("TOTAL"),
@@ -2093,6 +2117,7 @@ const { useState, useEffect, useRef } = React;
           `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${viewMaxMembers} active · 📅 Day ${today}/${dim}`,
+          rankSummaryLine,
           `📈 Club Month: ${fmtSigned(totalMonthly)}`,
           `${clubWeeklyDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubWeeklyDelta)}`,
           `🟢 On Track: ${statusCounts["on-track"]} · 🟡 Behind: ${statusCounts["behind"]} · 🔴 Critical: ${statusCounts["critical"]}`
