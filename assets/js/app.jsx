@@ -1475,10 +1475,6 @@ const { useState, useEffect, useRef } = React;
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [animationExportState, setAnimationExportState] = useState(false);
-      const [animationReportMode, setAnimationReportMode] = useState(() => {
-        const requestedMode = new URLSearchParams(window.location.search).get("animationMode");
-        return ["overall", "attention", "analysis"].includes(requestedMode) ? requestedMode : "overall";
-      });
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
       const [rankThresholdError, setRankThresholdError] = useState("");
@@ -2176,6 +2172,10 @@ const { useState, useEffect, useRef } = React;
             dailyGain: member.dailyGain ?? 0,
             monthlyGain: member.monthlyGain ?? 0,
             paceDelta: member.plan.delta ?? 0,
+            rolling3DayAvg: member.rolling3DayAvg ?? 0,
+            fansNeededForPlan: member.fansNeededForPlan ?? 0,
+            stagnantDays: member.stagnantDays ?? 0,
+            daysToTarget: Number.isFinite(member.daysToTarget) ? member.daysToTarget : null,
             memberText,
             dailyText,
             monthText,
@@ -2218,8 +2218,15 @@ const { useState, useEffect, useRef } = React;
             rankChange,
             rankChangeLabel,
             dailyValue: totalDaily,
+            previousDailyValue: totalPreviousDaily,
+            dailyTrendDelta: clubDailyTrendDelta,
+            dailyHistory: activeClubDailyMetrics.clubDailySeries.slice(0, today).map((value) => Number(value || 0)),
             monthValue: totalMonthly,
             paceValue: hasComparisonData ? clubWeeklyDelta : null,
+            projectedValue: totalProj,
+            targetValue: clubMonthlyTarget,
+            expectedValue: clubExpectedToDate,
+            daysRemaining: daysLeft,
             dailyLabel: fmtSigned(totalDaily),
             monthLabel: fmtSigned(totalMonthly),
             paceLabel: hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—",
@@ -2518,7 +2525,7 @@ const { useState, useEffect, useRef } = React;
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
-      async function renderAnimatedDailyGif(exportData = getDiscordExportData(), mode = animationReportMode) {
+      async function renderAnimatedInsightStory(exportData = getDiscordExportData()) {
         const report = exportData.reportMeta;
         if (!report || !exportData.tableRows.length) return null;
         if (typeof window.GIF !== "function") throw new Error("The GIF encoder did not load. Refresh the page and try again.");
@@ -2544,44 +2551,68 @@ const { useState, useEffect, useRef } = React;
           image.onerror = () => resolve(null);
           image.src = url;
         });
-        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
-        const currentRankTier = getTierForRank(report.rankValue, viewRankingConfig);
-        const rankIconUrl = getRankIconUrl(currentRankTier, viewRankingConfig, viewRankIconPath);
-        const clubTierIcon = await loadCanvasImage(tierIconUrl);
-        const rankIcon = rankIconUrl === tierIconUrl ? clubTierIcon : await loadCanvasImage(rankIconUrl);
+        const tierIcon = await loadCanvasImage(getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath));
         const animationHost = await loadCanvasImage("./assets/images/animation-hosts/gentildonna.png");
 
-        const normalizedMode = ["overall", "attention", "analysis"].includes(mode) ? mode : "overall";
-        const modeMeta = {
-          overall: { label: "Overall performance", hint: "Team pace, leaders and daily momentum", accent: "#60a5fa" },
-          attention: { label: "Needs attention", hint: "Members closest to or behind the pace line", accent: "#fbbf24" },
-          analysis: { label: "Deeper analysis", hint: "Projection, target gap and pace required", accent: "#a78bfa" },
-        }[normalizedMode];
-        const attentionRows = [...exportData.tableRows]
-          .sort((a, b) => (a.paceDelta ?? 0) - (b.paceDelta ?? 0))
+        const rows = exportData.tableRows;
+        const activeCount = rows.length;
+        const history = (Array.isArray(report.dailyHistory) ? report.dailyHistory : [])
+          .map((value) => Number(value || 0))
+          .filter((value) => Number.isFinite(value));
+        const recentSeven = history.slice(-7);
+        const recentThree = history.slice(-3);
+        const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+        const avgSeven = average(recentSeven);
+        const avgThree = average(recentThree);
+        const variance = recentSeven.length
+          ? recentSeven.reduce((sum, value) => sum + Math.pow(value - avgSeven, 2), 0) / recentSeven.length
+          : 0;
+        const consistencyScore = avgSeven > 0 ? Math.max(0, Math.min(100, Math.round(100 - ((Math.sqrt(variance) / avgSeven) * 100)))) : 0;
+        const targetValue = Number(report.targetValue || (Number(club.target || 0) * activeCount));
+        const dailyTarget = targetValue / Math.max(1, dim);
+        const currentDaily = Number(report.dailyValue || 0);
+        const previousDaily = Number(report.previousDailyValue || 0);
+        const acceleration = report.dailyTrendDelta == null ? currentDaily - previousDaily : Number(report.dailyTrendDelta || 0);
+        const accelerationPercent = previousDaily > 0 ? (acceleration / previousDaily) * 100 : null;
+        const momentumScore = dailyTarget > 0 ? Math.round((currentDaily / dailyTarget) * 100) : 0;
+        const acceleratingMembers = rows.filter((row) => Number(row.dailyGain || 0) > Number(row.rolling3DayAvg || 0)).length;
+        const trendDirection = acceleration > 0 ? "Accelerating" : acceleration < 0 ? "Cooling" : "Holding steady";
+
+        const belowPaceRows = rows.filter((row) => Number(row.paceDelta || 0) < 0);
+        const priorityRows = (belowPaceRows.length ? belowPaceRows : [...rows])
+          .sort((a, b) => Number(a.paceDelta || 0) - Number(b.paceDelta || 0))
           .slice(0, 3);
-        const topMonthly = [...exportData.tableRows].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))[0];
-        const topDaily = [...exportData.tableRows].sort((a, b) => (b.dailyGain ?? 0) - (a.dailyGain ?? 0))[0];
-        const activeCount = exportData.tableRows.length;
-        const clubTargetTotal = Number(club.target || 0) * activeCount;
-        const projectedFinish = today > 0 ? (Number(report.monthValue || 0) / today) * dim : 0;
-        const projectedTargetGap = projectedFinish - clubTargetTotal;
-        const remainingDays = Math.max(0, dim - today);
-        const dailyNeeded = remainingDays > 0 ? Math.max(0, clubTargetTotal - Number(report.monthValue || 0)) / remainingDays : 0;
-        const statusColor = (statusKey) => {
-          const displayKey = getDisplayStatusKey(statusKey);
-          if (displayKey === "critical") return "#f87171";
-          if (displayKey === "behind") return "#fbbf24";
-          return "#34d399";
-        };
-        const statusLabel = (statusKey) => getDisplayStatusMeta(statusKey).label.toUpperCase();
+        const recoveryLoad = belowPaceRows.reduce((sum, row) => sum + Math.max(0, -Number(row.paceDelta || 0)), 0);
+        const remainingDays = Math.max(0, Number(report.daysRemaining ?? (dim - today)));
+        const recoveryDaily = remainingDays > 0 ? recoveryLoad / remainingDays : recoveryLoad;
+        const stalledMembers = rows.filter((row) => Number(row.stagnantDays || 0) >= 2).length;
+        const closestRecovery = [...belowPaceRows].sort((a, b) => Number(b.paceDelta || 0) - Number(a.paceDelta || 0))[0] || null;
+
+        const monthValue = Number(report.monthValue || 0);
+        const projectedValue = Number(report.projectedValue || 0);
+        const runRateProjection = monthValue + (avgThree * remainingDays);
+        const recentFloor = recentThree.length ? Math.min(...recentThree) : 0;
+        const recentCeiling = recentThree.length ? Math.max(...recentThree) : 0;
+        const conservativeProjection = monthValue + (recentFloor * remainingDays);
+        const stretchProjection = monthValue + (recentCeiling * remainingDays);
+        const baseProjection = projectedValue > 0 ? projectedValue : runRateProjection;
+        const forecastGap = baseProjection - targetValue;
+        const requiredDaily = remainingDays > 0 ? Math.max(0, targetValue - monthValue) / remainingDays : 0;
+        const bufferDays = avgThree > 0 ? forecastGap / avgThree : 0;
+
+        const chapters = [
+          { title: "Overall Performance", kicker: "How the club is moving", accent: "#60a5fa", bubble: "Read the rhythm!" },
+          { title: "Needs Attention", kicker: "Members to focus on today", accent: "#fbbf24", bubble: "Let's check the team!" },
+          { title: "Deeper Analysis", kicker: "Where this pace could finish", accent: "#a78bfa", bubble: "Now the future!" },
+        ];
+
         const easeOut = (value) => 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
         const clamp01 = (value) => Math.max(0, Math.min(1, value));
         const phase = (frame, start, duration) => easeOut(clamp01((frame - start) / duration));
         const lerp = (from, to, amount) => from + ((to - from) * amount);
         const alpha = (hex, opacity) => {
           const safeOpacity = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, "0");
-          return `${hex}${safeOpacity}`;
+          return hex + safeOpacity;
         };
         const roundedRect = (x, y, w, h, radius) => {
           ctx.beginPath();
@@ -2607,55 +2638,331 @@ const { useState, useEffect, useRef } = React;
           }
         };
         const setFont = (weight, size, family = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif") => {
-          ctx.font = `${weight} ${size}px ${family}`;
+          ctx.font = weight + " " + size + "px " + family;
         };
         const fitText = (value, maxWidth) => {
           const text = String(value ?? "");
           if (ctx.measureText(text).width <= maxWidth) return text;
           let output = text;
-          while (output.length > 1 && ctx.measureText(`${output}…`).width > maxWidth) output = output.slice(0, -1);
-          return `${output}…`;
+          while (output.length > 1 && ctx.measureText(output + "…").width > maxWidth) output = output.slice(0, -1);
+          return output + "…";
         };
         const drawLabel = (label, x, y, color = "#8f93ad") => {
-          setFont(750, 13);
+          setFont(780, 12);
           ctx.fillStyle = color;
           ctx.fillText(String(label).toUpperCase(), x, y);
         };
-        const drawMetric = ({ x, y, w, label, value, detail, accent, reveal }) => {
-          ctx.save();
-          ctx.globalAlpha = reveal;
-          const lift = (1 - reveal) * 16;
-          fillRounded(x, y + lift, w, 112, 16, "#17182a", "#2b2d47");
-          fillRounded(x, y + lift, 5, 112, 3, accent);
-          drawLabel(label, x + 18, y + lift + 16);
-          setFont(850, 27);
-          ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fitText(value, w - 36), x + 18, y + lift + 43);
-          setFont(650, 13);
-          ctx.fillStyle = detail.includes("Behind") ? "#ff9292" : detail.includes("Ahead") ? "#65e5ad" : "#9fa4bc";
-          ctx.fillText(fitText(detail, w - 36), x + 18, y + lift + 86);
-          ctx.restore();
+        const drawPanel = (x, y, w, h, accent = "#2b2d47") => {
+          fillRounded(x, y, w, h, 17, "#121321", "#292b43");
+          fillRounded(x, y, 5, h, 3, accent);
         };
-        const drawInsightCard = ({ x, y, title, value, detail, accent, reveal, valueColor = "#f8fafc" }) => {
+        const drawChapterTabs = (activeIndex, reveal) => {
+          const tabY = 122;
+          const tabW = 282;
+          chapters.forEach((chapter, index) => {
+            const x = 38 + (index * 301);
+            const active = index === activeIndex;
+            ctx.save();
+            ctx.globalAlpha = reveal;
+            fillRounded(x, tabY, tabW, 36, 18, active ? alpha(chapter.accent, 0.18) : "#111221", active ? alpha(chapter.accent, 0.72) : "#272940");
+            setFont(780, 12);
+            ctx.fillStyle = active ? chapter.accent : "#777c95";
+            ctx.textAlign = "center";
+            ctx.fillText((index + 1) + " · " + chapter.title.toUpperCase(), x + (tabW / 2), tabY + 10);
+            ctx.restore();
+          });
+          ctx.textAlign = "left";
+        };
+        const drawHeader = (chapterIndex, frame) => {
+          const chapter = chapters[chapterIndex];
+          if (tierIcon) ctx.drawImage(tierIcon, 38, 25, 74, 74);
+          else {
+            fillRounded(38, 25, 74, 74, 19, tc.bar, tc.border);
+            setFont(900, 24);
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "center";
+            ctx.fillText(club.tier, 75, 48);
+          }
+          ctx.textAlign = "center";
+          drawLabel("Dominator Network · Animated Insight Story", 470, 18, chapter.accent);
+          setFont(900, 35);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(fitText(club.name, 520), 470, 41);
+          setFont(650, 14);
+          ctx.fillStyle = "#a8acc1";
+          ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 470, 88);
+          ctx.textAlign = "left";
+
+          if (animationHost) {
+            const bob = Math.sin(frame * 0.38) * 4;
+            const hostHeight = 112;
+            const hostWidth = hostHeight * (animationHost.width / animationHost.height);
+            ctx.drawImage(animationHost, 840, 7 + bob, hostWidth, hostHeight);
+            fillRounded(673, 36 + bob, 160, 38, 19, alpha(chapter.accent, 0.15), alpha(chapter.accent, 0.52));
+            setFont(750, 12);
+            ctx.fillStyle = "#f0edf9";
+            ctx.textAlign = "center";
+            ctx.fillText(chapter.bubble, 753, 48 + bob);
+            ctx.textAlign = "left";
+          }
+        };
+        const drawStatBox = (x, y, w, title, value, detail, accent, reveal, valueColor = "#f8fafc") => {
           ctx.save();
           ctx.globalAlpha = reveal;
           const lift = (1 - reveal) * 12;
-          fillRounded(x, y + lift, 286, 104, 15, "#111221", "#292b43");
-          fillRounded(x, y + lift, 5, 104, 3, accent);
-          drawLabel(title, x + 18, y + lift + 16, accent);
-          setFont(850, 25);
+          fillRounded(x, y + lift, w, 92, 14, "#17182a", "#2b2d47");
+          drawLabel(title, x + 16, y + lift + 14, accent);
+          setFont(860, 26);
           ctx.fillStyle = valueColor;
-          ctx.fillText(fitText(value, 250), x + 18, y + lift + 40);
-          setFont(650, 12);
-          ctx.fillStyle = "#969bb3";
-          ctx.fillText(fitText(detail, 250), x + 18, y + lift + 78);
+          ctx.fillText(fitText(value, w - 32), x + 16, y + lift + 36);
+          setFont(640, 11);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText(fitText(detail, w - 32), x + 16, y + lift + 70);
           ctx.restore();
         };
 
-        const totalFrames = 48;
+        const drawMomentum = (reveal) => {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          drawPanel(38, 176, 570, 310, "#60a5fa");
+          drawLabel("Seven-day output curve", 58, 193, "#60a5fa");
+          setFont(650, 12);
+          ctx.fillStyle = "#858aa3";
+          ctx.textAlign = "right";
+          ctx.fillText("Daily club output vs daily quota pace", 588, 193);
+          ctx.textAlign = "left";
+
+          const plotX = 64;
+          const plotY = 230;
+          const plotW = 518;
+          const plotH = 135;
+          const values = recentSeven.length ? recentSeven : [0];
+          const maxValue = Math.max(dailyTarget, ...values, 1);
+          ctx.strokeStyle = "#25273d";
+          ctx.lineWidth = 1;
+          for (let line = 0; line < 4; line += 1) {
+            const lineY = plotY + ((plotH / 3) * line);
+            ctx.beginPath();
+            ctx.moveTo(plotX, lineY);
+            ctx.lineTo(plotX + plotW, lineY);
+            ctx.stroke();
+          }
+          const targetY = plotY + plotH - ((dailyTarget / maxValue) * plotH);
+          ctx.save();
+          ctx.setLineDash([7, 6]);
+          ctx.strokeStyle = "#fbbf2488";
+          ctx.beginPath();
+          ctx.moveTo(plotX, targetY);
+          ctx.lineTo(plotX + plotW, targetY);
+          ctx.stroke();
+          ctx.restore();
+          setFont(650, 10);
+          ctx.fillStyle = "#fbbf24";
+          ctx.fillText("PACE", plotX + 4, targetY - 14);
+
+          const points = values.map((value, index) => {
+            const x = values.length === 1 ? plotX + (plotW / 2) : plotX + ((plotW / (values.length - 1)) * index);
+            const y = plotY + plotH - ((value / maxValue) * plotH);
+            return { x, y, value };
+          });
+          if (points.length > 1) {
+            const chartGradient = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
+            chartGradient.addColorStop(0, "#60a5fa55");
+            chartGradient.addColorStop(1, "#60a5fa00");
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, plotY + plotH);
+            points.forEach((point) => ctx.lineTo(point.x, point.y));
+            ctx.lineTo(points[points.length - 1].x, plotY + plotH);
+            ctx.closePath();
+            ctx.fillStyle = chartGradient;
+            ctx.fill();
+          }
+          ctx.strokeStyle = "#78b7ff";
+          ctx.lineWidth = 4;
+          ctx.lineJoin = "round";
+          ctx.beginPath();
+          points.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+          });
+          ctx.stroke();
+          points.forEach((point, index) => {
+            ctx.fillStyle = index === points.length - 1 ? "#f8fafc" : "#60a5fa";
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, index === points.length - 1 ? 6 : 4, 0, Math.PI * 2);
+            ctx.fill();
+            setFont(650, 9);
+            ctx.fillStyle = "#858aa3";
+            ctx.textAlign = "center";
+            const dayNumber = today - values.length + index + 1;
+            ctx.fillText("D" + dayNumber, point.x, plotY + plotH + 12);
+          });
+          ctx.textAlign = "left";
+
+          drawStatBox(58, 396, 162, "Acceleration", accelerationPercent == null ? "—" : (accelerationPercent >= 0 ? "+" : "") + accelerationPercent.toFixed(1) + "%", fmtSigned(acceleration) + " vs yesterday", acceleration >= 0 ? "#34d399" : "#f87171", reveal, acceleration >= 0 ? "#65e5ad" : "#ff9292");
+          drawStatBox(229, 396, 162, "3-day rhythm", fmt(avgThree), "Average daily output", "#60a5fa", reveal);
+          drawStatBox(400, 396, 188, "Direction", trendDirection, acceleratingMembers + "/" + activeCount + " members accelerating", acceleration >= 0 ? "#34d399" : "#fbbf24", reveal);
+          ctx.restore();
+
+          drawPanel(626, 176, 296, 310, "#60a5fa");
+          drawLabel("Momentum score", 648, 195, "#60a5fa");
+          const gaugeCenterX = 774;
+          const gaugeCenterY = 300;
+          const gaugeRadius = 78;
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          ctx.lineWidth = 16;
+          ctx.lineCap = "round";
+          ctx.strokeStyle = "#24263b";
+          ctx.beginPath();
+          ctx.arc(gaugeCenterX, gaugeCenterY, gaugeRadius, Math.PI * 0.78, Math.PI * 2.22);
+          ctx.stroke();
+          const gaugeRatio = Math.max(0, Math.min(1, momentumScore / 180));
+          ctx.strokeStyle = momentumScore >= 100 ? "#34d399" : "#fbbf24";
+          ctx.beginPath();
+          ctx.arc(gaugeCenterX, gaugeCenterY, gaugeRadius, Math.PI * 0.78, (Math.PI * 0.78) + ((Math.PI * 1.44) * gaugeRatio));
+          ctx.stroke();
+          ctx.lineCap = "butt";
+          setFont(900, 41);
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "center";
+          ctx.fillText(String(momentumScore), gaugeCenterX, 276);
+          setFont(700, 12);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText("PACE INDEX", gaugeCenterX, 326);
+          ctx.textAlign = "left";
+          drawLabel("Consistency", 654, 404, "#a78bfa");
+          setFont(850, 29);
+          ctx.fillStyle = "#d8b4fe";
+          ctx.fillText(consistencyScore + "/100", 654, 428);
+          setFont(640, 11);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText("Lower day-to-day volatility scores higher", 654, 463);
+          ctx.restore();
+        };
+
+        const drawOfficerWatch = (reveal) => {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          drawPanel(38, 176, 286, 310, "#fbbf24");
+          drawLabel("Attention overview", 58, 195, "#fbbf24");
+          setFont(900, 36);
+          ctx.fillStyle = recoveryLoad > 0 ? "#ffcf54" : "#65e5ad";
+          ctx.fillText(fmt(recoveryLoad), 58, 228);
+          setFont(650, 12);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText("Combined gap for members below pace", 58, 274);
+          fillRounded(58, 307, 246, 1, 1, "#2b2d47");
+          drawLabel("Daily recovery needed", 58, 329, "#fbbf24");
+          setFont(850, 25);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(fmt(recoveryDaily), 58, 354);
+          setFont(640, 11);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText("Extra output per day to close current gaps", 58, 386);
+          drawLabel("Stalled members", 58, 421, "#fbbf24");
+          setFont(850, 25);
+          ctx.fillStyle = stalledMembers ? "#ffcf54" : "#65e5ad";
+          ctx.fillText(String(stalledMembers), 58, 446);
+          setFont(640, 11);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText(stalledMembers ? "Two or more quiet days" : "No multi-day stalls detected", 96, 453);
+          ctx.restore();
+
+          drawPanel(342, 176, 580, 310, "#fbbf24");
+          drawLabel("Priority members", 362, 195, "#fbbf24");
+          setFont(650, 12);
+          ctx.fillStyle = "#858aa3";
+          ctx.textAlign = "right";
+          ctx.fillText(closestRecovery ? closestRecovery.name + " is closest to recovery" : "No member is below pace", 902, 195);
+          ctx.textAlign = "left";
+          const maxDeficit = Math.max(1, ...priorityRows.map((row) => Math.max(0, -Number(row.paceDelta || 0))));
+          priorityRows.forEach((row, index) => {
+            const rowY = 228 + (index * 82);
+            const deficit = Math.max(0, -Number(row.paceDelta || 0));
+            const color = deficit > 0 ? "#fbbf24" : "#34d399";
+            fillRounded(362, rowY, 540, 68, 13, index % 2 === 0 ? "#17182a" : "#141522", "#292b43");
+            fillRounded(362, rowY, 5, 68, 3, color);
+            fillRounded(378, rowY + 17, 34, 34, 17, alpha(color, 0.16), alpha(color, 0.5));
+            setFont(850, 15);
+            ctx.fillStyle = color;
+            ctx.textAlign = "center";
+            ctx.fillText(String(index + 1), 395, rowY + 25);
+            ctx.textAlign = "left";
+            setFont(820, 18);
+            ctx.fillStyle = "#eef0f8";
+            ctx.fillText(fitText(row.name, 150), 426, rowY + 12);
+            setFont(640, 10);
+            ctx.fillStyle = "#9297af";
+            const runway = row.daysToTarget == null ? "No current runway" : row.daysToTarget + " days to quota at 3-day rate";
+            ctx.fillText(fitText(runway, 185), 426, rowY + 40);
+            drawLabel("Gap", 640, rowY + 13, color);
+            setFont(820, 18);
+            ctx.fillStyle = deficit > 0 ? "#ffb06b" : "#65e5ad";
+            ctx.textAlign = "right";
+            ctx.fillText(deficit > 0 ? "-" + fmt(deficit) : "Recovered", 742, rowY + 34);
+            ctx.textAlign = "left";
+            drawLabel("Activity", 770, rowY + 13, Number(row.stagnantDays || 0) >= 2 ? "#fbbf24" : "#8f93ad");
+            setFont(820, 18);
+            ctx.fillStyle = Number(row.stagnantDays || 0) >= 2 ? "#ffcf54" : "#d8dbea";
+            ctx.textAlign = "right";
+            ctx.fillText(Number(row.stagnantDays || 0) >= 2 ? Number(row.stagnantDays || 0) + "D QUIET" : "ACTIVE", 878, rowY + 34);
+            ctx.textAlign = "left";
+            const barW = 140 * (deficit / maxDeficit);
+            fillRounded(426, rowY + 57, 140, 3, 2, "#292b43");
+            fillRounded(426, rowY + 57, barW, 3, 2, color);
+          });
+          ctx.restore();
+        };
+
+        const drawForecastLab = (reveal) => {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          drawPanel(38, 176, 520, 310, "#a78bfa");
+          drawLabel("Finish range", 58, 195, "#a78bfa");
+          setFont(650, 12);
+          ctx.fillStyle = "#858aa3";
+          ctx.textAlign = "right";
+          ctx.fillText("Built from the latest three daily outputs", 538, 195);
+          ctx.textAlign = "left";
+          const scenarios = [
+            { label: "Conservative", value: conservativeProjection, color: "#fbbf24" },
+            { label: "Member forecast", value: baseProjection, color: "#a78bfa" },
+            { label: "Stretch", value: stretchProjection, color: "#34d399" },
+          ];
+          const chartMax = Math.max(targetValue, ...scenarios.map((entry) => entry.value), 1);
+          scenarios.forEach((entry, index) => {
+            const y = 240 + (index * 70);
+            drawLabel(entry.label, 58, y, entry.color);
+            setFont(820, 20);
+            ctx.fillStyle = "#eef0f8";
+            ctx.textAlign = "right";
+            ctx.fillText(fmt(entry.value), 530, y - 3);
+            ctx.textAlign = "left";
+            fillRounded(58, y + 28, 472, 12, 6, "#24263b");
+            fillRounded(58, y + 28, Math.max(8, 472 * (entry.value / chartMax)), 12, 6, alpha(entry.color, 0.82));
+            const targetX = 58 + (472 * (targetValue / chartMax));
+            ctx.fillStyle = "#f8fafc";
+            ctx.fillRect(targetX - 1, y + 21, 2, 26);
+          });
+          setFont(650, 10);
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "right";
+          ctx.fillText("TARGET " + fmt(targetValue), 530, 456);
+          ctx.textAlign = "left";
+          ctx.restore();
+
+          drawPanel(576, 176, 346, 310, "#a78bfa");
+          drawStatBox(596, 198, 306, "Projected cushion", fmtSigned(forecastGap), forecastGap >= 0 ? "Member-level forecast above target" : "Member-level forecast below target", forecastGap >= 0 ? "#34d399" : "#f87171", reveal, forecastGap >= 0 ? "#65e5ad" : "#ff9292");
+          drawStatBox(596, 300, 306, "Required team rhythm", fmt(requiredDaily), remainingDays + " days left to reach the club quota", "#60a5fa", reveal);
+          drawStatBox(596, 402, 306, "Buffer in days", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + "d", bufferDays >= 0 ? "Current forecast can absorb slower days" : "Equivalent recovery days still needed", "#a78bfa", reveal, bufferDays >= 0 ? "#d8b4fe" : "#ff9292");
+        };
+
+        const totalFrames = 96;
+        const sceneLength = 32;
         const gif = new window.GIF({
           workers: 2,
-          quality: 12,
+          quality: 13,
           width,
           height,
           repeat: 0,
@@ -2664,15 +2971,12 @@ const { useState, useEffect, useRef } = React;
         });
 
         for (let frame = 0; frame < totalFrames; frame += 1) {
-          const hostEnter = phase(frame, 0, 5);
-          const hostExit = phase(frame, 7, 7);
-          const hostReveal = hostEnter * (1 - hostExit);
-          const headerReveal = phase(frame, 6, 7);
-          const rankReveal = phase(frame, 10, 8);
-          const metricReveal = phase(frame, 14, 12);
-          const healthReveal = phase(frame, 23, 8);
-          const watchReveal = phase(frame, 30, 10);
-          const metricCount = phase(frame, 13, 18);
+          const sceneIndex = Math.min(2, Math.floor(frame / sceneLength));
+          const localFrame = frame - (sceneIndex * sceneLength);
+          const chapter = chapters[sceneIndex];
+          const revealIn = phase(localFrame, 0, 6);
+          const transition = sceneIndex < 2 ? phase(localFrame, 24, 7) : 0;
+          const sceneReveal = revealIn * (1 - transition);
 
           const background = ctx.createLinearGradient(0, 0, width, height);
           background.addColorStop(0, "#080914");
@@ -2680,174 +2984,56 @@ const { useState, useEffect, useRef } = React;
           background.addColorStop(1, "#141126");
           ctx.fillStyle = background;
           ctx.fillRect(0, 0, width, height);
-          const glow = ctx.createRadialGradient(width - 90, 40, 0, width - 90, 40, 380);
-          glow.addColorStop(0, alpha(tc.bar, 0.26));
+          const glow = ctx.createRadialGradient(width - 120, 55, 0, width - 120, 55, 430);
+          glow.addColorStop(0, alpha(chapter.accent, 0.24));
           glow.addColorStop(1, "#00000000");
           ctx.fillStyle = glow;
           ctx.fillRect(0, 0, width, height);
 
-          if (animationHost && hostReveal > 0.01) {
-            ctx.save();
-            ctx.globalAlpha = hostReveal;
-            const hostHeight = 430;
-            const hostWidth = hostHeight * (animationHost.width / animationHost.height);
-            const hostX = lerp(width + 20, 560, hostEnter) + (hostExit * 90);
-            const hostY = 82 + ((1 - hostEnter) * 22);
-            const hostGlow = ctx.createRadialGradient(hostX + (hostWidth / 2), hostY + 190, 10, hostX + (hostWidth / 2), hostY + 190, 190);
-            hostGlow.addColorStop(0, alpha(modeMeta.accent, 0.25));
-            hostGlow.addColorStop(1, "#00000000");
-            ctx.fillStyle = hostGlow;
-            ctx.fillRect(hostX - 60, hostY - 40, hostWidth + 120, hostHeight + 80);
-            ctx.drawImage(animationHost, hostX, hostY, hostWidth, hostHeight);
-            ctx.restore();
+          drawHeader(sceneIndex, frame);
+          drawChapterTabs(sceneIndex, revealIn);
+          if (sceneIndex === 0) drawMomentum(sceneReveal);
+          else if (sceneIndex === 1) drawOfficerWatch(sceneReveal);
+          else drawForecastLab(sceneReveal);
 
+          if (transition > 0.01 && animationHost) {
             ctx.save();
-            ctx.globalAlpha = hostReveal;
-            drawLabel("Gentildonna presents", 68, 166, modeMeta.accent);
-            setFont(900, 47);
-            ctx.fillStyle = "#f8fafc";
-            ctx.fillText(modeMeta.label, 68, 193);
-            setFont(650, 17);
-            ctx.fillStyle = "#b6bad0";
-            ctx.fillText(fitText(modeMeta.hint, 500), 68, 258);
-            fillRounded(68, 302, 500, 6, 3, "#22243a");
-            fillRounded(68, 302, 500 * phase(frame, 1, 9), 6, 3, modeMeta.accent);
-            ctx.restore();
-          }
-
-          ctx.save();
-          ctx.globalAlpha = headerReveal;
-          if (clubTierIcon) ctx.drawImage(clubTierIcon, 38, 23, 88, 88);
-          else {
-            fillRounded(38, 23, 88, 88, 21, tc.bar, tc.border);
-            setFont(900, 27);
-            ctx.fillStyle = "#fff";
+            ctx.globalAlpha = transition;
+            ctx.fillStyle = alpha("#090a14", 0.7 * transition);
+            ctx.fillRect(0, 112, width, height - 112);
+            const nextChapter = chapters[sceneIndex + 1];
+            const flyHeight = 320;
+            const flyWidth = flyHeight * (animationHost.width / animationHost.height);
+            const flyX = lerp(805, -flyWidth - 30, transition);
+            const flyY = 145 + (Math.sin(transition * Math.PI * 2) * 46);
+            for (let trail = 3; trail >= 1; trail -= 1) {
+              ctx.globalAlpha = transition * (0.08 * trail);
+              ctx.drawImage(animationHost, flyX + (trail * 46), flyY + (trail * 8), flyWidth, flyHeight);
+            }
+            ctx.globalAlpha = transition;
+            ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
             ctx.textAlign = "center";
-            ctx.fillText(club.tier, 82, 55);
+            drawLabel("Next chapter", 650, 231, nextChapter.accent);
+            setFont(900, 38);
+            ctx.fillStyle = "#f8fafc";
+            ctx.fillText(nextChapter.title, 650, 260);
+            setFont(650, 14);
+            ctx.fillStyle = "#aeb2c8";
+            ctx.fillText(nextChapter.kicker, 650, 310);
+            ctx.textAlign = "left";
+            ctx.restore();
           }
-          ctx.textAlign = "center";
-          drawLabel(`Dominator Network · ${modeMeta.label}`, 540, 18, tc.text);
-          setFont(900, 42);
-          ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fitText(club.name, 590), 540, 45);
-          setFont(650, 15);
-          ctx.fillStyle = "#a9adc2";
-          ctx.fillText(fitText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, 760), 540, 101);
-          ctx.textAlign = "left";
-          ctx.restore();
 
-          ctx.save();
-          ctx.globalAlpha = rankReveal;
-          const rankX = 38;
-          const rankY = 136;
-          const rankW = 212;
-          const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
-          const rankLift = (1 - rankReveal) * 16;
-          fillRounded(rankX, rankY + rankLift, rankW, 112, 16, "#17182a", "#2b2d47");
-          fillRounded(rankX, rankY + rankLift, 5, 112, 3, rankAccent);
-          drawLabel("Club rank", rankX + 18, rankY + rankLift + 16);
-          const iconSize = 56;
-          if (rankIcon || clubTierIcon) ctx.drawImage(rankIcon || clubTierIcon, rankX + 17, rankY + rankLift + 42, iconSize, iconSize);
-          setFont(900, 39);
-          ctx.fillStyle = "#f8fafc";
-          const rankNumber = report.rankValue == null ? "—" : Math.max(1, Math.round(lerp(Math.max(report.rankValue * 1.25, report.rankValue + 24), report.rankValue, rankReveal))).toLocaleString();
-          ctx.fillText(rankNumber, rankX + 86, rankY + rankLift + 43);
-          setFont(750, 12);
-          ctx.fillStyle = rankAccent;
-          const rankDetail = report.rankChange == null ? "Change unavailable" : report.rankChange > 0 ? `▲${Math.abs(report.rankChange).toLocaleString()} today` : report.rankChange < 0 ? `▼${Math.abs(report.rankChange).toLocaleString()} today` : "No change today";
-          ctx.fillText(fitText(rankDetail, 108), rankX + 86, rankY + rankLift + 89);
-          ctx.restore();
-
-          const numericDaily = Number(report.dailyValue || 0) * metricCount;
-          const numericMonth = Number(report.monthValue || 0) * metricCount;
-          const numericPace = report.paceValue == null ? null : Number(report.paceValue || 0) * metricCount;
-          const metricW = 212;
-          drawMetric({ x: 262, y: 136, w: metricW, label: "Today's gain", value: fmtSigned(numericDaily), detail: "Today total", accent: "#60a5fa", reveal: metricReveal });
-          drawMetric({ x: 486, y: 136, w: metricW, label: "Month gain", value: fmtSigned(numericMonth), detail: "Month to date", accent: tc.text, reveal: metricReveal });
-          drawMetric({ x: 710, y: 136, w: metricW, label: "Vs pace", value: numericPace == null ? "—" : fmtSigned(numericPace), detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", reveal: metricReveal });
-
-          ctx.save();
-          ctx.globalAlpha = healthReveal;
-          const healthY = 266 + ((1 - healthReveal) * 12);
-          fillRounded(38, healthY, 884, 66, 15, "#141526", "#282a42");
-          drawLabel("Member health", 58, healthY + 15);
-          const healthItems = [
-            { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
-            { label: "BEHIND", value: report.behind, color: "#fbbf24" },
-            { label: "CRITICAL", value: report.critical, color: "#f87171" },
-          ];
-          healthItems.forEach((item, index) => {
-            const itemX = 305 + (index * 205);
-            ctx.fillStyle = item.color;
-            ctx.beginPath();
-            ctx.arc(itemX, healthY + 35, 6, 0, Math.PI * 2);
-            ctx.fill();
-            setFont(850, 26);
-            ctx.fillText(String(Math.round(item.value * healthReveal)), itemX + 16, healthY + 20);
-            setFont(750, 13);
-            ctx.fillStyle = "#9499b2";
-            ctx.fillText(item.label, itemX + 56, healthY + 28);
-          });
-          ctx.restore();
-
-          ctx.save();
-          ctx.globalAlpha = watchReveal;
-          const watchY = 350 + ((1 - watchReveal) * 16);
-          drawLabel(modeMeta.label, 38, watchY, modeMeta.accent);
-          setFont(650, 13);
-          ctx.fillStyle = "#858aa3";
-          ctx.textAlign = "right";
-          ctx.fillText(modeMeta.hint, 922, watchY);
-          ctx.textAlign = "left";
-          const cardY = watchY + 26;
-          if (normalizedMode === "attention") {
-            attentionRows.forEach((row, index) => {
-              const cardX = 38 + (index * 299);
-              const cardW = 286;
-              const color = statusColor(row.statusKey);
-              const rowReveal = phase(frame, 30 + (index * 2), 8);
-              ctx.save();
-              ctx.globalAlpha = rowReveal;
-              fillRounded(cardX, cardY + ((1 - rowReveal) * 10), cardW, 104, 15, "#111221", "#292b43");
-              fillRounded(cardX, cardY + ((1 - rowReveal) * 10), 5, 104, 3, color);
-              setFont(800, 19);
-              ctx.fillStyle = "#eef0f8";
-              ctx.fillText(fitText(row.name, 170), cardX + 18, cardY + 17 + ((1 - rowReveal) * 10));
-              setFont(750, 11);
-              ctx.fillStyle = color;
-              ctx.textAlign = "right";
-              ctx.fillText(statusLabel(row.statusKey), cardX + cardW - 17, cardY + 22 + ((1 - rowReveal) * 10));
-              ctx.textAlign = "left";
-              drawLabel("Vs pace", cardX + 18, cardY + 57 + ((1 - rowReveal) * 10));
-              setFont(850, 24, "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace");
-              ctx.fillStyle = row.paceDelta >= 0 ? "#65e5ad" : "#ff9292";
-              ctx.textAlign = "right";
-              ctx.fillText(fmtSigned(row.paceDelta ?? 0), cardX + cardW - 17, cardY + 55 + ((1 - rowReveal) * 10));
-              ctx.textAlign = "left";
-              ctx.restore();
-            });
-          } else if (normalizedMode === "analysis") {
-            drawInsightCard({ x: 38, y: cardY, title: "Projected finish", value: fmtSigned(projectedFinish * metricCount), detail: `At the Day ${today} run rate`, accent: "#a78bfa", reveal: watchReveal });
-            drawInsightCard({ x: 337, y: cardY, title: "Projected vs target", value: fmtSigned(projectedTargetGap * metricCount), detail: projectedTargetGap >= 0 ? "Projected above club target" : "Projected below club target", accent: projectedTargetGap >= 0 ? "#34d399" : "#f87171", valueColor: projectedTargetGap >= 0 ? "#65e5ad" : "#ff9292", reveal: watchReveal });
-            drawInsightCard({ x: 636, y: cardY, title: "Daily pace needed", value: fmtSigned(dailyNeeded * metricCount), detail: remainingDays > 0 ? `Across ${remainingDays} days remaining` : "Month complete", accent: "#60a5fa", reveal: watchReveal });
-          } else {
-            drawInsightCard({ x: 38, y: cardY, title: "Team on track", value: `${Math.round(report.onTrack * watchReveal)}/${activeCount}`, detail: `${Math.round((report.onTrack / Math.max(1, activeCount)) * 100)}% meeting elapsed pace`, accent: "#34d399", valueColor: "#65e5ad", reveal: watchReveal });
-            drawInsightCard({ x: 337, y: cardY, title: "Month leader", value: topMonthly?.name || "—", detail: topMonthly ? `${fmtSigned(topMonthly.monthlyGain)} this month` : "No member data", accent: tc.text, reveal: watchReveal });
-            drawInsightCard({ x: 636, y: cardY, title: "Today's leader", value: topDaily?.name || "—", detail: topDaily ? `${fmtSigned(topDaily.dailyGain)} today` : "No member data", accent: "#60a5fa", reveal: watchReveal });
-          }
-          ctx.restore();
-
-          setFont(650, 12);
+          setFont(650, 11);
           ctx.fillStyle = "#737890";
-          ctx.fillText("Dominator Network Tracker", 38, 517);
+          ctx.fillText("Dominator Network Tracker · Animated Insights", 38, 517);
           ctx.textAlign = "right";
-          ctx.fillText(`${report.sourceLabel} · ${report.dateLabel}`, 922, 517);
+          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.title, 922, 517);
           ctx.textAlign = "left";
-
-          gif.addFrame(canvas, { copy: true, delay: 100 });
+          gif.addFrame(canvas, { copy: true, delay: 150 });
         }
 
-        gif.addFrame(canvas, { copy: true, delay: 900 });
+        gif.addFrame(canvas, { copy: true, delay: 1200 });
         return await new Promise((resolve, reject) => {
           gif.on("finished", resolve);
           gif.on("abort", () => reject(new Error("GIF rendering was cancelled.")));
@@ -2855,23 +3041,12 @@ const { useState, useEffect, useRef } = React;
         });
       }
 
-      function getAnimationAsset(mode = animationReportMode) {
-        const normalizedMode = ["overall", "attention", "analysis"].includes(mode) ? mode : "overall";
-        const suffix = normalizedMode === "overall"
-          ? "daily-highlight"
-          : normalizedMode === "attention"
-            ? "needs-attention"
-            : "deeper-analysis";
-        const label = normalizedMode === "overall"
-          ? "Overall Performance"
-          : normalizedMode === "attention"
-            ? "Needs Attention"
-            : "Deeper Analysis";
-        const filename = `${safeFilename(club.name)}-${suffix}.gif`;
+      function getAnimationAsset() {
+        const filename = `${safeFilename(club.name)}-daily-highlight.gif`;
         const cacheKey = formatLocalDateKey(dataDate);
         return {
           filename,
-          label,
+          label: "Animated Insight Story",
           url: `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${filename}?v=${cacheKey}`,
         };
       }
@@ -2934,7 +3109,7 @@ const { useState, useEffect, useRef } = React;
 
           setAnimationExportState("rendering");
           const exportData = getDiscordExportData();
-          const gifBlob = await renderAnimatedDailyGif(exportData, animationReportMode);
+          const gifBlob = await renderAnimatedInsightStory(exportData);
           if (!gifBlob) throw new Error("The animated report could not be created.");
           downloadBlob(gifBlob, asset.filename);
           setAnimationExportState("downloaded");
@@ -4213,30 +4388,17 @@ const { useState, useEffect, useRef } = React;
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
                   <div style={{ flexBasis: "100%", marginTop: 4, padding: "12px", border: "1px solid #a855f755", borderRadius: 12, background: "#a855f70c" }}>
-                    <div style={{ color: "#d8b4fe", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Animated Discord report</div>
-                    <div role="group" aria-label="Animated report mode" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
+                    <div style={{ color: "#d8b4fe", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Animated Insight Story</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
                       {[
-                        { key: "overall", label: "Overall Performance", icon: "📈" },
-                        { key: "attention", label: "Needs Attention", icon: "⚠️" },
-                        { key: "analysis", label: "Deeper Analysis", icon: "🔎" },
-                      ].map((mode) => {
-                        const selected = animationReportMode === mode.key;
-                        return (
-                          <button
-                            key={mode.key}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => {
-                              setAnimationReportMode(mode.key);
-                              setAnimationExportState(false);
-                            }}
-                            disabled={animationExportState === "rendering" || animationExportState === "copying-file"}
-                            style={{ ...S.btn(selected, selected ? "#a855f7" : "#6b7280"), minWidth: 168, justifyContent: "center" }}
-                          >
-                            {mode.icon} {mode.label}
-                          </button>
-                        );
-                      })}
+                        { label: "Overall Performance", icon: "📈", color: "#60a5fa" },
+                        { label: "Needs Attention", icon: "⚠️", color: "#fbbf24" },
+                        { label: "Deeper Analysis", icon: "🔎", color: "#a78bfa" },
+                      ].map((chapter, index) => (
+                        <span key={chapter.label} style={{ border: `1px solid ${chapter.color}55`, background: `${chapter.color}12`, color: chapter.color, borderRadius: 999, padding: "6px 11px", fontSize: 11, fontWeight: 800 }}>
+                          {index + 1} · {chapter.icon} {chapter.label}
+                        </span>
+                      ))}
                     </div>
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
                       {!animationBuildMode && (
@@ -4252,7 +4414,7 @@ const { useState, useEffect, useRef } = React;
                               ? "✓ GIF Copied — Paste in Discord"
                               : animationExportState === "downloaded-attachment"
                                 ? "✓ GIF Downloaded — Drag into Discord"
-                                : `📎 Copy ${getAnimationAsset().label} GIF (No Visible Link)`}
+                                : "📎 Copy Animated Insight Story (No Visible Link)"}
                         </button>
                       )}
                       <button
@@ -4272,11 +4434,11 @@ const { useState, useEffect, useRef } = React;
                               : animationExportState === "error"
                                 ? "⚠ GIF Failed — Try Again"
                                 : animationBuildMode
-                                  ? `🎞️ Build Hosted ${getAnimationAsset().label} GIF`
+                                  ? "🎞️ Build Hosted Animated Insight Story"
                                   : "🔗 Copy Hosted GIF Link"}
                       </button>
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>The attachment action hides the URL. If this browser cannot place animated GIF data on the clipboard, it downloads the file for drag-and-drop into Discord.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One GIF slowly cycles through all three chapters with Gentildonna guiding each transition. The attachment action hides the URL; unsupported browsers download the GIF for drag-and-drop into Discord.</div>}
                   </div>
                 </div>
               )}
