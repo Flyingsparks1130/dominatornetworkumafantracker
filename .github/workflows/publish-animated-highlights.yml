@@ -74,6 +74,19 @@ jobs:
               --latest=false
           fi
 
+      - name: Remove retired split-mode GIFs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view daily-highlights --json assets --jq '.assets[].name' |
+            while IFS= read -r asset; do
+              case "$asset" in
+                *-needs-attention.gif|*-deeper-analysis.gif)
+                  gh release delete-asset daily-highlights "$asset" -y
+                  ;;
+              esac
+            done
+
       - name: Publish latest GIF files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
