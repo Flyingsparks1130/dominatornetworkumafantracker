@@ -1482,6 +1482,7 @@ const { useState, useEffect, useRef } = React;
       const [promotionVisibleCount, setPromotionVisibleCount] = useState(10);
       const paceSvgRef = useRef(null);
       const paceContainerRef = useRef(null);
+      const animationAssetCacheRef = useRef({ url: "", file: null, promise: null });
       const scheduledRefreshCycleRef = useRef(null);
       const scheduledRefreshTimeoutsRef = useRef([]);
 
@@ -2606,9 +2607,11 @@ const { useState, useEffect, useRef } = React;
           { eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: "Looking ahead!" },
         ];
 
-        const easeOut = (value) => 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
         const clamp01 = (value) => Math.max(0, Math.min(1, value));
-        const phase = (frame, start, duration) => easeOut(clamp01((frame - start) / duration));
+        const smoothstep = (value) => {
+          const clamped = clamp01(value);
+          return clamped * clamped * (3 - (2 * clamped));
+        };
         const lerp = (from, to, amount) => from + ((to - from) * amount);
         const alpha = (hex, opacity) => {
           const safeOpacity = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, "0");
@@ -2647,10 +2650,12 @@ const { useState, useEffect, useRef } = React;
           while (output.length > 1 && ctx.measureText(output + "…").width > maxWidth) output = output.slice(0, -1);
           return output + "…";
         };
-        const drawLabel = (label, x, y, color = "#8f93ad") => {
+        const drawLabel = (label, x, y, color = "#8f93ad", align = "left") => {
           setFont(780, 12);
           ctx.fillStyle = color;
+          ctx.textAlign = align;
           ctx.fillText(String(label).toUpperCase(), x, y);
+          ctx.textAlign = "left";
         };
         const drawPanel = (x, y, w, h, accent = "#2b2d47") => {
           fillRounded(x, y, w, h, 17, "#121321", "#292b43");
@@ -2963,8 +2968,151 @@ const { useState, useEffect, useRef } = React;
           drawSmallCard(752, 400, cardWidth, "FORECAST BUFFER", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + " days", bufferDays >= 0 ? "Room above target pace" : "Recovery still needed", forecastGap >= 0 ? "#34d399" : "#f87171", forecastGap >= 0 ? "#65e5ad" : "#ff9292");
         };
 
-        const totalFrames = 108;
-        const sceneLength = 36;
+        const drawStoryScene = (sceneIndex, frame, opacity = 1) => {
+          const chapter = chapters[sceneIndex];
+          ctx.save();
+          ctx.globalAlpha = opacity;
+
+          const background = ctx.createLinearGradient(0, 0, width, height);
+          background.addColorStop(0, "#080914");
+          background.addColorStop(0.58, "#0d0e1c");
+          background.addColorStop(1, "#141126");
+          ctx.fillStyle = background;
+          ctx.fillRect(0, 0, width, height);
+
+          const glow = ctx.createRadialGradient(width - 110, 45, 0, width - 110, 45, 420);
+          glow.addColorStop(0, alpha(chapter.accent, 0.22));
+          glow.addColorStop(1, "#00000000");
+          ctx.fillStyle = glow;
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.textBaseline = "top";
+          ctx.textAlign = "left";
+          drawHeader(sceneIndex, frame);
+          drawSceneIntro(sceneIndex);
+          if (sceneIndex === 0) drawPerformanceScene();
+          else if (sceneIndex === 1) drawAttentionScene();
+          else drawForecastScene();
+
+          setFont(650, 10);
+          ctx.fillStyle = "#737890";
+          ctx.fillText("Dominator Network Tracker · Member Daily Story", 32, 516);
+          ctx.textAlign = "right";
+          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.eyebrow, 928, 516);
+          ctx.textAlign = "left";
+          ctx.restore();
+        };
+
+        const drawStartingGate = (openAmount, frame) => {
+          const open = clamp01(openAmount);
+          const doorTravel = 500 * open;
+          const leftX = -doorTravel;
+          const rightX = 460 + doorTravel;
+          const shine = Math.sin(open * Math.PI);
+          const leftGradient = ctx.createLinearGradient(leftX, 0, leftX + 500, 0);
+          leftGradient.addColorStop(0, "#0a0b18");
+          leftGradient.addColorStop(0.72, "#171a32");
+          leftGradient.addColorStop(1, "#24213b");
+          const rightGradient = ctx.createLinearGradient(rightX, 0, rightX + 500, 0);
+          rightGradient.addColorStop(0, "#24213b");
+          rightGradient.addColorStop(0.28, "#171a32");
+          rightGradient.addColorStop(1, "#0a0b18");
+
+          ctx.fillStyle = leftGradient;
+          ctx.fillRect(leftX, 0, 500, height);
+          ctx.fillStyle = rightGradient;
+          ctx.fillRect(rightX, 0, 500, height);
+
+          [leftX, rightX].forEach((doorX, doorIndex) => {
+            ctx.strokeStyle = "#d8aa49";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(doorX + 18, 18, 464, height - 36);
+            ctx.strokeStyle = "#6f5730";
+            ctx.lineWidth = 1;
+            for (let panel = 1; panel < 4; panel += 1) {
+              const panelX = doorX + (panel * 125);
+              ctx.beginPath();
+              ctx.moveTo(panelX, 21);
+              ctx.lineTo(panelX, height - 21);
+              ctx.stroke();
+            }
+            ctx.fillStyle = doorIndex === 0 ? "#f4c45f22" : "#60a5fa16";
+            ctx.fillRect(doorX + 24, 24, 452, height - 48);
+          });
+
+          const seamLeft = leftX + 496;
+          const seamRight = rightX;
+          ctx.fillStyle = "#f4c45f";
+          ctx.fillRect(seamLeft, 0, 4, height);
+          ctx.fillRect(seamRight, 0, 4, height);
+
+          if (open < 0.84) {
+            const titleOpacity = 1 - (open / 0.84);
+            ctx.save();
+            ctx.globalAlpha = titleOpacity;
+            const pulse = 1 + (Math.sin(frame * 0.55) * 0.025);
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(pulse, pulse);
+            ctx.translate(-width / 2, -height / 2);
+            if (tierIcon) ctx.drawImage(tierIcon, 421, 96, 118, 118);
+            drawLabel("DOMINATOR NETWORK PRESENTS", 480, 238, "#f4c45f", "center");
+            setFont(900, 38);
+            ctx.fillStyle = "#f8fafc";
+            ctx.textAlign = "center";
+            ctx.fillText("DAILY CLUB STORY", 480, 267);
+            setFont(700, 15);
+            ctx.fillStyle = "#c7cad9";
+            ctx.fillText("STARTING GATE", 480, 320);
+            ctx.textAlign = "left";
+            ctx.restore();
+          }
+
+          if (shine > 0.01) {
+            const light = ctx.createRadialGradient(480, 270, 0, 480, 270, 440);
+            light.addColorStop(0, alpha("#ffffff", shine * 0.82));
+            light.addColorStop(0.22, alpha("#f4c45f", shine * 0.42));
+            light.addColorStop(1, "#00000000");
+            ctx.fillStyle = light;
+            ctx.fillRect(0, 0, width, height);
+          }
+        };
+
+        const drawFlyingTransition = (fromIndex, toIndex, progress) => {
+          if (!animationHost) return;
+          const arc = Math.sin(progress * Math.PI);
+          const flyHeight = 145 + (arc * 38);
+          const flyWidth = flyHeight * (animationHost.width / animationHost.height);
+          const flyX = lerp(900, -flyWidth - 20, progress);
+          const flyY = 230 - (arc * 92);
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, arc * 1.5);
+          for (let trail = 3; trail >= 1; trail -= 1) {
+            ctx.globalAlpha = arc * (0.06 * trail);
+            ctx.drawImage(animationHost, flyX + (trail * 34), flyY + (trail * 7), flyWidth, flyHeight);
+          }
+          ctx.globalAlpha = Math.min(1, arc * 1.5);
+          ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
+
+          const bubbleAlpha = Math.max(0, 1 - Math.abs(progress - 0.5) * 3.2);
+          if (bubbleAlpha > 0) {
+            ctx.globalAlpha = bubbleAlpha;
+            const nextChapter = chapters[toIndex];
+            fillRounded(356, 208, 248, 58, 18, "#151627ee", alpha(nextChapter.accent, 0.72));
+            drawLabel("UP NEXT", 480, 219, nextChapter.accent, "center");
+            setFont(850, 18);
+            ctx.fillStyle = "#f8fafc";
+            ctx.textAlign = "center";
+            ctx.fillText(nextChapter.eyebrow, 480, 239);
+            ctx.textAlign = "left";
+          }
+          ctx.restore();
+        };
+
+        const introFrames = 14;
+        const sceneLength = 32;
+        const transitionStart = 24;
+        const transitionFrames = 7;
+        const totalFrames = introFrames + (chapters.length * sceneLength);
         const gif = new window.GIF({
           workers: 2,
           quality: 13,
@@ -2976,75 +3124,39 @@ const { useState, useEffect, useRef } = React;
         });
 
         for (let frame = 0; frame < totalFrames; frame += 1) {
-          const sceneIndex = Math.min(2, Math.floor(frame / sceneLength));
-          const localFrame = frame - (sceneIndex * sceneLength);
-          const chapter = chapters[sceneIndex];
-          const transition = phase(localFrame, 28, 7);
-          const contentOpacity = 1 - (transition * 0.96);
-
-          const background = ctx.createLinearGradient(0, 0, width, height);
-          background.addColorStop(0, "#080914");
-          background.addColorStop(0.58, "#0d0e1c");
-          background.addColorStop(1, "#141126");
-          ctx.fillStyle = background;
+          ctx.fillStyle = "#090a14";
           ctx.fillRect(0, 0, width, height);
-          const glow = ctx.createRadialGradient(width - 110, 45, 0, width - 110, 45, 420);
-          glow.addColorStop(0, alpha(chapter.accent, 0.22));
-          glow.addColorStop(1, "#00000000");
-          ctx.fillStyle = glow;
-          ctx.fillRect(0, 0, width, height);
-
           ctx.textBaseline = "top";
           ctx.textAlign = "left";
-          drawHeader(sceneIndex, frame);
 
-          ctx.save();
-          ctx.globalAlpha = contentOpacity;
-          drawSceneIntro(sceneIndex);
-          if (sceneIndex === 0) drawPerformanceScene();
-          else if (sceneIndex === 1) drawAttentionScene();
-          else drawForecastScene();
-          ctx.restore();
+          if (frame < introFrames) {
+            drawStoryScene(0, frame, 1);
+            const openingProgress = frame < 3 ? 0 : smoothstep(clamp01((frame - 3) / (introFrames - 4)));
+            drawStartingGate(openingProgress, frame);
+          } else {
+            const storyFrame = frame - introFrames;
+            const sceneIndex = Math.min(chapters.length - 1, Math.floor(storyFrame / sceneLength));
+            const localFrame = storyFrame - (sceneIndex * sceneLength);
+            const rawTransition = clamp01((localFrame - transitionStart) / transitionFrames);
+            const transition = smoothstep(rawTransition);
 
-          if (transition > 0.01) {
-            const nextIndex = (sceneIndex + 1) % chapters.length;
-            const nextChapter = chapters[nextIndex];
-            ctx.save();
-            ctx.globalAlpha = transition;
-            ctx.fillStyle = alpha("#090a14", 0.9);
-            ctx.fillRect(0, 106, width, height - 106);
-
-            if (animationHost) {
-              const flyHeight = lerp(110, 235, transition);
-              const flyWidth = flyHeight * (animationHost.width / animationHost.height);
-              const flyX = lerp(844, 270, transition);
-              const flyY = lerp(35, 205, transition) + (Math.sin(transition * Math.PI) * -22);
-              for (let trail = 3; trail >= 1; trail -= 1) {
-                ctx.globalAlpha = transition * (0.06 * trail);
-                ctx.drawImage(animationHost, flyX + (trail * 32), flyY - (trail * 6), flyWidth, flyHeight);
+            if (sceneIndex < chapters.length - 1) {
+              drawStoryScene(sceneIndex, frame, 1 - transition);
+              drawStoryScene(sceneIndex + 1, frame, transition);
+              if (transition > 0.01 && transition < 0.99) drawFlyingTransition(sceneIndex, sceneIndex + 1, transition);
+            } else {
+              drawStoryScene(sceneIndex, frame, 1);
+              if (transition > 0.01) {
+                ctx.save();
+                ctx.globalAlpha = transition;
+                ctx.fillStyle = "#090a14";
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+                drawStartingGate(1 - transition, frame);
               }
-              ctx.globalAlpha = transition;
-              ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
             }
-
-            fillRounded(500, 218, 392, 154, 20, "#151627ee", alpha(nextChapter.accent, 0.7));
-            drawLabel("UP NEXT · " + (nextIndex + 1) + " OF 3", 526, 242, nextChapter.accent);
-            setFont(900, 29);
-            ctx.fillStyle = "#f8fafc";
-            ctx.fillText(nextChapter.title, 526, 271);
-            setFont(640, 13);
-            ctx.fillStyle = "#aeb2c8";
-            ctx.fillText(fitText(nextChapter.subtitle, 330), 526, 319);
-            ctx.restore();
           }
 
-          setFont(650, 10);
-          ctx.fillStyle = "#737890";
-          ctx.textBaseline = "top";
-          ctx.fillText("Dominator Network Tracker · Member Daily Story", 32, 516);
-          ctx.textAlign = "right";
-          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.eyebrow, 928, 516);
-          ctx.textAlign = "left";
           gif.addFrame(canvas, { copy: true, delay: 150 });
         }
 
@@ -3056,71 +3168,122 @@ const { useState, useEffect, useRef } = React;
       }
 
       function getAnimationAsset() {
-        const filename = `${safeFilename(club.name)}-daily-highlight.gif`;
-        const cacheKey = formatLocalDateKey(dataDate);
+        const filename = safeFilename(club.name) + "-daily-highlight.gif";
+        const cacheKey = formatLocalDateKey(dataDate) + "-gate3";
         return {
           filename,
           label: "Animated Insight Story",
-          url: `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${filename}?v=${cacheKey}`,
+          url: "https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/" + filename + "?v=" + cacheKey,
         };
       }
 
-      function downloadHostedAnimation(asset) {
-        const anchor = document.createElement("a");
-        anchor.href = asset.url;
-        anchor.download = asset.filename;
-        anchor.rel = "noopener";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
+      async function loadHostedAnimationFile(asset = getAnimationAsset()) {
+        const cached = animationAssetCacheRef.current;
+        if (cached.url === asset.url && cached.file) return cached.file;
+        if (cached.url === asset.url && cached.promise) return cached.promise;
+
+        const promise = fetch(asset.url, { cache: "force-cache" })
+          .then((response) => {
+            if (!response.ok) throw new Error("GIF request failed (" + response.status + ").");
+            return response.blob();
+          })
+          .then((sourceBlob) => {
+            const gifBlob = sourceBlob.type === "image/gif"
+              ? sourceBlob
+              : new Blob([sourceBlob], { type: "image/gif" });
+            const file = new File([gifBlob], asset.filename, { type: "image/gif" });
+            animationAssetCacheRef.current = { url: asset.url, file, promise: Promise.resolve(file) };
+            return file;
+          })
+          .catch((error) => {
+            if (animationAssetCacheRef.current.url === asset.url) {
+              animationAssetCacheRef.current = { url: "", file: null, promise: null };
+            }
+            throw error;
+          });
+
+        animationAssetCacheRef.current = { url: asset.url, file: null, promise };
+        return promise;
       }
 
-      async function copyAnimatedGifAttachment() {
-        if (animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file") return;
+      useEffect(() => {
+        if (animationBuildMode || isArchiveView || view !== "club") return undefined;
         const asset = getAnimationAsset();
+        const timer = window.setTimeout(() => {
+          loadHostedAnimationFile(asset).catch(() => {});
+        }, 600);
+        return () => window.clearTimeout(timer);
+      }, [animationBuildMode, isArchiveView, view, club.name, formatLocalDateKey(dataDate)]);
+
+      async function copyAnimatedGifAttachment() {
+        const busyStates = ["rendering", "preparing-file", "sharing-file"];
+        if (busyStates.includes(animationExportState)) return;
+
+        const asset = getAnimationAsset();
+        const forceShare = animationExportState === "ready-share";
         try {
           setErr("");
-          setAnimationExportState("copying-file");
-          const supportsGifClipboard = Boolean(
-            navigator.clipboard?.write
+          setAnimationExportState("preparing-file");
+          const file = await loadHostedAnimationFile(asset);
+          const canAttemptGifClipboard = Boolean(
+            !forceShare
+            && navigator.clipboard?.write
             && window.ClipboardItem
             && (typeof window.ClipboardItem.supports !== "function" || window.ClipboardItem.supports("image/gif"))
           );
-          if (!supportsGifClipboard) {
-            downloadHostedAnimation(asset);
-            setAnimationExportState("downloaded-attachment");
-            return;
+
+          if (canAttemptGifClipboard) {
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/gif": file }, { presentationStyle: "attachment" }),
+              ]);
+              setAnimationExportState("copied-file");
+              window.setTimeout(() => setAnimationExportState(false), 4500);
+              return;
+            } catch (clipboardError) {
+              console.info("Animated GIF clipboard format was rejected; trying native file sharing.", clipboardError);
+            }
           }
-          const response = await fetch(asset.url, { cache: "no-store" });
-          if (!response.ok) throw new Error(`GIF download failed (${response.status}).`);
-          const sourceBlob = await response.blob();
-          const gifBlob = sourceBlob.type === "image/gif" ? sourceBlob : new Blob([sourceBlob], { type: "image/gif" });
-          await navigator.clipboard.write([
-            new ClipboardItem({ "image/gif": gifBlob }, { presentationStyle: "attachment" }),
-          ]);
-          setAnimationExportState("copied-file");
+
+          const shareData = { files: [file], title: club.name + " Daily Club Story" };
+          const canShareFile = Boolean(
+            navigator.share
+            && (!navigator.canShare || navigator.canShare({ files: [file] }))
+          );
+          if (canShareFile) {
+            setAnimationExportState("sharing-file");
+            try {
+              await navigator.share(shareData);
+              setAnimationExportState("shared-file");
+              window.setTimeout(() => setAnimationExportState(false), 4500);
+              return;
+            } catch (shareError) {
+              if (shareError?.name === "AbortError") {
+                setAnimationExportState(false);
+                return;
+              }
+              if (shareError?.name === "NotAllowedError") {
+                setAnimationExportState("ready-share");
+                return;
+              }
+              throw shareError;
+            }
+          }
+
+          throw new Error("This browser cannot place animated GIF files on the clipboard or open a file share sheet. Browser security does not expose another lossless GIF transfer method.");
         } catch (error) {
-          console.warn("Animated GIF clipboard copy was unavailable; downloading the attachment instead.", error);
-          downloadHostedAnimation(asset);
-          setAnimationExportState("downloaded-attachment");
-        } finally {
-          setTimeout(() => setAnimationExportState(false), 4200);
+          console.error("Animated GIF handoff failed", error);
+          setErr(error?.message || "Animated GIF sharing failed. Refresh and try again.");
+          setAnimationExportState("error");
+          window.setTimeout(() => setAnimationExportState(false), 5200);
         }
       }
 
       async function exportAnimatedDailyGif() {
-        if (animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file") return;
+        if (!animationBuildMode || animationExportState === "rendering") return;
         try {
           setErr("");
           const asset = getAnimationAsset();
-          if (!animationBuildMode) {
-            setAnimationExportState("copying");
-            if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
-            await navigator.clipboard.writeText(asset.url);
-            setAnimationExportState("copied");
-            return;
-          }
-
           setAnimationExportState("rendering");
           const exportData = getDiscordExportData();
           const gifBlob = await renderAnimatedInsightStory(exportData);
@@ -4415,44 +4578,45 @@ const { useState, useEffect, useRef } = React;
                       ))}
                     </div>
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-                      {!animationBuildMode && (
+                      {animationBuildMode ? (
                         <button
-                          style={{ ...S.btn(true, animationExportState === "copied-file" || animationExportState === "downloaded-attachment" ? "#059669" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
-                          onClick={copyAnimatedGifAttachment}
-                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file"}
-                          title="Copies the animated GIF as an attachment when supported. Otherwise downloads it so you can drag it into Discord without showing a URL."
+                          style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState === "downloaded" ? "#059669" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
+                          onClick={exportAnimatedDailyGif}
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || animationExportState === "rendering"}
+                          title={`Build the hosted ${getAnimationAsset().label} GIF.`}
                         >
-                          {animationExportState === "copying-file"
-                            ? "⏳ Preparing GIF Attachment…"
-                            : animationExportState === "copied-file"
-                              ? "✓ GIF Copied — Paste in Discord"
-                              : animationExportState === "downloaded-attachment"
-                                ? "✓ GIF Downloaded — Drag into Discord"
-                                : "📎 Copy Animated Insight Story (No Visible Link)"}
-                        </button>
-                      )}
-                      <button
-                        style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState && animationExportState !== "rendering" ? "#059669" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
-                        onClick={exportAnimatedDailyGif}
-                        disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || (isArchiveView && !animationBuildMode) || animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file"}
-                        title={isArchiveView && !animationBuildMode ? "Hosted animation links are available for the live current month." : animationBuildMode ? `Build the hosted ${getAnimationAsset().label} GIF.` : "Copy the hosted GIF link, then paste it into Discord."}
-                      >
-                        {animationExportState === "rendering"
-                          ? "⏳ Rendering Animated GIF…"
-                          : animationExportState === "copying"
-                            ? "⏳ Copying GIF Link…"
-                            : animationExportState === "copied"
-                              ? "✓ GIF Link Copied — Paste in Discord"
+                          {animationExportState === "rendering"
+                            ? "⏳ Rendering Animated GIF…"
                             : animationExportState === "downloaded"
                               ? "✓ Hosted GIF Built"
                               : animationExportState === "error"
                                 ? "⚠ GIF Failed — Try Again"
-                                : animationBuildMode
-                                  ? "🎞️ Build Hosted Animated Insight Story"
-                                  : "🔗 Copy Hosted GIF Link"}
-                      </button>
+                                : "🎞️ Build Hosted Animated Insight Story"}
+                        </button>
+                      ) : (
+                        <button
+                          style={{ ...S.btn(true, animationExportState === "copied-file" || animationExportState === "shared-file" ? "#059669" : animationExportState === "error" ? "#ef4444" : animationExportState === "ready-share" ? "#f59e0b" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                          onClick={copyAnimatedGifAttachment}
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["preparing-file", "sharing-file"].includes(animationExportState)}
+                          title="Copies the animated GIF file when the browser supports GIF clipboard data. Otherwise opens the native file share sheet so you can choose Discord."
+                        >
+                          {animationExportState === "preparing-file"
+                            ? "⏳ Preparing Animated GIF…"
+                            : animationExportState === "sharing-file"
+                              ? "📤 Opening Share Sheet…"
+                              : animationExportState === "copied-file"
+                                ? "✓ GIF Copied — Paste in Discord"
+                                : animationExportState === "shared-file"
+                                  ? "✓ GIF Shared"
+                                  : animationExportState === "ready-share"
+                                    ? "📤 Tap Again to Share GIF"
+                                    : animationExportState === "error"
+                                      ? "⚠ GIF Handoff Failed — Try Again"
+                                      : "📎 Copy / Share Animated GIF"}
+                        </button>
+                      )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One plain-language GIF answers three questions: how the club did today, who needs attention, and where the month is heading. Gentildonna guides each transition. The attachment action hides the URL; unsupported browsers download the GIF for drag-and-drop into Discord.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One button, one GIF file: supported browsers copy it for Discord paste; otherwise the site opens the native file share sheet where file sharing is available. No visible link is copied and no download is started.</div>}
                   </div>
                 </div>
               )}
