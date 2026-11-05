@@ -2201,17 +2201,23 @@ const { useState, useEffect, useRef } = React;
         const ctx = canvas.getContext("2d");
         if (!ctx) return null;
 
-        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
-        const tierIconImage = await new Promise((resolve) => {
-          if (!tierIconUrl) {
+        const loadCanvasImage = (url) => new Promise((resolve) => {
+          if (!url) {
             resolve(null);
             return;
           }
           const image = new Image();
           image.onload = () => resolve(image);
           image.onerror = () => resolve(null);
-          image.src = tierIconUrl;
+          image.src = url;
         });
+        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
+        const currentRankTier = getTierForRank(report.rankValue, viewRankingConfig);
+        const currentRankIconUrl = getRankIconUrl(currentRankTier, viewRankingConfig, viewRankIconPath);
+        const tierIconImage = await loadCanvasImage(tierIconUrl);
+        const currentRankIconImage = currentRankIconUrl === tierIconUrl
+          ? tierIconImage
+          : await loadCanvasImage(currentRankIconUrl);
 
         const width = 1160;
         const outerPadding = 44;
@@ -2220,7 +2226,7 @@ const { useState, useEffect, useRef } = React;
         const metricGap = 14;
         const statusHeight = 104;
         const tableHeaderHeight = 66;
-        const rowHeight = 58;
+        const rowHeight = 68;
         const footerHeight = 78;
         const sectionGap = 22;
         const height = outerPadding + headerHeight + sectionGap + metricHeight + sectionGap + statusHeight + sectionGap + tableHeaderHeight + (exportData.tableRows.length * rowHeight) + footerHeight + outerPadding;
@@ -2282,6 +2288,25 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = detailColor;
           ctx.fillText(fitText(detail, w - 44), x + 22, y + 106);
         };
+        const drawRankMetricCard = ({ x, y, w, accent, detailColor }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, accent);
+          drawLabel("Club rank", x + 22, y + 20);
+
+          const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
+          const rankIconSize = 46;
+          const valueX = x + 22;
+          if (currentRankIconImage) {
+            ctx.drawImage(currentRankIconImage, valueX, y + 44, rankIconSize, rankIconSize);
+          }
+          setFont(800, 38);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(rankText, valueX + (currentRankIconImage ? rankIconSize + 10 : 0), y + 49);
+
+          setFont(650, 18);
+          ctx.fillStyle = detailColor;
+          ctx.fillText(fitText(report.rankChangeLabel, w - 44), x + 22, y + 106);
+        };
 
         const background = ctx.createLinearGradient(0, 0, width, height);
         background.addColorStop(0, "#090a14");
@@ -2324,7 +2349,7 @@ const { useState, useEffect, useRef } = React;
         const cardWidth = (metricsWidth - (metricGap * 3)) / 4;
         const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
         const rankDetailColor = report.rankChange > 0 ? "#65e5ad" : report.rankChange < 0 ? "#ff9292" : "#a9adc2";
-        drawMetricCard({ x: outerPadding, y, w: cardWidth, label: "Club rank", value: report.rankLabel, detail: report.rankChangeLabel, accent: rankAccent, detailColor: rankDetailColor });
+        drawRankMetricCard({ x: outerPadding, y, w: cardWidth, accent: rankAccent, detailColor: rankDetailColor });
         drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Combined active-member gain", accent: "#60a5fa" });
         drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Combined month-to-date gain", accent: tc.text });
         drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of elapsed target" : "Behind elapsed target", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
@@ -2359,44 +2384,49 @@ const { useState, useEffect, useRef } = React;
           pace: width - outerPadding - 22,
         };
         fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
-        drawLabel("Member", column.member, y + 23);
-        drawLabel("Status", column.status, y + 23);
-        drawLabel("Today", column.daily, y + 23);
-        drawLabel("Month", column.month, y + 23);
+        ctx.textBaseline = "middle";
+        const tableHeaderCenterY = y + (tableHeaderHeight / 2);
+        drawLabel("Member", column.member, tableHeaderCenterY);
+        drawLabel("Status", column.status, tableHeaderCenterY);
+        drawLabel("Today", column.daily, tableHeaderCenterY);
+        drawLabel("Month", column.month, tableHeaderCenterY);
         ctx.textAlign = "right";
-        drawLabel("Vs pace", column.pace, y + 23);
+        drawLabel("Vs pace", column.pace, tableHeaderCenterY);
         ctx.textAlign = "left";
         y += tableHeaderHeight;
 
         exportData.tableRows.forEach((row, index) => {
           const status = getDisplayStatusMeta(row.statusKey);
           const rowFill = index % 2 === 0 ? "#111221" : "#0d0e1a";
+          const rowCenterY = y + (rowHeight / 2);
           ctx.fillStyle = rowFill;
           ctx.fillRect(outerPadding, y, metricsWidth, rowHeight);
           ctx.fillStyle = status.color;
           ctx.fillRect(outerPadding, y, 4, rowHeight);
 
-          setFont(700, 20);
+          setFont(700, 24);
           ctx.fillStyle = "#eef0f8";
-          ctx.fillText(fitText(row.name, 360), column.member, y + 17);
+          ctx.fillText(fitText(row.name, 360), column.member, rowCenterY);
 
-          fillRounded(column.status, y + 13, 132, 32, 16, status.bg, status.border);
-          setFont(750, 14);
+          fillRounded(column.status, y + ((rowHeight - 36) / 2), 142, 36, 18, status.bg, status.border);
+          setFont(750, 16);
           ctx.fillStyle = status.color;
           ctx.textAlign = "center";
-          ctx.fillText(status.label.toUpperCase(), column.status + 66, y + 20);
+          ctx.fillText(status.label.toUpperCase(), column.status + 71, rowCenterY);
 
           const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
-          setFont(700, 19, mono);
+          setFont(700, 23, mono);
           ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
-          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, y + 18);
-          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, y + 18);
+          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, rowCenterY);
+          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, rowCenterY);
           ctx.fillStyle = hasComparisonData ? (row.paceDelta >= 0 ? "#65e5ad" : "#ff9292") : "#9ca3af";
-          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, y + 18);
+          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, rowCenterY);
           ctx.textAlign = "left";
           y += rowHeight;
         });
+
+        ctx.textBaseline = "top";
 
         ctx.strokeStyle = "#292b43";
         ctx.beginPath();
