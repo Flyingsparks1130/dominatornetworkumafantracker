@@ -851,6 +851,8 @@ const { useState, useEffect, useRef } = React;
         dataMonth: datasetMonth.month,
         datasetMonthKey: datasetMonth.key,
         archiveMonthKey: datasetMonth.key,
+        currentRank: Number.isFinite(Number(clubRoot?.rank)) && Number(clubRoot.rank) > 0 ? Number(clubRoot.rank) : null,
+        currentRankChange: Number.isFinite(Number(clubRoot?.rank_diff)) ? Number(clubRoot.rank_diff) : null,
         clubDailyHistory: Array.isArray(json?.club_daily_history) ? json.club_daily_history : [],
         clubMonthlyHistory: Array.isArray(json?.club_monthly_history) ? json.club_monthly_history : [],
       };
@@ -1555,6 +1557,8 @@ const { useState, useEffect, useRef } = React;
           dataMonth: result.dataMonth ?? null,
           datasetMonthKey: result.datasetMonthKey || null,
           archiveMonthKey: archiveMonth || null,
+          currentRank: result.currentRank ?? null,
+          currentRankChange: result.currentRankChange ?? null,
           clubDailyHistory: result.clubDailyHistory || [],
           clubMonthlyHistory: result.clubMonthlyHistory || [],
         };
@@ -2071,8 +2075,39 @@ const { useState, useEffect, useRef } = React;
         const totalMonthLabel = `${fmtSigned(totalMonthly)} (${hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—"})`;
 
         const rankMap = rankHistory[cid] || {};
-        const currentRankEntry = rankMap[formatDateKey(year, monthIndex + 1, today)] || null;
-        const previousRankEntry = today > 1 ? (rankMap[formatDateKey(year, monthIndex + 1, today - 1)] || null) : null;
+        const rankEntriesByDay = new Map();
+        Object.entries(rankMap).forEach(([dateKey, entry]) => {
+          const entryDate = dateKeyToLocalDate(dateKey);
+          const entryDay = entryDate.getFullYear() === year && entryDate.getMonth() === monthIndex
+            ? entryDate.getDate()
+            : null;
+          const rank = Number(entry?.rank);
+          if (entryDay == null || entryDay > today || !Number.isFinite(rank) || rank <= 0) return;
+          rankEntriesByDay.set(entryDay, { ...entry, rank, day: entryDay });
+        });
+        (Array.isArray(data?.clubDailyHistory) ? data.clubDailyHistory : []).forEach((entry) => {
+          const entryDay = Number(entry?.actual_date);
+          const rank = Number(entry?.rank);
+          if (!Number.isFinite(entryDay) || entryDay < 1 || entryDay > today || !Number.isFinite(rank) || rank <= 0) return;
+          rankEntriesByDay.set(entryDay, {
+            rank,
+            rank_gain: entry?.rank_gain == null ? null : Number(entry.rank_gain),
+            day: entryDay,
+          });
+        });
+        const liveClubRank = Number(data?.currentRank);
+        if (Number.isFinite(liveClubRank) && liveClubRank > 0 && !rankEntriesByDay.has(today)) {
+          rankEntriesByDay.set(today, {
+            rank: liveClubRank,
+            rank_gain: data?.currentRankChange == null ? null : Number(data.currentRankChange),
+            day: today,
+          });
+        }
+        const resolvedRankEntries = [...rankEntriesByDay.values()].sort((a, b) => b.day - a.day);
+        const currentRankEntry = resolvedRankEntries[0] || null;
+        const previousRankEntry = currentRankEntry
+          ? resolvedRankEntries.find((entry) => entry.day < currentRankEntry.day) || null
+          : null;
         const currentRankValue = Number(currentRankEntry?.rank);
         const previousRankValue = Number(previousRankEntry?.rank);
         const storedRankChange = Number(currentRankEntry?.rank_gain);
@@ -2191,8 +2226,7 @@ const { useState, useEffect, useRef } = React;
         return getDiscordExportData().fullMessage;
       }
 
-      async function renderDiscordTablePng(scale = 2) {
-        const exportData = getDiscordExportData();
+      async function renderDiscordTablePng(exportData = getDiscordExportData(), scale = 2) {
         const report = exportData.reportMeta;
         if (!report || !exportData.tableRows.length) return null;
 
@@ -2217,10 +2251,11 @@ const { useState, useEffect, useRef } = React;
         const currentRankIconImage = currentRankIconUrl === tierIconUrl
           ? tierIconImage
           : await loadCanvasImage(currentRankIconUrl);
+        const rankIconImage = currentRankIconImage || tierIconImage;
 
         const width = 1160;
         const outerPadding = 44;
-        const headerHeight = 162;
+        const headerHeight = 126;
         const metricHeight = 152;
         const metricGap = 14;
         const statusHeight = 76;
@@ -2290,7 +2325,7 @@ const { useState, useEffect, useRef } = React;
         const drawRankMetricCard = ({ x, y, w, accent, detailColor }) => {
           fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
           fillRounded(x, y, 5, metricHeight, 3, accent);
-          drawLabel("Club rank", x + 22, y + 20);
+          drawLabel("Club rank", x + 108, y + 20);
 
           const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
           const rankDetail = report.rankChange == null
@@ -2301,17 +2336,18 @@ const { useState, useEffect, useRef } = React;
                 ? `▼${Math.abs(report.rankChange).toLocaleString()} today`
                 : "No change";
           const rankIconSize = 64;
-          const valueX = x + 22;
-          if (currentRankIconImage) {
-            ctx.drawImage(currentRankIconImage, valueX, y + 35, rankIconSize, rankIconSize);
+          const iconX = x + 24;
+          const valueX = x + 108;
+          if (rankIconImage) {
+            ctx.drawImage(rankIconImage, iconX, y + 42, rankIconSize, rankIconSize);
           }
-          setFont(800, 44);
+          setFont(850, 48);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(rankText, valueX + (currentRankIconImage ? rankIconSize + 10 : 0), y + 45);
+          ctx.fillText(rankText, valueX, y + 43);
 
-          setFont(650, 18);
+          setFont(700, 17);
           ctx.fillStyle = detailColor;
-          ctx.fillText(rankDetail, x + 22, y + 106);
+          ctx.fillText(fitText(rankDetail, w - 130), valueX, y + 111);
         };
 
         const background = ctx.createLinearGradient(0, 0, width, height);
@@ -2329,7 +2365,6 @@ const { useState, useEffect, useRef } = React;
 
         let y = outerPadding;
         const headerIconSize = 84;
-        const headerTextX = outerPadding + 108;
         if (tierIconImage) {
           ctx.drawImage(tierIconImage, outerPadding, y + 5, headerIconSize, headerIconSize);
         } else {
@@ -2341,26 +2376,31 @@ const { useState, useEffect, useRef } = React;
           ctx.textAlign = "left";
         }
 
-        drawLabel("Dominator Network · Daily Report", headerTextX, y + 4, tc.text);
+        ctx.textAlign = "center";
+        drawLabel("Dominator Network · Daily Report", width / 2, y + 4, tc.text);
         setFont(850, 42);
         ctx.fillStyle = "#f8fafc";
-        ctx.textAlign = "center";
         ctx.fillText(fitText(club.name, width - 360), width / 2, y + 31);
-        ctx.textAlign = "left";
-        setFont(550, 20);
+        setFont(600, 15);
         ctx.fillStyle = "#a9adc2";
-        ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
-        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, headerTextX, y + 119);
+        ctx.fillText(
+          fitText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}  ·  ${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, width - 250),
+          width / 2,
+          y + 91
+        );
+        ctx.textAlign = "left";
 
         y += headerHeight + sectionGap;
         const metricsWidth = width - (outerPadding * 2);
-        const cardWidth = (metricsWidth - (metricGap * 3)) / 4;
+        const rankCardWidth = 298;
+        const cardWidth = (metricsWidth - rankCardWidth - (metricGap * 3)) / 3;
         const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
         const rankDetailColor = report.rankChange > 0 ? "#65e5ad" : report.rankChange < 0 ? "#ff9292" : "#a9adc2";
-        drawRankMetricCard({ x: outerPadding, y, w: cardWidth, accent: rankAccent, detailColor: rankDetailColor });
-        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Today total", accent: "#60a5fa" });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Month to date", accent: tc.text });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
+        drawRankMetricCard({ x: outerPadding, y, w: rankCardWidth, accent: rankAccent, detailColor: rankDetailColor });
+        const firstMetricX = outerPadding + rankCardWidth + metricGap;
+        drawMetricCard({ x: firstMetricX, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Today total", accent: "#60a5fa" });
+        drawMetricCard({ x: firstMetricX + cardWidth + metricGap, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Month to date", accent: tc.text });
+        drawMetricCard({ x: firstMetricX + ((cardWidth + metricGap) * 2), y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
 
         y += metricHeight + sectionGap;
         fillRounded(outerPadding, y, metricsWidth, statusHeight, 16, "#141526", "#282a42");
@@ -2556,7 +2596,7 @@ const { useState, useEffect, useRef } = React;
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
-      async function exportDiscordPayload(exportData, filename = "circle-report.png", pngRenderer = () => renderDiscordTablePng(2)) {
+      async function exportDiscordPayload(exportData, filename = "circle-report.png", pngRenderer = () => renderDiscordTablePng(exportData, 2)) {
         if (!isDiscordExportsEnabled) return false;
         let result = "text";
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -2625,7 +2665,7 @@ const { useState, useEffect, useRef } = React;
 
       async function copyDiscord() {
         const exportData = getDiscordExportData();
-        const result = await exportDiscordPayload(exportData, "daily-report.png", () => renderDiscordTablePng(2));
+        const result = await exportDiscordPayload(exportData, "daily-report.png", () => renderDiscordTablePng(exportData, 2));
         if (!result) return;
         setCopied(result);
         setTimeout(() => setCopied(false), 2200);
@@ -3731,6 +3771,7 @@ const { useState, useEffect, useRef } = React;
                   <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : "📅 Generate Weekly Report + PNG"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
+                  <button style={{ ...S.btn(false, "#a855f7"), opacity: 0.68, cursor: "not-allowed" }} disabled title="Animated GIF reports are the next experiment.">🎞️ Animated GIF Report — Coming Next</button>
                 </div>
               )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
