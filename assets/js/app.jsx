@@ -1487,6 +1487,7 @@ const { useState, useEffect, useRef } = React;
 
       const now = new Date();
       const refreshScheduleMeta = getRefreshScheduleMeta(now);
+      const animationBuildMode = new URLSearchParams(window.location.search).get("animationBuild") === "1";
       const isArchiveView = Boolean(archiveMonth);
       const archiveMonths = Array.isArray(archiveManifest?.months) ? archiveManifest.months : [];
       const archivedFrontendConfig = isArchiveView
@@ -2778,23 +2779,26 @@ const { useState, useEffect, useRef } = React;
       }
 
       async function exportAnimatedDailyGif() {
-        if (animationExportState === "rendering") return;
-        setAnimationExportState("rendering");
+        if (animationExportState === "rendering" || animationExportState === "copying") return;
         try {
+          setErr("");
+          const assetFilename = `${safeFilename(club.name)}-daily-highlight.gif`;
+          if (!animationBuildMode) {
+            setAnimationExportState("copying");
+            const cacheKey = formatLocalDateKey(dataDate);
+            const assetUrl = `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${assetFilename}?v=${cacheKey}`;
+            if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
+            await navigator.clipboard.writeText(assetUrl);
+            setAnimationExportState("copied");
+            return;
+          }
+
+          setAnimationExportState("rendering");
           const exportData = getDiscordExportData();
           const gifBlob = await renderAnimatedDailyGif(exportData);
           if (!gifBlob) throw new Error("The animated report could not be created.");
-          const filename = `${safeFilename(club.name)}-daily-highlight-${formatLocalDateKey(dataDate)}.gif`;
-          const file = new File([gifBlob], filename, { type: "image/gif" });
-          const shareData = { files: [file] };
-          const prefersNativeShare = /Android|iPad|iPhone|iPod/i.test(navigator.userAgent);
-          if (prefersNativeShare && navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
-            await navigator.share(shareData);
-            setAnimationExportState("shared");
-          } else {
-            downloadBlob(gifBlob, filename);
-            setAnimationExportState("downloaded");
-          }
+          downloadBlob(gifBlob, assetFilename);
+          setAnimationExportState("downloaded");
         } catch (error) {
           if (error?.name === "AbortError") setAnimationExportState(false);
           else {
@@ -4072,18 +4076,22 @@ const { useState, useEffect, useRef } = React;
                   <button
                     style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState && animationExportState !== "rendering" ? "#059669" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
                     onClick={exportAnimatedDailyGif}
-                    disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || animationExportState === "rendering"}
-                    title={animationExportState === "rendering" ? "Building a short animated daily highlight…" : actionButtonTitle}
+                    disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || (isArchiveView && !animationBuildMode) || animationExportState === "rendering" || animationExportState === "copying"}
+                    title={isArchiveView && !animationBuildMode ? "Hosted animation links are available for the live current month." : animationBuildMode ? "Build the hosted animated daily highlight." : "Copy the hosted GIF link, then paste it into Discord."}
                   >
                     {animationExportState === "rendering"
                       ? "⏳ Rendering Animated GIF…"
-                      : animationExportState === "shared"
-                        ? "✓ Animated GIF Shared"
+                      : animationExportState === "copying"
+                        ? "⏳ Copying GIF Link…"
+                        : animationExportState === "copied"
+                          ? "✓ GIF Link Copied — Paste in Discord"
                         : animationExportState === "downloaded"
-                          ? "✓ Animated GIF Downloaded"
+                          ? "✓ Hosted GIF Built"
                           : animationExportState === "error"
                             ? "⚠ GIF Failed — Try Again"
-                            : "🎞️ Generate Animated Daily Highlight"}
+                            : animationBuildMode
+                              ? "🎞️ Build Hosted Animated Highlight"
+                              : "🎞️ Copy Animated Highlight for Discord"}
                   </button>
                 </div>
               )}
