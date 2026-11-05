@@ -1,0 +1,79 @@
+name: Publish animated daily highlights
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-animated-highlights.yml"
+      - "assets/js/app.jsx"
+      - "assets/vendor/gif.js/**"
+      - "club.html"
+      - "scripts/generate-animated-highlights.mjs"
+      - "scripts/chronogenesis.clubs.config.json"
+  workflow_dispatch:
+    inputs:
+      club_id:
+        description: "Optional single club ID for a targeted rebuild"
+        required: false
+        type: string
+  workflow_run:
+    workflows: ["Update Chronogenesis Data"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-animated-daily-highlights
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish-highlights:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout current tracker
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install animation browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Generate animated highlights
+        env:
+          CLUB_ID: ${{ inputs.club_id }}
+        run: |
+          if [ -n "$CLUB_ID" ]; then
+            node scripts/generate-animated-highlights.mjs --output generated/daily-highlights --club "$CLUB_ID"
+          else
+            node scripts/generate-animated-highlights.mjs --output generated/daily-highlights
+          fi
+
+      - name: Create stable highlight release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view daily-highlights >/dev/null 2>&1; then
+            gh release create daily-highlights \
+              --title "Daily Animated Highlights" \
+              --notes "Automatically refreshed animated club reports for Discord sharing." \
+              --latest=false
+          fi
+
+      - name: Publish latest GIF files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload daily-highlights generated/daily-highlights/*.gif --clobber
