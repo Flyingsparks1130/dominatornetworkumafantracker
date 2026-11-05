@@ -18,6 +18,11 @@ const requestedClubId = process.argv.includes("--club")
 const clubs = JSON.parse(
   await fs.readFile(path.join(repositoryRoot, "scripts", "chronogenesis.clubs.config.json"), "utf8"),
 ).filter((club) => !requestedClubId || club.id === requestedClubId);
+const animationModes = [
+  { key: "overall", label: "Overall Performance", suffix: "daily-highlight" },
+  { key: "attention", label: "Needs Attention", suffix: "needs-attention" },
+  { key: "analysis", label: "Deeper Analysis", suffix: "deeper-analysis" },
+];
 
 if (!clubs.length) throw new Error(`No configured club matched ${requestedClubId || "the request"}.`);
 
@@ -80,39 +85,42 @@ const failures = [];
 
 try {
   for (const club of clubs) {
-    let completed = false;
-    for (let attempt = 1; attempt <= 2 && !completed; attempt += 1) {
-      const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
-      try {
-        console.log(`Generating ${club.name} (${club.id}), attempt ${attempt}…`);
-        await page.goto(`${origin}/club.html?id=${encodeURIComponent(club.id)}&animationBuild=1`, {
-          waitUntil: "domcontentloaded",
-          timeout: 60_000,
-        });
-        const button = page.getByRole("button", { name: "🎞️ Build Hosted Animated Highlight" });
-        await button.waitFor({ state: "visible", timeout: 60_000 });
-        await page.waitForFunction(
-          () => {
-            const candidate = [...document.querySelectorAll("button")].find((entry) => entry.textContent?.includes("Build Hosted Animated Highlight"));
-            return candidate && !candidate.disabled;
-          },
-          null,
-          { timeout: 90_000 },
-        );
-        const downloadPromise = page.waitForEvent("download", { timeout: 180_000 });
-        await button.click();
-        const download = await downloadPromise;
-        const destination = path.join(outputDirectory, `${safeFilename(club.name)}-daily-highlight.gif`);
-        await download.saveAs(destination);
-        const { size } = await fs.stat(destination);
-        if (size < 100_000) throw new Error(`Generated file was unexpectedly small (${size} bytes).`);
-        console.log(`Saved ${destination} (${(size / 1_000_000).toFixed(2)} MB).`);
-        completed = true;
-      } catch (error) {
-        console.error(`${club.name} attempt ${attempt} failed:`, error?.message || error);
-        if (attempt === 2) failures.push(`${club.name}: ${error?.message || error}`);
-      } finally {
-        await page.close();
+    for (const mode of animationModes) {
+      let completed = false;
+      for (let attempt = 1; attempt <= 2 && !completed; attempt += 1) {
+        const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
+        try {
+          console.log(`Generating ${club.name} (${club.id}) · ${mode.label}, attempt ${attempt}…`);
+          await page.goto(`${origin}/club.html?id=${encodeURIComponent(club.id)}&animationBuild=1&animationMode=${encodeURIComponent(mode.key)}`, {
+            waitUntil: "domcontentloaded",
+            timeout: 60_000,
+          });
+          const buttonName = `🎞️ Build Hosted ${mode.label} GIF`;
+          const button = page.getByRole("button", { name: buttonName });
+          await button.waitFor({ state: "visible", timeout: 60_000 });
+          await page.waitForFunction(
+            (expectedName) => {
+              const candidate = [...document.querySelectorAll("button")].find((entry) => entry.textContent?.trim() === expectedName);
+              return candidate && !candidate.disabled;
+            },
+            buttonName,
+            { timeout: 90_000 },
+          );
+          const downloadPromise = page.waitForEvent("download", { timeout: 180_000 });
+          await button.click();
+          const download = await downloadPromise;
+          const destination = path.join(outputDirectory, `${safeFilename(club.name)}-${mode.suffix}.gif`);
+          await download.saveAs(destination);
+          const { size } = await fs.stat(destination);
+          if (size < 100_000) throw new Error(`Generated file was unexpectedly small (${size} bytes).`);
+          console.log(`Saved ${destination} (${(size / 1_000_000).toFixed(2)} MB).`);
+          completed = true;
+        } catch (error) {
+          console.error(`${club.name} · ${mode.label} attempt ${attempt} failed:`, error?.message || error);
+          if (attempt === 2) failures.push(`${club.name} · ${mode.label}: ${error?.message || error}`);
+        } finally {
+          await page.close();
+        }
       }
     }
   }
@@ -125,4 +133,5 @@ if (failures.length) {
   throw new Error(`Animated highlight generation failed:\n${failures.join("\n")}`);
 }
 
-console.log(`Generated ${clubs.length} animated highlight${clubs.length === 1 ? "" : "s"}.`);
+const generatedCount = clubs.length * animationModes.length;
+console.log(`Generated ${generatedCount} animated highlight${generatedCount === 1 ? "" : "s"}.`);
