@@ -1474,6 +1474,7 @@ const { useState, useEffect, useRef } = React;
         return () => animation?.cancel();
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
+      const [animationExportState, setAnimationExportState] = useState(false);
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
       const [rankThresholdError, setRankThresholdError] = useState("");
@@ -2211,6 +2212,9 @@ const { useState, useEffect, useRef } = React;
             rankLabel: rankValue == null ? "—" : `#${rankValue.toLocaleString()}`,
             rankChange,
             rankChangeLabel,
+            dailyValue: totalDaily,
+            monthValue: totalMonthly,
+            paceValue: hasComparisonData ? clubWeeklyDelta : null,
             dailyLabel: fmtSigned(totalDaily),
             monthLabel: fmtSigned(totalMonthly),
             paceLabel: hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—",
@@ -2507,6 +2511,299 @@ const { useState, useEffect, useRef } = React;
         ctx.textAlign = "left";
 
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+
+      async function renderAnimatedDailyGif(exportData = getDiscordExportData()) {
+        const report = exportData.reportMeta;
+        if (!report || !exportData.tableRows.length) return null;
+        if (typeof window.GIF !== "function") throw new Error("The GIF encoder did not load. Refresh the page and try again.");
+
+        if (document.fonts?.ready) {
+          try { await document.fonts.ready; } catch (_) {}
+        }
+
+        const width = 960;
+        const height = 540;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        const loadCanvasImage = (url) => new Promise((resolve) => {
+          if (!url) return resolve(null);
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => resolve(null);
+          image.src = url;
+        });
+        const tierIconUrl = getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath);
+        const currentRankTier = getTierForRank(report.rankValue, viewRankingConfig);
+        const rankIconUrl = getRankIconUrl(currentRankTier, viewRankingConfig, viewRankIconPath);
+        const clubTierIcon = await loadCanvasImage(tierIconUrl);
+        const rankIcon = rankIconUrl === tierIconUrl ? clubTierIcon : await loadCanvasImage(rankIconUrl);
+
+        const attentionRows = [...exportData.tableRows]
+          .sort((a, b) => (a.paceDelta ?? 0) - (b.paceDelta ?? 0))
+          .slice(0, 3);
+        const statusColor = (statusKey) => {
+          const displayKey = getDisplayStatusKey(statusKey);
+          if (displayKey === "critical") return "#f87171";
+          if (displayKey === "behind") return "#fbbf24";
+          return "#34d399";
+        };
+        const statusLabel = (statusKey) => getDisplayStatusMeta(statusKey).label.toUpperCase();
+        const easeOut = (value) => 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
+        const clamp01 = (value) => Math.max(0, Math.min(1, value));
+        const phase = (frame, start, duration) => easeOut(clamp01((frame - start) / duration));
+        const lerp = (from, to, amount) => from + ((to - from) * amount);
+        const alpha = (hex, opacity) => {
+          const safeOpacity = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, "0");
+          return `${hex}${safeOpacity}`;
+        };
+        const roundedRect = (x, y, w, h, radius) => {
+          ctx.beginPath();
+          ctx.moveTo(x + radius, y);
+          ctx.lineTo(x + w - radius, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+          ctx.lineTo(x + w, y + h - radius);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+          ctx.lineTo(x + radius, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+          ctx.lineTo(x, y + radius);
+          ctx.quadraticCurveTo(x, y, x + radius, y);
+          ctx.closePath();
+        };
+        const fillRounded = (x, y, w, h, radius, fill, stroke = null) => {
+          roundedRect(x, y, w, h, radius);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        };
+        const setFont = (weight, size, family = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif") => {
+          ctx.font = `${weight} ${size}px ${family}`;
+        };
+        const fitText = (value, maxWidth) => {
+          const text = String(value ?? "");
+          if (ctx.measureText(text).width <= maxWidth) return text;
+          let output = text;
+          while (output.length > 1 && ctx.measureText(`${output}…`).width > maxWidth) output = output.slice(0, -1);
+          return `${output}…`;
+        };
+        const drawLabel = (label, x, y, color = "#8f93ad") => {
+          setFont(750, 13);
+          ctx.fillStyle = color;
+          ctx.fillText(String(label).toUpperCase(), x, y);
+        };
+        const drawMetric = ({ x, y, w, label, value, detail, accent, reveal }) => {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          const lift = (1 - reveal) * 16;
+          fillRounded(x, y + lift, w, 108, 16, "#17182a", "#2b2d47");
+          fillRounded(x, y + lift, 5, 108, 3, accent);
+          drawLabel(label, x + 20, y + lift + 17);
+          setFont(850, 28);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(value, x + 20, y + lift + 42);
+          setFont(650, 13);
+          ctx.fillStyle = detail.includes("Behind") ? "#ff9292" : detail.includes("Ahead") ? "#65e5ad" : "#9fa4bc";
+          ctx.fillText(fitText(detail, w - 40), x + 20, y + lift + 82);
+          ctx.restore();
+        };
+
+        const totalFrames = 48;
+        const gif = new window.GIF({
+          workers: 2,
+          quality: 12,
+          width,
+          height,
+          repeat: 0,
+          background: "#090a14",
+          workerScript: "./assets/vendor/gif.js/gif.worker.js",
+        });
+
+        for (let frame = 0; frame < totalFrames; frame += 1) {
+          const headerReveal = phase(frame, 0, 7);
+          const rankReveal = phase(frame, 4, 8);
+          const metricReveal = phase(frame, 10, 14);
+          const healthReveal = phase(frame, 22, 8);
+          const watchReveal = phase(frame, 30, 10);
+          const metricCount = phase(frame, 9, 18);
+
+          const background = ctx.createLinearGradient(0, 0, width, height);
+          background.addColorStop(0, "#080914");
+          background.addColorStop(0.58, "#0d0e1c");
+          background.addColorStop(1, "#141126");
+          ctx.fillStyle = background;
+          ctx.fillRect(0, 0, width, height);
+          const glow = ctx.createRadialGradient(width - 90, 40, 0, width - 90, 40, 380);
+          glow.addColorStop(0, alpha(tc.bar, 0.26));
+          glow.addColorStop(1, "#00000000");
+          ctx.fillStyle = glow;
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.save();
+          ctx.globalAlpha = headerReveal;
+          if (clubTierIcon) ctx.drawImage(clubTierIcon, 38, 30, 82, 82);
+          else {
+            fillRounded(38, 30, 82, 82, 21, tc.bar, tc.border);
+            setFont(900, 27);
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "center";
+            ctx.fillText(club.tier, 79, 60);
+          }
+          ctx.textAlign = "center";
+          drawLabel("Dominator Network · Animated Daily Highlight", width / 2, 27, tc.text);
+          setFont(900, 43);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(fitText(club.name, 520), width / 2, 49);
+          setFont(650, 15);
+          ctx.fillStyle = "#a9adc2";
+          ctx.fillText(fitText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, 650), width / 2, 101);
+          ctx.textAlign = "left";
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = rankReveal;
+          const rankX = 38;
+          const rankY = 140;
+          const rankW = 230;
+          const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
+          fillRounded(rankX, rankY + ((1 - rankReveal) * 16), rankW, 108, 16, "#17182a", "#2b2d47");
+          fillRounded(rankX, rankY + ((1 - rankReveal) * 16), 5, 108, 3, rankAccent);
+          drawLabel("Club rank", rankX + 20, rankY + 17 + ((1 - rankReveal) * 16));
+          const iconSize = 58;
+          if (rankIcon || clubTierIcon) ctx.drawImage(rankIcon || clubTierIcon, rankX + 20, rankY + 39 + ((1 - rankReveal) * 16), iconSize, iconSize);
+          setFont(900, 42);
+          ctx.fillStyle = "#f8fafc";
+          const rankNumber = report.rankValue == null ? "—" : Math.max(1, Math.round(lerp(Math.max(report.rankValue * 1.25, report.rankValue + 24), report.rankValue, rankReveal))).toLocaleString();
+          ctx.fillText(rankNumber, rankX + 90, rankY + 40 + ((1 - rankReveal) * 16));
+          setFont(750, 14);
+          ctx.fillStyle = rankAccent;
+          const rankDetail = report.rankChange == null ? "Change unavailable" : report.rankChange > 0 ? `▲${Math.abs(report.rankChange).toLocaleString()} today` : report.rankChange < 0 ? `▼${Math.abs(report.rankChange).toLocaleString()} today` : "No change today";
+          ctx.fillText(rankDetail, rankX + 90, rankY + 86 + ((1 - rankReveal) * 16));
+          ctx.restore();
+
+          const numericDaily = Number(report.dailyValue || 0) * metricCount;
+          const numericMonth = Number(report.monthValue || 0) * metricCount;
+          const numericPace = report.paceValue == null ? null : Number(report.paceValue || 0) * metricCount;
+          const metricW = 203;
+          drawMetric({ x: 282, y: 140, w: metricW, label: "Today's gain", value: fmtSigned(numericDaily), detail: "Today total", accent: "#60a5fa", reveal: metricReveal });
+          drawMetric({ x: 499, y: 140, w: metricW, label: "Month gain", value: fmtSigned(numericMonth), detail: "Month to date", accent: tc.text, reveal: metricReveal });
+          drawMetric({ x: 716, y: 140, w: 206, label: "Vs pace", value: numericPace == null ? "—" : fmtSigned(numericPace), detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", reveal: metricReveal });
+
+          ctx.save();
+          ctx.globalAlpha = healthReveal;
+          const healthY = 266 + ((1 - healthReveal) * 12);
+          fillRounded(38, healthY, 884, 70, 15, "#141526", "#282a42");
+          drawLabel("Member health", 58, healthY + 16);
+          const healthItems = [
+            { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
+            { label: "BEHIND", value: report.behind, color: "#fbbf24" },
+            { label: "CRITICAL", value: report.critical, color: "#f87171" },
+          ];
+          healthItems.forEach((item, index) => {
+            const itemX = 300 + (index * 205);
+            ctx.fillStyle = item.color;
+            ctx.beginPath();
+            ctx.arc(itemX, healthY + 36, 6, 0, Math.PI * 2);
+            ctx.fill();
+            setFont(850, 27);
+            ctx.fillText(String(Math.round(item.value * healthReveal)), itemX + 16, healthY + 21);
+            setFont(750, 13);
+            ctx.fillStyle = "#9499b2";
+            ctx.fillText(item.label, itemX + 56, healthY + 29);
+          });
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = watchReveal;
+          const watchY = 354 + ((1 - watchReveal) * 16);
+          drawLabel(attentionRows.some((row) => (row.paceDelta ?? 0) < 0) ? "Needs attention" : "Closest to pace line", 38, watchY, "#c8cbdb");
+          setFont(650, 13);
+          ctx.fillStyle = "#858aa3";
+          ctx.textAlign = "right";
+          ctx.fillText("Lowest pace margins", 922, watchY);
+          ctx.textAlign = "left";
+          attentionRows.forEach((row, index) => {
+            const cardX = 38 + (index * 299);
+            const cardY = watchY + 26;
+            const cardW = 286;
+            const color = statusColor(row.statusKey);
+            const rowReveal = phase(frame, 30 + (index * 2), 8);
+            ctx.save();
+            ctx.globalAlpha = rowReveal;
+            fillRounded(cardX, cardY + ((1 - rowReveal) * 10), cardW, 104, 15, "#111221", "#292b43");
+            fillRounded(cardX, cardY + ((1 - rowReveal) * 10), 5, 104, 3, color);
+            setFont(800, 19);
+            ctx.fillStyle = "#eef0f8";
+            ctx.fillText(fitText(row.name, 170), cardX + 18, cardY + 17 + ((1 - rowReveal) * 10));
+            setFont(750, 11);
+            ctx.fillStyle = color;
+            ctx.textAlign = "right";
+            ctx.fillText(statusLabel(row.statusKey), cardX + cardW - 17, cardY + 22 + ((1 - rowReveal) * 10));
+            ctx.textAlign = "left";
+            drawLabel("Vs pace", cardX + 18, cardY + 57 + ((1 - rowReveal) * 10));
+            setFont(850, 24, "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace");
+            ctx.fillStyle = row.paceDelta >= 0 ? "#65e5ad" : "#ff9292";
+            ctx.textAlign = "right";
+            ctx.fillText(fmtSigned(row.paceDelta ?? 0), cardX + cardW - 17, cardY + 55 + ((1 - rowReveal) * 10));
+            ctx.textAlign = "left";
+            ctx.restore();
+          });
+          ctx.restore();
+
+          setFont(650, 12);
+          ctx.fillStyle = "#737890";
+          ctx.fillText("Dominator Network Tracker", 38, 517);
+          ctx.textAlign = "right";
+          ctx.fillText(`${report.sourceLabel} · ${report.dateLabel}`, 922, 517);
+          ctx.textAlign = "left";
+
+          gif.addFrame(canvas, { copy: true, delay: 100 });
+        }
+
+        gif.addFrame(canvas, { copy: true, delay: 900 });
+        return await new Promise((resolve, reject) => {
+          gif.on("finished", resolve);
+          gif.on("abort", () => reject(new Error("GIF rendering was cancelled.")));
+          gif.render();
+        });
+      }
+
+      async function exportAnimatedDailyGif() {
+        if (animationExportState === "rendering") return;
+        setAnimationExportState("rendering");
+        try {
+          const exportData = getDiscordExportData();
+          const gifBlob = await renderAnimatedDailyGif(exportData);
+          if (!gifBlob) throw new Error("The animated report could not be created.");
+          const filename = `${safeFilename(club.name)}-daily-highlight-${dateToKey(dataDate)}.gif`;
+          const file = new File([gifBlob], filename, { type: "image/gif" });
+          const shareData = { files: [file] };
+          if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+            await navigator.share(shareData);
+            setAnimationExportState("shared");
+          } else {
+            downloadBlob(gifBlob, filename);
+            setAnimationExportState("downloaded");
+          }
+        } catch (error) {
+          if (error?.name === "AbortError") setAnimationExportState(false);
+          else {
+            console.error("Animated GIF export failed", error);
+            setErr(error?.message || "Animated GIF export failed. Refresh and try again.");
+            setAnimationExportState("error");
+          }
+        } finally {
+          setTimeout(() => setAnimationExportState(false), 3200);
+        }
       }
 
       async function renderDiscordMessagePng(message, scale = 2) {
@@ -3771,7 +4068,22 @@ const { useState, useEffect, useRef } = React;
                   <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : "📅 Generate Weekly Report + PNG"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
-                  <button style={{ ...S.btn(false, "#a855f7"), opacity: 0.68, cursor: "not-allowed" }} disabled title="Animated GIF reports are the next experiment.">🎞️ Animated GIF Report — Coming Next</button>
+                  <button
+                    style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState && animationExportState !== "rendering" ? "#059669" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                    onClick={exportAnimatedDailyGif}
+                    disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || animationExportState === "rendering"}
+                    title={animationExportState === "rendering" ? "Building a short animated daily highlight…" : actionButtonTitle}
+                  >
+                    {animationExportState === "rendering"
+                      ? "⏳ Rendering Animated GIF…"
+                      : animationExportState === "shared"
+                        ? "✓ Animated GIF Shared"
+                        : animationExportState === "downloaded"
+                          ? "✓ Animated GIF Downloaded"
+                          : animationExportState === "error"
+                            ? "⚠ GIF Failed — Try Again"
+                            : "🎞️ Generate Animated Daily Highlight"}
+                  </button>
                 </div>
               )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
