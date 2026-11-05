@@ -2113,7 +2113,7 @@ const { useState, useEffect, useRef } = React;
         const TABLE_WIDTH = COL_MEMBER + SEP.length + COL_DAILY + SEP.length + COL_MONTH;
 
         const topLines = [
-          `📊 **[${club.tier}] ${club.name} — Circle Report** | ${ds}`,
+          `📊 **[${club.tier}] ${club.name} — Daily Report** | ${ds}`,
           `${getDiscordPingLabel()}`,
           `🗂️ Source: ${getSourceLabel()}`,
           `🎯 Target: ${fmt(club.target)}/member · 👥 ${decoratedMembers.length}/${viewMaxMembers} active · 📅 Day ${today}/${dim}`,
@@ -2132,6 +2132,10 @@ const { useState, useEffect, useRef } = React;
           const dailyText = P(fmtSigned(member.dailyGain ?? 0), COL_DAILY);
           const monthText = P(`${fmtSigned(member.monthlyGain ?? 0)} (${paceText})`, COL_MONTH);
           return {
+            name: member.name,
+            dailyGain: member.dailyGain ?? 0,
+            monthlyGain: member.monthlyGain ?? 0,
+            paceDelta: member.plan.delta ?? 0,
             memberText,
             dailyText,
             monthText,
@@ -2161,7 +2165,26 @@ const { useState, useEffect, useRef } = React;
           totalLine,
           footerLine,
           textOnlyMessage,
-          fullMessage
+          fullMessage,
+          reportMeta: {
+            dateLabel: ds,
+            dayLabel: `Day ${today} of ${dim}`,
+            sourceLabel: getSourceLabel(),
+            pingLabel: getDiscordPingLabel(),
+            activeLabel: `${decoratedMembers.length}/${viewMaxMembers} active`,
+            targetLabel: `${fmt(club.target)} / member`,
+            rankValue,
+            rankLabel: rankValue == null ? "—" : `#${rankValue.toLocaleString()}`,
+            rankChange,
+            rankChangeLabel,
+            dailyLabel: fmtSigned(totalDaily),
+            monthLabel: fmtSigned(totalMonthly),
+            paceLabel: hasComparisonData ? fmtSigned(clubWeeklyDelta) : "—",
+            pacePositive: hasComparisonData && clubWeeklyDelta >= 0,
+            onTrack: statusCounts["on-track"],
+            behind: statusCounts["behind"],
+            critical: statusCounts["critical"],
+          }
         };
       }
 
@@ -2171,33 +2194,32 @@ const { useState, useEffect, useRef } = React;
 
       async function renderDiscordTablePng(scale = 2) {
         const exportData = getDiscordExportData();
-        const lines = [...exportData.pngTopLines, "", exportData.tableHeader, exportData.divider, ...exportData.tableRows.map((row) => row.pngLine), exportData.divider, exportData.totalLine];
-        if (!lines.length) return null;
+        const report = exportData.reportMeta;
+        if (!report || !exportData.tableRows.length) return null;
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         if (!ctx) return null;
 
-        const fontSize = 22;
-        const lineHeight = 34;
-        const paddingX = 24;
-        const paddingY = 22;
-        const borderRadius = 16;
-        const font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+        const width = 1160;
+        const outerPadding = 44;
+        const headerHeight = 138;
+        const metricHeight = 124;
+        const metricGap = 14;
+        const statusHeight = 82;
+        const tableHeaderHeight = 54;
+        const rowHeight = 46;
+        const footerHeight = 66;
+        const sectionGap = 20;
+        const height = outerPadding + headerHeight + sectionGap + metricHeight + sectionGap + statusHeight + sectionGap + tableHeaderHeight + (exportData.tableRows.length * rowHeight) + footerHeight + outerPadding;
 
-        ctx.font = font;
-        const measuredWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
-        const width = Math.ceil((paddingX * 2 + measuredWidth) * scale);
-        const height = Math.ceil((paddingY * 2 + (lines.length * lineHeight)) * scale);
-
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.ceil(width * scale);
+        canvas.height = Math.ceil(height * scale);
 
         ctx.scale(scale, scale);
-        ctx.font = font;
         ctx.textBaseline = "top";
 
-        const drawRoundedRect = (x, y, w, h, r) => {
+        const roundedRect = (x, y, w, h, r) => {
           ctx.beginPath();
           ctx.moveTo(x + r, y);
           ctx.lineTo(x + w - r, y);
@@ -2210,51 +2232,170 @@ const { useState, useEffect, useRef } = React;
           ctx.quadraticCurveTo(x, y, x + r, y);
           ctx.closePath();
         };
+        const fillRounded = (x, y, w, h, r, fill, stroke = null) => {
+          roundedRect(x, y, w, h, r);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        };
+        const setFont = (weight, size, family = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif") => {
+          ctx.font = `${weight} ${size}px ${family}`;
+        };
+        const fitText = (value, maxWidth) => {
+          const text = String(value ?? "");
+          if (ctx.measureText(text).width <= maxWidth) return text;
+          let output = text;
+          while (output.length > 1 && ctx.measureText(`${output}…`).width > maxWidth) output = output.slice(0, -1);
+          return `${output}…`;
+        };
+        const drawLabel = (label, x, y, color = "#8f93ad") => {
+          setFont(700, 13);
+          ctx.fillStyle = color;
+          ctx.fillText(String(label).toUpperCase(), x, y);
+        };
+        const drawMetricCard = ({ x, y, w, label, value, detail, accent, detailColor = "#9ca3af" }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, accent);
+          drawLabel(label, x + 22, y + 18);
+          setFont(800, 30);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(value, x + 22, y + 43);
+          setFont(650, 15);
+          ctx.fillStyle = detailColor;
+          ctx.fillText(fitText(detail, w - 44), x + 22, y + 88);
+        };
 
-        drawRoundedRect(0, 0, width / scale, height / scale, borderRadius);
-        ctx.fillStyle = "#111028";
-        ctx.fill();
+        const background = ctx.createLinearGradient(0, 0, width, height);
+        background.addColorStop(0, "#090a14");
+        background.addColorStop(0.55, "#0d0d1b");
+        background.addColorStop(1, "#111225");
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, width, height);
 
-        ctx.strokeStyle = "#2a2540";
-        ctx.lineWidth = 1;
-        drawRoundedRect(0.5, 0.5, width / scale - 1, height / scale - 1, borderRadius);
+        const glow = ctx.createRadialGradient(width - 140, 80, 0, width - 140, 80, 380);
+        glow.addColorStop(0, `${tc.bar}42`);
+        glow.addColorStop(1, "#00000000");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, 520);
+
+        let y = outerPadding;
+        fillRounded(outerPadding, y, 68, 68, 18, tc.bar, tc.border);
+        setFont(900, 24);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.fillText("DN", outerPadding + 34, y + 19);
+        ctx.textAlign = "left";
+
+        drawLabel("Dominator Network · Daily Report", outerPadding + 88, y + 4, tc.text);
+        setFont(850, 34);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(fitText(`[${club.tier}] ${club.name}`, 620), outerPadding + 88, y + 29);
+        setFont(550, 16);
+        ctx.fillStyle = "#a9adc2";
+        ctx.fillText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.sourceLabel}`, outerPadding + 88, y + 78);
+        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, outerPadding + 88, y + 102);
+
+        fillRounded(width - outerPadding - 176, y + 5, 176, 54, 16, "#ffffff0d", "#ffffff1f");
+        drawLabel("Report status", width - outerPadding - 156, y + 16);
+        setFont(750, 15);
+        ctx.fillStyle = "#34d399";
+        ctx.fillText("● READY TO SHARE", width - outerPadding - 156, y + 34);
+
+        y += headerHeight + sectionGap;
+        const metricsWidth = width - (outerPadding * 2);
+        const cardWidth = (metricsWidth - (metricGap * 3)) / 4;
+        const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
+        const rankDetailColor = report.rankChange > 0 ? "#65e5ad" : report.rankChange < 0 ? "#ff9292" : "#a9adc2";
+        drawMetricCard({ x: outerPadding, y, w: cardWidth, label: "Club rank", value: report.rankLabel, detail: report.rankChangeLabel, accent: rankAccent, detailColor: rankDetailColor });
+        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: "Today's gain", value: report.dailyLabel, detail: "Combined active-member gain", accent: "#60a5fa" });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: "Month gain", value: report.monthLabel, detail: "Combined month-to-date gain", accent: tc.text });
+        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of elapsed target" : "Behind elapsed target", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
+
+        y += metricHeight + sectionGap;
+        fillRounded(outerPadding, y, metricsWidth, statusHeight, 18, "#141526", "#282a42");
+        drawLabel("Member health", outerPadding + 22, y + 17);
+        const statusItems = [
+          { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
+          { label: "BEHIND", value: report.behind, color: "#fbbf24" },
+          { label: "CRITICAL", value: report.critical, color: "#f87171" },
+        ];
+        statusItems.forEach((item, index) => {
+          const x = outerPadding + 300 + (index * 230);
+          ctx.fillStyle = item.color;
+          ctx.beginPath();
+          ctx.arc(x, y + 42, 6, 0, Math.PI * 2);
+          ctx.fill();
+          setFont(800, 25);
+          ctx.fillText(String(item.value), x + 16, y + 25);
+          setFont(700, 13);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText(item.label, x + 55, y + 33);
+        });
+
+        y += statusHeight + sectionGap;
+        const column = {
+          member: outerPadding + 22,
+          status: outerPadding + 420,
+          daily: outerPadding + 650,
+          month: outerPadding + 820,
+          pace: width - outerPadding - 22,
+        };
+        fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
+        drawLabel("Member", column.member, y + 19);
+        drawLabel("Status", column.status, y + 19);
+        drawLabel("Today", column.daily, y + 19);
+        drawLabel("Month", column.month, y + 19);
+        ctx.textAlign = "right";
+        drawLabel("Vs pace", column.pace, y + 19);
+        ctx.textAlign = "left";
+        y += tableHeaderHeight;
+
+        exportData.tableRows.forEach((row, index) => {
+          const status = getDisplayStatusMeta(row.statusKey);
+          const rowFill = index % 2 === 0 ? "#111221" : "#0d0e1a";
+          ctx.fillStyle = rowFill;
+          ctx.fillRect(outerPadding, y, metricsWidth, rowHeight);
+          ctx.fillStyle = status.color;
+          ctx.fillRect(outerPadding, y, 4, rowHeight);
+
+          setFont(700, 16);
+          ctx.fillStyle = "#eef0f8";
+          ctx.fillText(fitText(row.name, 360), column.member, y + 13);
+
+          fillRounded(column.status, y + 10, 124, 26, 13, status.bg, status.border);
+          setFont(750, 12);
+          ctx.fillStyle = status.color;
+          ctx.textAlign = "center";
+          ctx.fillText(status.label.toUpperCase(), column.status + 62, y + 16);
+
+          const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+          setFont(700, 15, mono);
+          ctx.fillStyle = "#d8dbea";
+          ctx.textAlign = "right";
+          ctx.fillText(fmtSigned(row.dailyGain), column.daily + 92, y + 14);
+          ctx.fillText(fmtSigned(row.monthlyGain), column.month + 118, y + 14);
+          ctx.fillStyle = hasComparisonData ? (row.paceDelta >= 0 ? "#65e5ad" : "#ff9292") : "#9ca3af";
+          ctx.fillText(hasComparisonData ? fmtSigned(row.paceDelta) : "—", column.pace, y + 14);
+          ctx.textAlign = "left";
+          y += rowHeight;
+        });
+
+        ctx.strokeStyle = "#292b43";
+        ctx.beginPath();
+        ctx.moveTo(outerPadding, y);
+        ctx.lineTo(width - outerPadding, y);
         ctx.stroke();
 
-        const x = paddingX;
-        let y = paddingY;
-
-        ctx.fillStyle = "#e5e7eb";
-        exportData.pngTopLines.forEach((line) => {
-          ctx.fillText(line, x, y);
-          y += lineHeight;
-        });
-
-        y += lineHeight * 0.5;
-
-        ctx.fillStyle = "#e5e7eb";
-        ctx.fillText(exportData.tableHeader, x, y);
-        y += lineHeight;
-
-        ctx.fillStyle = "#d1d5db";
-        ctx.fillText(exportData.divider, x, y);
-        y += lineHeight;
-
-        exportData.tableRows.forEach((row) => {
-          ctx.fillStyle = row.nameColor;
-          ctx.fillText(row.memberText, x, y);
-
-          const memberWidth = ctx.measureText(row.memberText).width;
-          ctx.fillStyle = "#e5e7eb";
-          ctx.fillText(` | ${row.dailyText} | ${row.monthText}`, x + memberWidth, y);
-          y += lineHeight;
-        });
-
-        ctx.fillStyle = "#d1d5db";
-        ctx.fillText(exportData.divider, x, y);
-        y += lineHeight;
-
-        ctx.fillStyle = "#e5e7eb";
-        ctx.fillText(exportData.totalLine, x, y);
+        setFont(700, 14);
+        ctx.fillStyle = "#858aa3";
+        ctx.fillText("Dominator Network Tracker", outerPadding, y + 25);
+        ctx.textAlign = "right";
+        ctx.fillText(`${report.sourceLabel} · ${report.dateLabel}`, width - outerPadding, y + 25);
+        ctx.textAlign = "left";
 
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
@@ -2415,7 +2556,7 @@ const { useState, useEffect, useRef } = React;
 
       async function copyDiscord() {
         const exportData = getDiscordExportData();
-        const result = await exportDiscordPayload(exportData, "circle-report.png", () => renderDiscordTablePng(2));
+        const result = await exportDiscordPayload(exportData, "daily-report.png", () => renderDiscordTablePng(2));
         if (!result) return;
         setCopied(result);
         setTimeout(() => setCopied(false), 2200);
@@ -2870,7 +3011,7 @@ const { useState, useEffect, useRef } = React;
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
                   <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly + PNG" : weeklyCopied === "shared" ? "✓ Weekly Shared" : "✓ Weekly Copied!") : "📊 Weekly Comparison"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Copied + PNG" : reminderCopied === "shared" ? "✓ Shared" : "✓ Reminder Copied!") : "🔔 Under Plan Reminder"}</button>
-                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "💬 Discord + PNG"}</button>
+                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Copied + PNG" : copied === "shared" ? "✓ Shared" : "✓ Copied!") : "📋 Daily Report + PNG"}</button>
                 </div>
               )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
