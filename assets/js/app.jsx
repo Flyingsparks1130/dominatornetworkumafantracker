@@ -1475,6 +1475,10 @@ const { useState, useEffect, useRef } = React;
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [animationExportState, setAnimationExportState] = useState(false);
+      const [animationReportMode, setAnimationReportMode] = useState(() => {
+        const requestedMode = new URLSearchParams(window.location.search).get("animationMode");
+        return ["overall", "attention", "analysis"].includes(requestedMode) ? requestedMode : "overall";
+      });
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
       const [rankThresholdError, setRankThresholdError] = useState("");
@@ -2514,7 +2518,7 @@ const { useState, useEffect, useRef } = React;
         return await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       }
 
-      async function renderAnimatedDailyGif(exportData = getDiscordExportData()) {
+      async function renderAnimatedDailyGif(exportData = getDiscordExportData(), mode = animationReportMode) {
         const report = exportData.reportMeta;
         if (!report || !exportData.tableRows.length) return null;
         if (typeof window.GIF !== "function") throw new Error("The GIF encoder did not load. Refresh the page and try again.");
@@ -2545,10 +2549,25 @@ const { useState, useEffect, useRef } = React;
         const rankIconUrl = getRankIconUrl(currentRankTier, viewRankingConfig, viewRankIconPath);
         const clubTierIcon = await loadCanvasImage(tierIconUrl);
         const rankIcon = rankIconUrl === tierIconUrl ? clubTierIcon : await loadCanvasImage(rankIconUrl);
+        const animationHost = await loadCanvasImage("./assets/images/animation-hosts/gentildonna.png");
 
+        const normalizedMode = ["overall", "attention", "analysis"].includes(mode) ? mode : "overall";
+        const modeMeta = {
+          overall: { label: "Overall performance", hint: "Team pace, leaders and daily momentum", accent: "#60a5fa" },
+          attention: { label: "Needs attention", hint: "Members closest to or behind the pace line", accent: "#fbbf24" },
+          analysis: { label: "Deeper analysis", hint: "Projection, target gap and pace required", accent: "#a78bfa" },
+        }[normalizedMode];
         const attentionRows = [...exportData.tableRows]
           .sort((a, b) => (a.paceDelta ?? 0) - (b.paceDelta ?? 0))
           .slice(0, 3);
+        const topMonthly = [...exportData.tableRows].sort((a, b) => (b.monthlyGain ?? 0) - (a.monthlyGain ?? 0))[0];
+        const topDaily = [...exportData.tableRows].sort((a, b) => (b.dailyGain ?? 0) - (a.dailyGain ?? 0))[0];
+        const activeCount = exportData.tableRows.length;
+        const clubTargetTotal = Number(club.target || 0) * activeCount;
+        const projectedFinish = today > 0 ? (Number(report.monthValue || 0) / today) * dim : 0;
+        const projectedTargetGap = projectedFinish - clubTargetTotal;
+        const remainingDays = Math.max(0, dim - today);
+        const dailyNeeded = remainingDays > 0 ? Math.max(0, clubTargetTotal - Number(report.monthValue || 0)) / remainingDays : 0;
         const statusColor = (statusKey) => {
           const displayKey = getDisplayStatusKey(statusKey);
           if (displayKey === "critical") return "#f87171";
@@ -2606,15 +2625,30 @@ const { useState, useEffect, useRef } = React;
           ctx.save();
           ctx.globalAlpha = reveal;
           const lift = (1 - reveal) * 16;
-          fillRounded(x, y + lift, w, 108, 16, "#17182a", "#2b2d47");
-          fillRounded(x, y + lift, 5, 108, 3, accent);
-          drawLabel(label, x + 20, y + lift + 17);
-          setFont(850, 28);
+          fillRounded(x, y + lift, w, 112, 16, "#17182a", "#2b2d47");
+          fillRounded(x, y + lift, 5, 112, 3, accent);
+          drawLabel(label, x + 18, y + lift + 16);
+          setFont(850, 27);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(value, x + 20, y + lift + 42);
+          ctx.fillText(fitText(value, w - 36), x + 18, y + lift + 43);
           setFont(650, 13);
           ctx.fillStyle = detail.includes("Behind") ? "#ff9292" : detail.includes("Ahead") ? "#65e5ad" : "#9fa4bc";
-          ctx.fillText(fitText(detail, w - 40), x + 20, y + lift + 82);
+          ctx.fillText(fitText(detail, w - 36), x + 18, y + lift + 86);
+          ctx.restore();
+        };
+        const drawInsightCard = ({ x, y, title, value, detail, accent, reveal, valueColor = "#f8fafc" }) => {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          const lift = (1 - reveal) * 12;
+          fillRounded(x, y + lift, 286, 104, 15, "#111221", "#292b43");
+          fillRounded(x, y + lift, 5, 104, 3, accent);
+          drawLabel(title, x + 18, y + lift + 16, accent);
+          setFont(850, 25);
+          ctx.fillStyle = valueColor;
+          ctx.fillText(fitText(value, 250), x + 18, y + lift + 40);
+          setFont(650, 12);
+          ctx.fillStyle = "#969bb3";
+          ctx.fillText(fitText(detail, 250), x + 18, y + lift + 78);
           ctx.restore();
         };
 
@@ -2630,12 +2664,15 @@ const { useState, useEffect, useRef } = React;
         });
 
         for (let frame = 0; frame < totalFrames; frame += 1) {
-          const headerReveal = phase(frame, 0, 7);
-          const rankReveal = phase(frame, 4, 8);
-          const metricReveal = phase(frame, 10, 14);
-          const healthReveal = phase(frame, 22, 8);
+          const hostEnter = phase(frame, 0, 5);
+          const hostExit = phase(frame, 7, 7);
+          const hostReveal = hostEnter * (1 - hostExit);
+          const headerReveal = phase(frame, 6, 7);
+          const rankReveal = phase(frame, 10, 8);
+          const metricReveal = phase(frame, 14, 12);
+          const healthReveal = phase(frame, 23, 8);
           const watchReveal = phase(frame, 30, 10);
-          const metricCount = phase(frame, 9, 18);
+          const metricCount = phase(frame, 13, 18);
 
           const background = ctx.createLinearGradient(0, 0, width, height);
           background.addColorStop(0, "#080914");
@@ -2649,115 +2686,155 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = glow;
           ctx.fillRect(0, 0, width, height);
 
+          if (animationHost && hostReveal > 0.01) {
+            ctx.save();
+            ctx.globalAlpha = hostReveal;
+            const hostHeight = 430;
+            const hostWidth = hostHeight * (animationHost.width / animationHost.height);
+            const hostX = lerp(width + 20, 560, hostEnter) + (hostExit * 90);
+            const hostY = 82 + ((1 - hostEnter) * 22);
+            const hostGlow = ctx.createRadialGradient(hostX + (hostWidth / 2), hostY + 190, 10, hostX + (hostWidth / 2), hostY + 190, 190);
+            hostGlow.addColorStop(0, alpha(modeMeta.accent, 0.25));
+            hostGlow.addColorStop(1, "#00000000");
+            ctx.fillStyle = hostGlow;
+            ctx.fillRect(hostX - 60, hostY - 40, hostWidth + 120, hostHeight + 80);
+            ctx.drawImage(animationHost, hostX, hostY, hostWidth, hostHeight);
+            ctx.restore();
+
+            ctx.save();
+            ctx.globalAlpha = hostReveal;
+            drawLabel("Gentildonna presents", 68, 166, modeMeta.accent);
+            setFont(900, 47);
+            ctx.fillStyle = "#f8fafc";
+            ctx.fillText(modeMeta.label, 68, 193);
+            setFont(650, 17);
+            ctx.fillStyle = "#b6bad0";
+            ctx.fillText(fitText(modeMeta.hint, 500), 68, 258);
+            fillRounded(68, 302, 500, 6, 3, "#22243a");
+            fillRounded(68, 302, 500 * phase(frame, 1, 9), 6, 3, modeMeta.accent);
+            ctx.restore();
+          }
+
           ctx.save();
           ctx.globalAlpha = headerReveal;
-          if (clubTierIcon) ctx.drawImage(clubTierIcon, 38, 30, 82, 82);
+          if (clubTierIcon) ctx.drawImage(clubTierIcon, 38, 23, 88, 88);
           else {
-            fillRounded(38, 30, 82, 82, 21, tc.bar, tc.border);
+            fillRounded(38, 23, 88, 88, 21, tc.bar, tc.border);
             setFont(900, 27);
             ctx.fillStyle = "#fff";
             ctx.textAlign = "center";
-            ctx.fillText(club.tier, 79, 60);
+            ctx.fillText(club.tier, 82, 55);
           }
           ctx.textAlign = "center";
-          drawLabel("Dominator Network · Animated Daily Highlight", width / 2, 27, tc.text);
-          setFont(900, 43);
+          drawLabel(`Dominator Network · ${modeMeta.label}`, 540, 18, tc.text);
+          setFont(900, 42);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fitText(club.name, 520), width / 2, 49);
+          ctx.fillText(fitText(club.name, 590), 540, 45);
           setFont(650, 15);
           ctx.fillStyle = "#a9adc2";
-          ctx.fillText(fitText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, 650), width / 2, 101);
+          ctx.fillText(fitText(`${report.dateLabel}  ·  ${report.dayLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, 760), 540, 101);
           ctx.textAlign = "left";
           ctx.restore();
 
           ctx.save();
           ctx.globalAlpha = rankReveal;
           const rankX = 38;
-          const rankY = 140;
-          const rankW = 230;
+          const rankY = 136;
+          const rankW = 212;
           const rankAccent = report.rankChange > 0 ? "#34d399" : report.rankChange < 0 ? "#f87171" : "#8187a5";
-          fillRounded(rankX, rankY + ((1 - rankReveal) * 16), rankW, 108, 16, "#17182a", "#2b2d47");
-          fillRounded(rankX, rankY + ((1 - rankReveal) * 16), 5, 108, 3, rankAccent);
-          drawLabel("Club rank", rankX + 20, rankY + 17 + ((1 - rankReveal) * 16));
-          const iconSize = 58;
-          if (rankIcon || clubTierIcon) ctx.drawImage(rankIcon || clubTierIcon, rankX + 20, rankY + 39 + ((1 - rankReveal) * 16), iconSize, iconSize);
-          setFont(900, 42);
+          const rankLift = (1 - rankReveal) * 16;
+          fillRounded(rankX, rankY + rankLift, rankW, 112, 16, "#17182a", "#2b2d47");
+          fillRounded(rankX, rankY + rankLift, 5, 112, 3, rankAccent);
+          drawLabel("Club rank", rankX + 18, rankY + rankLift + 16);
+          const iconSize = 56;
+          if (rankIcon || clubTierIcon) ctx.drawImage(rankIcon || clubTierIcon, rankX + 17, rankY + rankLift + 42, iconSize, iconSize);
+          setFont(900, 39);
           ctx.fillStyle = "#f8fafc";
           const rankNumber = report.rankValue == null ? "—" : Math.max(1, Math.round(lerp(Math.max(report.rankValue * 1.25, report.rankValue + 24), report.rankValue, rankReveal))).toLocaleString();
-          ctx.fillText(rankNumber, rankX + 90, rankY + 40 + ((1 - rankReveal) * 16));
-          setFont(750, 14);
+          ctx.fillText(rankNumber, rankX + 86, rankY + rankLift + 43);
+          setFont(750, 12);
           ctx.fillStyle = rankAccent;
           const rankDetail = report.rankChange == null ? "Change unavailable" : report.rankChange > 0 ? `▲${Math.abs(report.rankChange).toLocaleString()} today` : report.rankChange < 0 ? `▼${Math.abs(report.rankChange).toLocaleString()} today` : "No change today";
-          ctx.fillText(rankDetail, rankX + 90, rankY + 86 + ((1 - rankReveal) * 16));
+          ctx.fillText(fitText(rankDetail, 108), rankX + 86, rankY + rankLift + 89);
           ctx.restore();
 
           const numericDaily = Number(report.dailyValue || 0) * metricCount;
           const numericMonth = Number(report.monthValue || 0) * metricCount;
           const numericPace = report.paceValue == null ? null : Number(report.paceValue || 0) * metricCount;
-          const metricW = 203;
-          drawMetric({ x: 282, y: 140, w: metricW, label: "Today's gain", value: fmtSigned(numericDaily), detail: "Today total", accent: "#60a5fa", reveal: metricReveal });
-          drawMetric({ x: 499, y: 140, w: metricW, label: "Month gain", value: fmtSigned(numericMonth), detail: "Month to date", accent: tc.text, reveal: metricReveal });
-          drawMetric({ x: 716, y: 140, w: 206, label: "Vs pace", value: numericPace == null ? "—" : fmtSigned(numericPace), detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", reveal: metricReveal });
+          const metricW = 212;
+          drawMetric({ x: 262, y: 136, w: metricW, label: "Today's gain", value: fmtSigned(numericDaily), detail: "Today total", accent: "#60a5fa", reveal: metricReveal });
+          drawMetric({ x: 486, y: 136, w: metricW, label: "Month gain", value: fmtSigned(numericMonth), detail: "Month to date", accent: tc.text, reveal: metricReveal });
+          drawMetric({ x: 710, y: 136, w: metricW, label: "Vs pace", value: numericPace == null ? "—" : fmtSigned(numericPace), detail: report.pacePositive ? "Ahead of pace" : "Behind pace", accent: report.pacePositive ? "#34d399" : "#f87171", reveal: metricReveal });
 
           ctx.save();
           ctx.globalAlpha = healthReveal;
           const healthY = 266 + ((1 - healthReveal) * 12);
-          fillRounded(38, healthY, 884, 70, 15, "#141526", "#282a42");
-          drawLabel("Member health", 58, healthY + 16);
+          fillRounded(38, healthY, 884, 66, 15, "#141526", "#282a42");
+          drawLabel("Member health", 58, healthY + 15);
           const healthItems = [
             { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
             { label: "BEHIND", value: report.behind, color: "#fbbf24" },
             { label: "CRITICAL", value: report.critical, color: "#f87171" },
           ];
           healthItems.forEach((item, index) => {
-            const itemX = 300 + (index * 205);
+            const itemX = 305 + (index * 205);
             ctx.fillStyle = item.color;
             ctx.beginPath();
-            ctx.arc(itemX, healthY + 36, 6, 0, Math.PI * 2);
+            ctx.arc(itemX, healthY + 35, 6, 0, Math.PI * 2);
             ctx.fill();
-            setFont(850, 27);
-            ctx.fillText(String(Math.round(item.value * healthReveal)), itemX + 16, healthY + 21);
+            setFont(850, 26);
+            ctx.fillText(String(Math.round(item.value * healthReveal)), itemX + 16, healthY + 20);
             setFont(750, 13);
             ctx.fillStyle = "#9499b2";
-            ctx.fillText(item.label, itemX + 56, healthY + 29);
+            ctx.fillText(item.label, itemX + 56, healthY + 28);
           });
           ctx.restore();
 
           ctx.save();
           ctx.globalAlpha = watchReveal;
-          const watchY = 354 + ((1 - watchReveal) * 16);
-          drawLabel(attentionRows.some((row) => (row.paceDelta ?? 0) < 0) ? "Needs attention" : "Closest to pace line", 38, watchY, "#c8cbdb");
+          const watchY = 350 + ((1 - watchReveal) * 16);
+          drawLabel(modeMeta.label, 38, watchY, modeMeta.accent);
           setFont(650, 13);
           ctx.fillStyle = "#858aa3";
           ctx.textAlign = "right";
-          ctx.fillText("Lowest pace margins", 922, watchY);
+          ctx.fillText(modeMeta.hint, 922, watchY);
           ctx.textAlign = "left";
-          attentionRows.forEach((row, index) => {
-            const cardX = 38 + (index * 299);
-            const cardY = watchY + 26;
-            const cardW = 286;
-            const color = statusColor(row.statusKey);
-            const rowReveal = phase(frame, 30 + (index * 2), 8);
-            ctx.save();
-            ctx.globalAlpha = rowReveal;
-            fillRounded(cardX, cardY + ((1 - rowReveal) * 10), cardW, 104, 15, "#111221", "#292b43");
-            fillRounded(cardX, cardY + ((1 - rowReveal) * 10), 5, 104, 3, color);
-            setFont(800, 19);
-            ctx.fillStyle = "#eef0f8";
-            ctx.fillText(fitText(row.name, 170), cardX + 18, cardY + 17 + ((1 - rowReveal) * 10));
-            setFont(750, 11);
-            ctx.fillStyle = color;
-            ctx.textAlign = "right";
-            ctx.fillText(statusLabel(row.statusKey), cardX + cardW - 17, cardY + 22 + ((1 - rowReveal) * 10));
-            ctx.textAlign = "left";
-            drawLabel("Vs pace", cardX + 18, cardY + 57 + ((1 - rowReveal) * 10));
-            setFont(850, 24, "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace");
-            ctx.fillStyle = row.paceDelta >= 0 ? "#65e5ad" : "#ff9292";
-            ctx.textAlign = "right";
-            ctx.fillText(fmtSigned(row.paceDelta ?? 0), cardX + cardW - 17, cardY + 55 + ((1 - rowReveal) * 10));
-            ctx.textAlign = "left";
-            ctx.restore();
-          });
+          const cardY = watchY + 26;
+          if (normalizedMode === "attention") {
+            attentionRows.forEach((row, index) => {
+              const cardX = 38 + (index * 299);
+              const cardW = 286;
+              const color = statusColor(row.statusKey);
+              const rowReveal = phase(frame, 30 + (index * 2), 8);
+              ctx.save();
+              ctx.globalAlpha = rowReveal;
+              fillRounded(cardX, cardY + ((1 - rowReveal) * 10), cardW, 104, 15, "#111221", "#292b43");
+              fillRounded(cardX, cardY + ((1 - rowReveal) * 10), 5, 104, 3, color);
+              setFont(800, 19);
+              ctx.fillStyle = "#eef0f8";
+              ctx.fillText(fitText(row.name, 170), cardX + 18, cardY + 17 + ((1 - rowReveal) * 10));
+              setFont(750, 11);
+              ctx.fillStyle = color;
+              ctx.textAlign = "right";
+              ctx.fillText(statusLabel(row.statusKey), cardX + cardW - 17, cardY + 22 + ((1 - rowReveal) * 10));
+              ctx.textAlign = "left";
+              drawLabel("Vs pace", cardX + 18, cardY + 57 + ((1 - rowReveal) * 10));
+              setFont(850, 24, "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace");
+              ctx.fillStyle = row.paceDelta >= 0 ? "#65e5ad" : "#ff9292";
+              ctx.textAlign = "right";
+              ctx.fillText(fmtSigned(row.paceDelta ?? 0), cardX + cardW - 17, cardY + 55 + ((1 - rowReveal) * 10));
+              ctx.textAlign = "left";
+              ctx.restore();
+            });
+          } else if (normalizedMode === "analysis") {
+            drawInsightCard({ x: 38, y: cardY, title: "Projected finish", value: fmtSigned(projectedFinish * metricCount), detail: `At the Day ${today} run rate`, accent: "#a78bfa", reveal: watchReveal });
+            drawInsightCard({ x: 337, y: cardY, title: "Projected vs target", value: fmtSigned(projectedTargetGap * metricCount), detail: projectedTargetGap >= 0 ? "Projected above club target" : "Projected below club target", accent: projectedTargetGap >= 0 ? "#34d399" : "#f87171", valueColor: projectedTargetGap >= 0 ? "#65e5ad" : "#ff9292", reveal: watchReveal });
+            drawInsightCard({ x: 636, y: cardY, title: "Daily pace needed", value: fmtSigned(dailyNeeded * metricCount), detail: remainingDays > 0 ? `Across ${remainingDays} days remaining` : "Month complete", accent: "#60a5fa", reveal: watchReveal });
+          } else {
+            drawInsightCard({ x: 38, y: cardY, title: "Team on track", value: `${Math.round(report.onTrack * watchReveal)}/${activeCount}`, detail: `${Math.round((report.onTrack / Math.max(1, activeCount)) * 100)}% meeting elapsed pace`, accent: "#34d399", valueColor: "#65e5ad", reveal: watchReveal });
+            drawInsightCard({ x: 337, y: cardY, title: "Month leader", value: topMonthly?.name || "—", detail: topMonthly ? `${fmtSigned(topMonthly.monthlyGain)} this month` : "No member data", accent: tc.text, reveal: watchReveal });
+            drawInsightCard({ x: 636, y: cardY, title: "Today's leader", value: topDaily?.name || "—", detail: topDaily ? `${fmtSigned(topDaily.dailyGain)} today` : "No member data", accent: "#60a5fa", reveal: watchReveal });
+          }
           ctx.restore();
 
           setFont(650, 12);
@@ -2778,26 +2855,88 @@ const { useState, useEffect, useRef } = React;
         });
       }
 
-      async function exportAnimatedDailyGif() {
-        if (animationExportState === "rendering" || animationExportState === "copying") return;
+      function getAnimationAsset(mode = animationReportMode) {
+        const normalizedMode = ["overall", "attention", "analysis"].includes(mode) ? mode : "overall";
+        const suffix = normalizedMode === "overall"
+          ? "daily-highlight"
+          : normalizedMode === "attention"
+            ? "needs-attention"
+            : "deeper-analysis";
+        const label = normalizedMode === "overall"
+          ? "Overall Performance"
+          : normalizedMode === "attention"
+            ? "Needs Attention"
+            : "Deeper Analysis";
+        const filename = `${safeFilename(club.name)}-${suffix}.gif`;
+        const cacheKey = formatLocalDateKey(dataDate);
+        return {
+          filename,
+          label,
+          url: `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${filename}?v=${cacheKey}`,
+        };
+      }
+
+      function downloadHostedAnimation(asset) {
+        const anchor = document.createElement("a");
+        anchor.href = asset.url;
+        anchor.download = asset.filename;
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
+      async function copyAnimatedGifAttachment() {
+        if (animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file") return;
+        const asset = getAnimationAsset();
         try {
           setErr("");
-          const assetFilename = `${safeFilename(club.name)}-daily-highlight.gif`;
+          setAnimationExportState("copying-file");
+          const supportsGifClipboard = Boolean(
+            navigator.clipboard?.write
+            && window.ClipboardItem
+            && (typeof window.ClipboardItem.supports !== "function" || window.ClipboardItem.supports("image/gif"))
+          );
+          if (!supportsGifClipboard) {
+            downloadHostedAnimation(asset);
+            setAnimationExportState("downloaded-attachment");
+            return;
+          }
+          const response = await fetch(asset.url, { cache: "no-store" });
+          if (!response.ok) throw new Error(`GIF download failed (${response.status}).`);
+          const sourceBlob = await response.blob();
+          const gifBlob = sourceBlob.type === "image/gif" ? sourceBlob : new Blob([sourceBlob], { type: "image/gif" });
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/gif": gifBlob }, { presentationStyle: "attachment" }),
+          ]);
+          setAnimationExportState("copied-file");
+        } catch (error) {
+          console.warn("Animated GIF clipboard copy was unavailable; downloading the attachment instead.", error);
+          downloadHostedAnimation(asset);
+          setAnimationExportState("downloaded-attachment");
+        } finally {
+          setTimeout(() => setAnimationExportState(false), 4200);
+        }
+      }
+
+      async function exportAnimatedDailyGif() {
+        if (animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file") return;
+        try {
+          setErr("");
+          const asset = getAnimationAsset();
           if (!animationBuildMode) {
             setAnimationExportState("copying");
-            const cacheKey = formatLocalDateKey(dataDate);
-            const assetUrl = `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${assetFilename}?v=${cacheKey}`;
             if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
-            await navigator.clipboard.writeText(assetUrl);
+            await navigator.clipboard.writeText(asset.url);
             setAnimationExportState("copied");
             return;
           }
 
           setAnimationExportState("rendering");
           const exportData = getDiscordExportData();
-          const gifBlob = await renderAnimatedDailyGif(exportData);
+          const gifBlob = await renderAnimatedDailyGif(exportData, animationReportMode);
           if (!gifBlob) throw new Error("The animated report could not be created.");
-          downloadBlob(gifBlob, assetFilename);
+          downloadBlob(gifBlob, asset.filename);
           setAnimationExportState("downloaded");
         } catch (error) {
           if (error?.name === "AbortError") setAnimationExportState(false);
@@ -4073,26 +4212,72 @@ const { useState, useEffect, useRef } = React;
                   <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : "📅 Generate Weekly Report + PNG"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
-                  <button
-                    style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState && animationExportState !== "rendering" ? "#059669" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
-                    onClick={exportAnimatedDailyGif}
-                    disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || (isArchiveView && !animationBuildMode) || animationExportState === "rendering" || animationExportState === "copying"}
-                    title={isArchiveView && !animationBuildMode ? "Hosted animation links are available for the live current month." : animationBuildMode ? "Build the hosted animated daily highlight." : "Copy the hosted GIF link, then paste it into Discord."}
-                  >
-                    {animationExportState === "rendering"
-                      ? "⏳ Rendering Animated GIF…"
-                      : animationExportState === "copying"
-                        ? "⏳ Copying GIF Link…"
-                        : animationExportState === "copied"
-                          ? "✓ GIF Link Copied — Paste in Discord"
-                        : animationExportState === "downloaded"
-                          ? "✓ Hosted GIF Built"
-                          : animationExportState === "error"
-                            ? "⚠ GIF Failed — Try Again"
-                            : animationBuildMode
-                              ? "🎞️ Build Hosted Animated Highlight"
-                              : "🎞️ Copy Animated Highlight for Discord"}
-                  </button>
+                  <div style={{ flexBasis: "100%", marginTop: 4, padding: "12px", border: "1px solid #a855f755", borderRadius: 12, background: "#a855f70c" }}>
+                    <div style={{ color: "#d8b4fe", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Animated Discord report</div>
+                    <div role="group" aria-label="Animated report mode" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
+                      {[
+                        { key: "overall", label: "Overall Performance", icon: "📈" },
+                        { key: "attention", label: "Needs Attention", icon: "⚠️" },
+                        { key: "analysis", label: "Deeper Analysis", icon: "🔎" },
+                      ].map((mode) => {
+                        const selected = animationReportMode === mode.key;
+                        return (
+                          <button
+                            key={mode.key}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              setAnimationReportMode(mode.key);
+                              setAnimationExportState(false);
+                            }}
+                            disabled={animationExportState === "rendering" || animationExportState === "copying-file"}
+                            style={{ ...S.btn(selected, selected ? "#a855f7" : "#6b7280"), minWidth: 168, justifyContent: "center" }}
+                          >
+                            {mode.icon} {mode.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                      {!animationBuildMode && (
+                        <button
+                          style={{ ...S.btn(true, animationExportState === "copied-file" || animationExportState === "downloaded-attachment" ? "#059669" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                          onClick={copyAnimatedGifAttachment}
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file"}
+                          title="Copies the animated GIF as an attachment when supported. Otherwise downloads it so you can drag it into Discord without showing a URL."
+                        >
+                          {animationExportState === "copying-file"
+                            ? "⏳ Preparing GIF Attachment…"
+                            : animationExportState === "copied-file"
+                              ? "✓ GIF Copied — Paste in Discord"
+                              : animationExportState === "downloaded-attachment"
+                                ? "✓ GIF Downloaded — Drag into Discord"
+                                : `📎 Copy ${getAnimationAsset().label} GIF (No Visible Link)`}
+                        </button>
+                      )}
+                      <button
+                        style={{ ...S.btn(false, animationExportState === "error" ? "#ef4444" : animationExportState && animationExportState !== "rendering" ? "#059669" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
+                        onClick={exportAnimatedDailyGif}
+                        disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || (isArchiveView && !animationBuildMode) || animationExportState === "rendering" || animationExportState === "copying" || animationExportState === "copying-file"}
+                        title={isArchiveView && !animationBuildMode ? "Hosted animation links are available for the live current month." : animationBuildMode ? `Build the hosted ${getAnimationAsset().label} GIF.` : "Copy the hosted GIF link, then paste it into Discord."}
+                      >
+                        {animationExportState === "rendering"
+                          ? "⏳ Rendering Animated GIF…"
+                          : animationExportState === "copying"
+                            ? "⏳ Copying GIF Link…"
+                            : animationExportState === "copied"
+                              ? "✓ GIF Link Copied — Paste in Discord"
+                            : animationExportState === "downloaded"
+                              ? "✓ Hosted GIF Built"
+                              : animationExportState === "error"
+                                ? "⚠ GIF Failed — Try Again"
+                                : animationBuildMode
+                                  ? `🎞️ Build Hosted ${getAnimationAsset().label} GIF`
+                                  : "🔗 Copy Hosted GIF Link"}
+                      </button>
+                    </div>
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>The attachment action hides the URL. If this browser cannot place animated GIF data on the clipboard, it downloads the file for drag-and-drop into Discord.</div>}
+                  </div>
                 </div>
               )}
           {err && (<div style={{ background: "#450a0a", border: "1px solid #7f1d1d", borderRadius: 12, padding: "12px 16px", marginBottom: 14, color: "#fca5a5", fontSize: 12 }}>⚠️ {err}</div>)}
