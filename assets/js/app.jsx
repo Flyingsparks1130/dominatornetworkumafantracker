@@ -2784,7 +2784,7 @@ const { useState, useEffect, useRef } = React;
           const exportData = getDiscordExportData();
           const gifBlob = await renderAnimatedDailyGif(exportData);
           if (!gifBlob) throw new Error("The animated report could not be created.");
-          const filename = `${safeFilename(club.name)}-daily-highlight-${dateToKey(dataDate)}.gif`;
+          const filename = `${safeFilename(club.name)}-daily-highlight-${formatLocalDateKey(dataDate)}.gif`;
           const file = new File([gifBlob], filename, { type: "image/gif" });
           const shareData = { files: [file] };
           if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
