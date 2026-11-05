@@ -2224,7 +2224,7 @@ const { useState, useEffect, useRef } = React;
         const headerHeight = 162;
         const metricHeight = 152;
         const metricGap = 14;
-        const statusHeight = 104;
+        const statusHeight = 76;
         const tableHeaderHeight = 66;
         const rowHeight = 68;
         const footerHeight = 78;
@@ -2355,25 +2355,35 @@ const { useState, useEffect, useRef } = React;
         drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.paceLabel, detail: report.pacePositive ? "Ahead of elapsed target" : "Behind elapsed target", accent: report.pacePositive ? "#34d399" : "#f87171", detailColor: report.pacePositive ? "#65e5ad" : "#ff9292" });
 
         y += metricHeight + sectionGap;
-        fillRounded(outerPadding, y, metricsWidth, statusHeight, 18, "#141526", "#282a42");
-        drawLabel("Member health", outerPadding + 22, y + 20);
+        fillRounded(outerPadding, y, metricsWidth, statusHeight, 16, "#141526", "#282a42");
+        const statusCenterY = y + (statusHeight / 2);
+        ctx.textBaseline = "middle";
+        drawLabel("Member health", outerPadding + 22, statusCenterY);
         const statusItems = [
           { label: "ON TRACK", value: report.onTrack, color: "#34d399" },
           { label: "BEHIND", value: report.behind, color: "#fbbf24" },
           { label: "CRITICAL", value: report.critical, color: "#f87171" },
         ];
+        const healthLabelWidth = 220;
+        const healthGroupWidth = (metricsWidth - healthLabelWidth) / statusItems.length;
         statusItems.forEach((item, index) => {
-          const x = outerPadding + 280 + (index * 240);
+          const groupCenterX = outerPadding + healthLabelWidth + (healthGroupWidth * (index + 0.5));
+          const x = groupCenterX - 60;
           ctx.fillStyle = item.color;
           ctx.beginPath();
-          ctx.arc(x, y + 54, 7, 0, Math.PI * 2);
+          ctx.arc(x, statusCenterY, 7, 0, Math.PI * 2);
           ctx.fill();
           setFont(800, 32);
-          ctx.fillText(String(item.value), x + 18, y + 32);
+          ctx.fillStyle = item.color;
+          ctx.textAlign = "right";
+          ctx.fillText(String(item.value), x + 62, statusCenterY);
           setFont(700, 16);
           ctx.fillStyle = "#9297af";
-          ctx.fillText(item.label, x + 67, y + 43);
+          ctx.textAlign = "left";
+          ctx.fillText(item.label, x + 75, statusCenterY);
         });
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
 
         y += statusHeight + sectionGap;
         const column = {
