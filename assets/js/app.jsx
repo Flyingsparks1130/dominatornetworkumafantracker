@@ -2787,7 +2787,8 @@ const { useState, useEffect, useRef } = React;
           const filename = `${safeFilename(club.name)}-daily-highlight-${formatLocalDateKey(dataDate)}.gif`;
           const file = new File([gifBlob], filename, { type: "image/gif" });
           const shareData = { files: [file] };
-          if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+          const prefersNativeShare = /Android|iPad|iPhone|iPod/i.test(navigator.userAgent);
+          if (prefersNativeShare && navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
             await navigator.share(shareData);
             setAnimationExportState("shared");
           } else {
