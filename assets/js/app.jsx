@@ -2641,6 +2641,8 @@ const { useState, useEffect, useRef } = React;
           return clamped * clamped * (3 - (2 * clamped));
         };
         const lerp = (from, to, amount) => from + ((to - from) * amount);
+        const frameDelay = 120;
+        const frameSeconds = (frame) => (frame * frameDelay) / 1000;
         const alpha = (hex, opacity) => {
           const safeOpacity = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, "0");
           return hex + safeOpacity;
@@ -2721,12 +2723,13 @@ const { useState, useEffect, useRef } = React;
           ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 118, 72);
 
           const hostVariants = hostVariantSets[chapter.kind] || [animationHost].filter(Boolean);
-          const speechCycle = Math.floor(frame / 3) % 8;
+          const time = frameSeconds(frame);
+          const speechCycle = Math.floor(time / 0.78) % 8;
           const chapterHost = hostVariants[speechCycle >= 2 && speechCycle <= 4 ? 1 : 0] || hostVariants[0] || animationHost;
           if (chapterHost) {
-            const bob = Math.sin((frame * 0.38) + (chapter.majorPage * 1.7)) * 3.5;
-            const sway = Math.sin((frame * 0.19) + chapter.majorPage) * 0.035;
-            const pulse = 1 + (Math.sin((frame * 0.31) + chapter.majorPage) * 0.022);
+            const bob = Math.sin((time * 1.46) + (chapter.majorPage * 1.7)) * 3.5;
+            const sway = Math.sin((time * 0.73) + chapter.majorPage) * 0.035;
+            const pulse = 1 + (Math.sin((time * 1.19) + chapter.majorPage) * 0.022);
             const hostHeight = 94;
             const hostWidth = hostHeight * (chapterHost.width / chapterHost.height);
             fillRounded(678, 28 + (bob * 0.45), 162, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
@@ -2734,7 +2737,7 @@ const { useState, useEffect, useRef } = React;
             ctx.fillStyle = "#eef0f8";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            const speechDots = speechCycle < 5 ? ".".repeat((Math.floor(frame / 2) % 3) + 1) : "";
+            const speechDots = speechCycle < 5 ? ".".repeat((Math.floor(time / 0.52) % 3) + 1) : "";
             ctx.fillText(chapter.bubble + speechDots, 759, 46 + (bob * 0.45));
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
@@ -2966,10 +2969,12 @@ const { useState, useEffect, useRef } = React;
           ctx.fillText(forecastGap >= 0 ? "Projected above target" : "Projected below target", 54, 313);
 
           fillRounded(54, 346, 286, 62, 12, "#17182a", "#2b2d47");
-          drawLabel("CURRENT FORECAST", 70, 359, "#a78bfa");
+          drawLabel("CURRENT FORECAST", 197, 359, "#a78bfa", "center");
           setFont(850, 24);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(fmt(baseProjection), 70, 379);
+          ctx.textAlign = "center";
+          ctx.fillText(fmt(baseProjection), 197, 379);
+          ctx.textAlign = "left";
 
           setFont(650, 12);
           ctx.fillStyle = "#969bb2";
@@ -3057,7 +3062,8 @@ const { useState, useEffect, useRef } = React;
         };
 
         const drawAcquisitionReveal = (progress, frame, visibility = 1) => {
-          const revealCycle = Math.floor(frame / 3) % 7;
+          const time = frameSeconds(frame);
+          const revealCycle = Math.floor(time / 0.78) % 7;
           const revealHost = revealCycle >= 2 && revealCycle <= 4
             ? (celebrationTalkHost || celebrationHost || animationHost)
             : (celebrationHost || animationHost);
@@ -3065,7 +3071,7 @@ const { useState, useEffect, useRef } = React;
           const reveal = smoothstep(progress);
           const entranceScale = lerp(0.56, 1, reveal);
           const lift = lerp(72, 0, reveal);
-          const bounce = Math.sin(frame * 0.48) * 3;
+          const bounce = Math.sin(time * 1.85) * 3;
           const hostHeight = 350;
           const hostWidth = hostHeight * (revealHost.width / revealHost.height);
 
@@ -3081,7 +3087,7 @@ const { useState, useEffect, useRef } = React;
           ctx.translate(480, 276 + lift + bounce);
           ctx.scale(entranceScale, entranceScale);
           for (let ray = 0; ray < 12; ray += 1) {
-            const angle = ((Math.PI * 2) / 12) * ray + (frame * 0.018);
+            const angle = ((Math.PI * 2) / 12) * ray + (time * 0.069);
             const inner = 118;
             const outer = 210 + ((ray % 2) * 34);
             ctx.strokeStyle = alpha(ray % 2 ? "#f4c45f" : "#ffffff", 0.2 * reveal);
@@ -3108,6 +3114,7 @@ const { useState, useEffect, useRef } = React;
         };
 
         const drawStartingGate = (openAmount, frame) => {
+          const time = frameSeconds(frame);
           const open = clamp01(openAmount);
           const doorTravel = 500 * open;
           const leftX = -doorTravel;
@@ -3154,7 +3161,7 @@ const { useState, useEffect, useRef } = React;
             const titleOpacity = 1 - (open / 0.84);
             ctx.save();
             ctx.globalAlpha = titleOpacity;
-            const pulse = 1 + (Math.sin(frame * 0.55) * 0.025);
+            const pulse = 1 + (Math.sin(time * 2.12) * 0.025);
             ctx.translate(width / 2, height / 2);
             ctx.scale(pulse, pulse);
             ctx.translate(-width / 2, -height / 2);
@@ -3171,7 +3178,7 @@ const { useState, useEffect, useRef } = React;
             ctx.fillStyle = "#c7cad9";
             ctx.fillText("WITH UMA HOST · GENTILDONNA", 480, 303);
 
-            const litGateCount = Math.min(10, Math.max(0, Math.floor(frame) + 1));
+            const litGateCount = Math.min(10, Math.max(0, Math.floor(time / 0.26) + 1));
             for (let gateIndex = 0; gateIndex < 10; gateIndex += 1) {
               const gateX = 242 + (gateIndex * 49);
               const lit = gateIndex < litGateCount;
@@ -3217,15 +3224,14 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
-        const introFrames = 28;
-        const sceneLength = 26;
-        const transitionStart = 16;
-        const transitionFrames = 10;
+        const introFrames = 42;
+        const sceneLength = 46;
+        const transitionStart = 28;
+        const transitionFrames = 18;
         const totalFrames = introFrames + (storyScenes.length * sceneLength);
-        const frameDelay = 260;
         const gif = new window.GIF({
           workers: 2,
-          quality: 16,
+          quality: 20,
           width,
           height,
           repeat: 0,
@@ -3241,9 +3247,9 @@ const { useState, useEffect, useRef } = React;
 
           if (frame < introFrames) {
             drawStoryScene(0, frame, 1);
-            const openingProgress = frame < 11 ? 0 : smoothstep(clamp01((frame - 11) / 10));
-            const revealProgress = smoothstep(clamp01((frame - 13) / 8));
-            const revealVisibility = 1 - smoothstep(clamp01((frame - 25) / 2));
+            const openingProgress = frame < 16 ? 0 : smoothstep(clamp01((frame - 16) / 20));
+            const revealProgress = smoothstep(clamp01((frame - 18) / 16));
+            const revealVisibility = 1 - smoothstep(clamp01((frame - 38) / 3));
             drawAcquisitionReveal(revealProgress, frame, revealVisibility);
             drawStartingGate(openingProgress, frame);
           } else {
@@ -3282,7 +3288,7 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-ten-gate-talk1";
+        const cacheKey = formatLocalDateKey(dataDate) + "-smooth-story2";
         return {
           filename,
           label: "Animated Insight Story",
