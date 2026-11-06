@@ -1475,6 +1475,7 @@ const { useState, useEffect, useRef } = React;
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [animationExportState, setAnimationExportState] = useState(false);
+      const [animationLinkState, setAnimationLinkState] = useState(false);
       const [animationDragAsset, setAnimationDragAsset] = useState(null);
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
@@ -2553,8 +2554,15 @@ const { useState, useEffect, useRef } = React;
           image.onerror = () => resolve(null);
           image.src = url;
         });
-        const tierIcon = await loadCanvasImage(getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath));
-        const animationHost = await loadCanvasImage("./assets/images/animation-hosts/gentildonna.png");
+        const [tierIcon, animationHost, celebrationHost, focusHost, strategicHost, dashHost] = await Promise.all([
+          loadCanvasImage(getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath)),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-celebrate.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-focus.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-strategic.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-dash.png"),
+        ]);
+        const chapterHosts = [celebrationHost || animationHost, focusHost || animationHost, strategicHost || animationHost];
 
         const rows = exportData.tableRows;
         const activeCount = rows.length;
@@ -2694,19 +2702,27 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = "#a8acc1";
           ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 118, 72);
 
-          if (animationHost) {
-            const bob = Math.sin(frame * 0.32) * 3;
-            const hostHeight = 88;
-            const hostWidth = hostHeight * (animationHost.width / animationHost.height);
-            fillRounded(677, 28 + bob, 166, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
+          const chapterHost = chapterHosts[chapterIndex] || animationHost;
+          if (chapterHost) {
+            const bob = Math.sin((frame * 0.38) + (chapterIndex * 1.7)) * 3.5;
+            const sway = Math.sin((frame * 0.19) + chapterIndex) * 0.035;
+            const pulse = 1 + (Math.sin((frame * 0.31) + chapterIndex) * 0.022);
+            const hostHeight = 94;
+            const hostWidth = hostHeight * (chapterHost.width / chapterHost.height);
+            fillRounded(678, 28 + (bob * 0.45), 162, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
             setFont(750, 12);
             ctx.fillStyle = "#eef0f8";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(chapter.bubble, 760, 46 + bob);
+            ctx.fillText(chapter.bubble, 759, 46 + (bob * 0.45));
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
-            ctx.drawImage(animationHost, 862, 5 + bob, hostWidth, hostHeight);
+            ctx.save();
+            ctx.translate(883 + (hostWidth / 2), 50 + bob);
+            ctx.rotate(sway);
+            ctx.scale(pulse, pulse);
+            ctx.drawImage(chapterHost, -hostWidth / 2, -hostHeight / 2, hostWidth, hostHeight);
+            ctx.restore();
           }
 
           ctx.strokeStyle = "#25273d";
@@ -2721,19 +2737,19 @@ const { useState, useEffect, useRef } = React;
           drawLabel(chapter.eyebrow, 32, 122, chapter.accent);
           setFont(900, 28);
           ctx.fillStyle = "#f8fafc";
-          ctx.fillText(chapter.title, 32, 140);
+          ctx.fillText(fitText(chapter.title, 690), 32, 143);
           setFont(640, 13);
           ctx.fillStyle = "#a7abc0";
-          ctx.fillText(chapter.subtitle, 32, 177);
+          ctx.fillText(fitText(chapter.subtitle, 690), 32, 181);
 
           chapters.forEach((entry, index) => {
             const x = 772 + (index * 52);
-            fillRounded(x, 143, 42, 6, 3, index === sceneIndex ? entry.accent : "#292b43");
+            fillRounded(x, 145, 42, 6, 3, index === sceneIndex ? entry.accent : "#292b43");
           });
           setFont(750, 11);
           ctx.fillStyle = chapter.accent;
           ctx.textAlign = "right";
-          ctx.fillText((sceneIndex + 1) + " OF 3", 928, 164);
+          ctx.fillText((sceneIndex + 1) + " OF 3", 928, 166);
           ctx.textAlign = "left";
         };
         const drawPerformanceScene = () => {
@@ -3004,6 +3020,54 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
+        const drawAcquisitionReveal = (progress, frame, visibility = 1) => {
+          const revealHost = celebrationHost || animationHost;
+          if (!revealHost || visibility <= 0.01) return;
+          const reveal = smoothstep(progress);
+          const entranceScale = lerp(0.56, 1, reveal);
+          const lift = lerp(72, 0, reveal);
+          const bounce = Math.sin(frame * 0.48) * 3;
+          const hostHeight = 350;
+          const hostWidth = hostHeight * (revealHost.width / revealHost.height);
+
+          ctx.save();
+          ctx.globalAlpha = visibility;
+          const spotlight = ctx.createRadialGradient(480, 264, 0, 480, 264, 330);
+          spotlight.addColorStop(0, alpha("#fff7cf", 0.36 * reveal));
+          spotlight.addColorStop(0.34, alpha("#f4c45f", 0.2 * reveal));
+          spotlight.addColorStop(1, "#00000000");
+          ctx.fillStyle = spotlight;
+          ctx.fillRect(100, 0, 760, height);
+
+          ctx.translate(480, 276 + lift + bounce);
+          ctx.scale(entranceScale, entranceScale);
+          for (let ray = 0; ray < 12; ray += 1) {
+            const angle = ((Math.PI * 2) / 12) * ray + (frame * 0.018);
+            const inner = 118;
+            const outer = 210 + ((ray % 2) * 34);
+            ctx.strokeStyle = alpha(ray % 2 ? "#f4c45f" : "#ffffff", 0.2 * reveal);
+            ctx.lineWidth = ray % 2 ? 3 : 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+            ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+            ctx.stroke();
+          }
+          ctx.drawImage(revealHost, -hostWidth / 2, -hostHeight / 2, hostWidth, hostHeight);
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = visibility * reveal;
+          const plateY = 432 + (lift * 0.18);
+          fillRounded(312, plateY, 336, 67, 18, "#11121fee", "#f4c45faa");
+          drawLabel("DAILY STORY HOST", 480, plateY + 11, "#f4c45f", "center");
+          setFont(900, 28);
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "center";
+          ctx.fillText("GENTILDONNA", 480, plateY + 29);
+          ctx.textAlign = "left";
+          ctx.restore();
+        };
+
         const drawStartingGate = (openAmount, frame) => {
           const open = clamp01(openAmount);
           const doorTravel = 500 * open;
@@ -3079,20 +3143,21 @@ const { useState, useEffect, useRef } = React;
         };
 
         const drawFlyingTransition = (fromIndex, toIndex, progress) => {
-          if (!animationHost) return;
+          const transitionHost = dashHost || animationHost;
+          if (!transitionHost) return;
           const arc = Math.sin(progress * Math.PI);
-          const flyHeight = 145 + (arc * 38);
-          const flyWidth = flyHeight * (animationHost.width / animationHost.height);
-          const flyX = lerp(900, -flyWidth - 20, progress);
-          const flyY = 230 - (arc * 92);
+          const flyHeight = 126 + (arc * 22);
+          const flyWidth = flyHeight * (transitionHost.width / transitionHost.height);
+          const flyX = lerp(width + 36, -flyWidth - 36, progress);
+          const flyY = 248 - (arc * 78) + (Math.sin(progress * Math.PI * 4) * 5);
           ctx.save();
           ctx.globalAlpha = Math.min(1, arc * 1.5);
-          for (let trail = 3; trail >= 1; trail -= 1) {
-            ctx.globalAlpha = arc * (0.06 * trail);
-            ctx.drawImage(animationHost, flyX + (trail * 34), flyY + (trail * 7), flyWidth, flyHeight);
+          for (let trail = 4; trail >= 1; trail -= 1) {
+            ctx.globalAlpha = arc * (0.045 * trail);
+            ctx.drawImage(transitionHost, flyX + (trail * 38), flyY + (trail * 5), flyWidth, flyHeight);
           }
           ctx.globalAlpha = Math.min(1, arc * 1.5);
-          ctx.drawImage(animationHost, flyX, flyY, flyWidth, flyHeight);
+          ctx.drawImage(transitionHost, flyX, flyY, flyWidth, flyHeight);
 
           const bubbleAlpha = Math.max(0, 1 - Math.abs(progress - 0.5) * 3.2);
           if (bubbleAlpha > 0) {
@@ -3109,12 +3174,12 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
-        const introFrames = 10;
+        const introFrames = 18;
         const sceneLength = 20;
-        const transitionStart = 14;
-        const transitionFrames = 5;
+        const transitionStart = 13;
+        const transitionFrames = 6;
         const totalFrames = introFrames + (chapters.length * sceneLength);
-        const frameDelay = 210;
+        const frameDelay = 250;
         const gif = new window.GIF({
           workers: 2,
           quality: 16,
@@ -3133,7 +3198,10 @@ const { useState, useEffect, useRef } = React;
 
           if (frame < introFrames) {
             drawStoryScene(0, frame, 1);
-            const openingProgress = frame < 3 ? 0 : smoothstep(clamp01((frame - 3) / (introFrames - 4)));
+            const openingProgress = frame < 3 ? 0 : smoothstep(clamp01((frame - 3) / 7));
+            const revealProgress = smoothstep(clamp01((frame - 6) / 5));
+            const revealVisibility = 1 - smoothstep(clamp01((frame - 14) / 3));
+            drawAcquisitionReveal(revealProgress, frame, revealVisibility);
             drawStartingGate(openingProgress, frame);
           } else {
             const storyFrame = frame - introFrames;
@@ -3171,12 +3239,37 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-gate3";
+        const cacheKey = formatLocalDateKey(dataDate) + "-acquisition1";
         return {
           filename,
           label: "Animated Insight Story",
           cacheKey: `${club.id || club.name}-${cacheKey}`,
         };
+      }
+
+      function getHostedAnimationUrl(asset = getAnimationAsset()) {
+        const version = encodeURIComponent(formatLocalDateKey(dataDate) + "-acquisition1");
+        return `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${encodeURIComponent(asset.filename)}?v=${version}`;
+      }
+
+      async function copyHostedAnimationLink() {
+        if (animationLinkState === "copying") return;
+        try {
+          setErr("");
+          setAnimationLinkState("copying");
+          const asset = getAnimationAsset();
+          const hostedUrl = getHostedAnimationUrl(asset);
+          const maskedLink = `[🎞️ ${club.name} — Animated Daily Story](${hostedUrl})`;
+          if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
+          await navigator.clipboard.writeText(maskedLink);
+          setAnimationLinkState("copied");
+        } catch (error) {
+          console.error("Animated story link copy failed", error);
+          setErr(error?.message || "The clean animation link could not be copied. Refresh and try again.");
+          setAnimationLinkState("error");
+        } finally {
+          window.setTimeout(() => setAnimationLinkState(false), 5200);
+        }
       }
 
       async function loadAnimationFile(asset = getAnimationAsset()) {
@@ -4575,24 +4668,40 @@ const { useState, useEffect, useRef } = React;
                                 : "🎞️ Build Hosted Animated Insight Story"}
                         </button>
                       ) : (
-                        <button
-                          style={{ ...S.btn(true, ["ready-drag", "dragging-file"].includes(animationExportState) ? "#059669" : animationExportState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
-                          onClick={prepareAnimatedGifForDrag}
-                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
-                          title="Builds the animation locally, then creates a draggable file card for Discord."
-                        >
-                          {animationExportState === "rendering"
-                            ? "⏳ Building Animated GIF…"
-                            : animationExportState === "preparing-file"
-                            ? "⏳ Preparing Animated GIF…"
-                            : animationExportState === "ready-drag"
-                              ? "✓ Animation Ready — Drag Below"
-                              : animationExportState === "dragging-file"
-                                ? "↗ Drop Animation into Discord"
-                              : animationExportState === "error"
-                                ? "⚠ Animation Failed — Try Again"
-                                : "🎞️ Build Animation for Discord"}
-                        </button>
+                        <>
+                          <button
+                            style={{ ...S.btn(true, animationLinkState === "copied" ? "#059669" : animationLinkState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                            onClick={copyHostedAnimationLink}
+                            disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || animationLinkState === "copying"}
+                            title="Copies a Discord masked link, so the GIF URL is hidden behind a clean title."
+                          >
+                            {animationLinkState === "copying"
+                              ? "⏳ Copying Clean GIF Link…"
+                              : animationLinkState === "copied"
+                                ? "✓ Clean Link Copied — Paste in Discord"
+                                : animationLinkState === "error"
+                                  ? "⚠ Link Copy Failed — Try Again"
+                                  : "📋 Copy Clean Animated Story Link"}
+                          </button>
+                          <button
+                            style={{ ...S.btn(false, ["ready-drag", "dragging-file"].includes(animationExportState) ? "#059669" : animationExportState === "error" ? "#ef4444" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
+                            onClick={prepareAnimatedGifForDrag}
+                            disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
+                            title="Builds the current animation locally, then creates a draggable file card for Discord."
+                          >
+                            {animationExportState === "rendering"
+                              ? "⏳ Building Current GIF…"
+                              : animationExportState === "preparing-file"
+                              ? "⏳ Preparing Current GIF…"
+                              : animationExportState === "ready-drag"
+                                ? "✓ Current GIF Ready — Drag Below"
+                                : animationExportState === "dragging-file"
+                                  ? "↗ Drop Current GIF into Discord"
+                                : animationExportState === "error"
+                                  ? "⚠ Animation Failed — Try Again"
+                                  : "↗ Build + Drag Current GIF"}
+                          </button>
+                        </>
                       )}
                       {!animationBuildMode && animationDragAsset?.cacheKey === getAnimationAsset().cacheKey && (
                         <a
@@ -4634,7 +4743,7 @@ const { useState, useEffect, useRef } = React;
                         </a>
                       )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>Desktop Edge/Chrome: build once, then drag the ready card into Discord. Nothing is downloaded and no share window opens. On phones and tablets, use the Daily Report PNG button for reliable copy and paste.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>Copy Clean Link works with Ctrl+V and hides the raw URL behind a Discord title. For the exact freshly generated GIF, build once and drag the ready card into Discord. Browsers guarantee PNG clipboard images, but animated GIF clipboard support still varies by browser and operating system.</div>}
                   </div>
                 </div>
               )}
