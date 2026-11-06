@@ -34,6 +34,18 @@ To give one club a temporary exception, add `"targetOverride": 123000000` to tha
 
 The frontend and Chronogenesis updater both define 15 clubs. Dominate (`147185239`) is assigned to A+ and inherits the shared 90 million target. All A clubs inherit the shared 65 million target.
 
+## Animated daily-report host
+
+The animated report assigns each club a deterministic host for the day. The choice varies by club and date but remains stable when the same report is regenerated.
+
+To pin a club to a preferred host, add an `animationHost` value to that club in `config/frontend.json`:
+
+```json
+"animationHost": "oguri-cap"
+```
+
+Supported values are `gentildonna`, `symboli-rudolf`, `narita-top-road`, `tm-opera-o`, `admire-vega`, `oguri-cap`, and `mejiro-palmer`. Remove the property to restore automatic daily selection.
+
 ## Protected Chronogenesis boundary
 
 The following operational paths remain the existing source of truth and should not be casually refactored:
