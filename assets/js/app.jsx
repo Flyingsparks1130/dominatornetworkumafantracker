@@ -1475,6 +1475,7 @@ const { useState, useEffect, useRef } = React;
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [animationExportState, setAnimationExportState] = useState(false);
+      const [animationDragAsset, setAnimationDragAsset] = useState(null);
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
       const [rankThresholdError, setRankThresholdError] = useState("");
@@ -3206,12 +3207,39 @@ const { useState, useEffect, useRef } = React;
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(reader.error || new Error("The animated report could not be prepared for the clipboard."));
+          reader.onerror = () => reject(reader.error || new Error("The animated report could not be prepared for dragging."));
           reader.readAsDataURL(file);
         });
       }
 
-      async function copyAnimatedGifAttachment() {
+      function handleAnimationDragStart(event) {
+        if (!animationDragAsset?.file || !animationDragAsset?.dataUrl) {
+          event.preventDefault();
+          return;
+        }
+
+        event.dataTransfer.effectAllowed = "copy";
+        try {
+          event.dataTransfer.items.add(animationDragAsset.file);
+        } catch (error) {
+          console.info("Direct drag file data was unavailable; using the browser DownloadURL handoff.", error);
+        }
+        try {
+          event.dataTransfer.setData(
+            "DownloadURL",
+            `image/gif:${animationDragAsset.filename}:${animationDragAsset.dataUrl}`
+          );
+        } catch (error) {
+          console.info("The browser DownloadURL drag format was unavailable; using the attached File object.", error);
+        }
+        setAnimationExportState("dragging-file");
+      }
+
+      function handleAnimationDragEnd() {
+        setAnimationExportState("ready-drag");
+      }
+
+      async function prepareAnimatedGifForDrag() {
         const busyStates = ["rendering", "preparing-file"];
         if (busyStates.includes(animationExportState)) return;
 
@@ -3221,30 +3249,12 @@ const { useState, useEffect, useRef } = React;
           const hasCachedFile = animationAssetCacheRef.current.key === asset.cacheKey && animationAssetCacheRef.current.file;
           setAnimationExportState(hasCachedFile ? "preparing-file" : "rendering");
           const file = await loadAnimationFile(asset);
-          if (!navigator.clipboard?.write || !window.ClipboardItem) {
-            throw new Error("This browser does not expose rich clipboard writing. Update the browser and try again.");
-          }
-
           const dataUrl = await readAnimationFileAsDataUrl(file);
-          const representations = {
-            "text/html": new Blob([
-              `<img src="${dataUrl}" alt="Animated daily club report" data-filename="${asset.filename}">`,
-            ], { type: "text/html" }),
-            "text/plain": new Blob([""], { type: "text/plain" }),
-          };
-          const customGifType = "web image/gif";
-          if (typeof window.ClipboardItem.supports === "function" && window.ClipboardItem.supports(customGifType)) {
-            representations[customGifType] = file;
-          }
-
-          await navigator.clipboard.write([
-            new ClipboardItem(representations, { presentationStyle: "attachment" }),
-          ]);
-          setAnimationExportState("copied-file");
-          window.setTimeout(() => setAnimationExportState(false), 6500);
+          setAnimationDragAsset({ file, filename: asset.filename, dataUrl, cacheKey: asset.cacheKey });
+          setAnimationExportState("ready-drag");
         } catch (error) {
-          console.error("Animated clipboard copy failed", error);
-          setErr(error?.message || "Animated clipboard copy failed. Refresh and try again.");
+          console.error("Animated drag file preparation failed", error);
+          setErr(error?.message || "Animated report preparation failed. Refresh and try again.");
           setAnimationExportState("error");
           window.setTimeout(() => setAnimationExportState(false), 5200);
         }
@@ -4566,24 +4576,65 @@ const { useState, useEffect, useRef } = React;
                         </button>
                       ) : (
                         <button
-                          style={{ ...S.btn(true, animationExportState === "copied-file" ? "#059669" : animationExportState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
-                          onClick={copyAnimatedGifAttachment}
+                          style={{ ...S.btn(true, ["ready-drag", "dragging-file"].includes(animationExportState) ? "#059669" : animationExportState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                          onClick={prepareAnimatedGifForDrag}
                           disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
-                          title="Builds an animated clipboard image, then copies it for direct paste into Discord."
+                          title="Builds the animation locally, then creates a draggable file card for Discord."
                         >
                           {animationExportState === "rendering"
                             ? "⏳ Building Animated GIF…"
                             : animationExportState === "preparing-file"
                             ? "⏳ Preparing Animated GIF…"
-                                                        : animationExportState === "copied-file"
-                              ? "✓ Animation Copied — Ctrl+V in Discord"
+                            : animationExportState === "ready-drag"
+                              ? "✓ Animation Ready — Drag Below"
+                              : animationExportState === "dragging-file"
+                                ? "↗ Drop Animation into Discord"
                               : animationExportState === "error"
-                                ? "⚠ Copy Failed — Try Again"
-                                : "📋 Copy Animated Report"}
+                                ? "⚠ Animation Failed — Try Again"
+                                : "🎞️ Build Animation for Discord"}
                         </button>
                       )}
+                      {!animationBuildMode && animationDragAsset?.cacheKey === getAnimationAsset().cacheKey && (
+                        <a
+                          href={animationDragAsset.dataUrl}
+                          download={animationDragAsset.filename}
+                          draggable
+                          onClick={(event) => event.preventDefault()}
+                          onDragStart={handleAnimationDragStart}
+                          onDragEnd={handleAnimationDragEnd}
+                          aria-label="Drag the animated report file into Discord"
+                          title="Drag this card into Discord's message box. Clicking it does not download anything."
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            minWidth: 280,
+                            padding: "10px 13px",
+                            borderRadius: 11,
+                            border: "1px dashed #a855f7",
+                            background: "linear-gradient(135deg, #2e1065cc, #111827ee)",
+                            color: "#f5e9ff",
+                            cursor: "grab",
+                            textDecoration: "none",
+                            userSelect: "none",
+                          }}
+                        >
+                          <img
+                            src={animationDragAsset.dataUrl}
+                            alt="Animated report preview"
+                            draggable={false}
+                            style={{ width: 64, height: 36, objectFit: "cover", borderRadius: 5, border: "1px solid #7e22ce" }}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 900 }}>↗ Drag Animation into Discord</div>
+                            <div style={{ color: "#c4b5fd", fontSize: 9.5, marginTop: 2 }}>
+                              Drop in the message box · {(animationDragAsset.file.size / (1024 * 1024)).toFixed(1)} MB · nothing saved
+                            </div>
+                          </div>
+                        </a>
+                      )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One click builds the animation and places it on the clipboard as a Discord-ready image. Then paste normally in Discord. No link, download, or share sheet is used.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>Desktop Edge/Chrome: build once, then drag the ready card into Discord. Nothing is downloaded and no share window opens. On phones and tablets, use the Daily Report PNG button for reliable copy and paste.</div>}
                   </div>
                 </div>
               )}
