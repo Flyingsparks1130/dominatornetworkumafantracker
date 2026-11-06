@@ -2553,16 +2553,144 @@ const { useState, useEffect, useRef } = React;
           image.onerror = () => resolve(null);
           image.src = url;
         });
-        const [tierIcon, animationHost, celebrationHost, celebrationTalkHost, focusHost, focusTalkHost, strategicHost, strategicTalkHost, dashHost] = await Promise.all([
+        const stableAnimationHash = (value) => {
+          let hash = 2166136261;
+          for (const character of String(value || "")) {
+            hash ^= character.charCodeAt(0);
+            hash = Math.imul(hash, 16777619);
+          }
+          return hash >>> 0;
+        };
+        const poseSet = (slug) => {
+          const root = `./assets/images/animation-hosts/${slug}-`;
+          return {
+            neutral: `${root}neutral.webp`,
+            performance: `${root}celebrate.webp`,
+            performanceTalk: `${root}talk.webp`,
+            attention: `${root}neutral.webp`,
+            attentionTalk: `${root}talk.webp`,
+            forecast: `${root}neutral.webp`,
+            forecastTalk: `${root}talk.webp`,
+            reveal: `${root}celebrate.webp`,
+            revealTalk: `${root}talk.webp`,
+            dash: `${root}dash.webp`,
+          };
+        };
+        const animationHostCatalog = [
+          {
+            slug: "gentildonna",
+            name: "Gentildonna",
+            accent: "#f4c45f",
+            assets: {
+              neutral: "./assets/images/animation-hosts/gentildonna.png",
+              performance: "./assets/images/animation-hosts/gentildonna-celebrate.png",
+              performanceTalk: "./assets/images/animation-hosts/gentildonna-celebrate-talk.png",
+              attention: "./assets/images/animation-hosts/gentildonna-focus.png",
+              attentionTalk: "./assets/images/animation-hosts/gentildonna-focus-talk.png",
+              forecast: "./assets/images/animation-hosts/gentildonna-strategic.png",
+              forecastTalk: "./assets/images/animation-hosts/gentildonna-strategic-talk.png",
+              reveal: "./assets/images/animation-hosts/gentildonna-celebrate.png",
+              revealTalk: "./assets/images/animation-hosts/gentildonna-celebrate-talk.png",
+              dash: "./assets/images/animation-hosts/gentildonna-dash.png",
+            },
+            dialogue: {
+              performance: ["Power confirmed.", "Read the rhythm!"],
+              attention: ["Eyes on the gaps.", "No weakness ignored."],
+              forecast: ["Victory takes shape.", "The crown is in reach."],
+            },
+          },
+          {
+            slug: "symboli-rudolf",
+            name: "Symboli Rudolf",
+            accent: "#d4af37",
+            assets: poseSet("symboli-rudolf"),
+            dialogue: {
+              performance: ["The course is set.", "A worthy result."],
+              attention: ["Discipline decides.", "Correct the course."],
+              forecast: ["Advance with purpose.", "The future is ordered."],
+            },
+          },
+          {
+            slug: "narita-top-road",
+            name: "Narita Top Road",
+            accent: "#a78bfa",
+            assets: poseSet("narita-top-road"),
+            dialogue: {
+              performance: ["We kept pushing!", "Great work today!"],
+              attention: ["We can catch up!", "One step at a time!"],
+              forecast: ["Let's meet the goal!", "I believe in everyone!"],
+            },
+          },
+          {
+            slug: "tm-opera-o",
+            name: "T.M. Opera O",
+            accent: "#f97316",
+            assets: poseSet("tm-opera-o"),
+            dialogue: {
+              performance: ["Behold today's act!", "A brilliant showing!"],
+              attention: ["The drama rises!", "Rewrite this scene!"],
+              forecast: ["The finale awaits!", "Onward to glory!"],
+            },
+          },
+          {
+            slug: "admire-vega",
+            name: "Admire Vega",
+            accent: "#818cf8",
+            assets: poseSet("admire-vega"),
+            dialogue: {
+              performance: ["The result is clear.", "Keep your focus."],
+              attention: ["Face the gap.", "No wasted motion."],
+              forecast: ["Follow that star.", "The path is visible."],
+            },
+          },
+          {
+            slug: "oguri-cap",
+            name: "Oguri Cap",
+            accent: "#60a5fa",
+            assets: poseSet("oguri-cap"),
+            dialogue: {
+              performance: ["Good work.", "A solid result."],
+              attention: ["Close the gap.", "We keep moving."],
+              forecast: ["The goal is ahead.", "Steady progress."],
+            },
+          },
+          {
+            slug: "mejiro-palmer",
+            name: "Mejiro Palmer",
+            accent: "#34d399",
+            assets: poseSet("mejiro-palmer"),
+            dialogue: {
+              performance: ["Nice pace today!", "That's the vibe!"],
+              attention: ["No panic—reset!", "We've got this!"],
+              forecast: ["Keep it rolling!", "The route looks good!"],
+            },
+          },
+        ];
+        const hostSeed = `${club.id || club.name}:${formatLocalDateKey(dataDate)}`;
+        const normalizedHostOverride = String(club.animationHost || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+        const selectedAnimationHost = animationHostCatalog.find((host) => host.slug === normalizedHostOverride)
+          || animationHostCatalog[stableAnimationHash(hostSeed) % animationHostCatalog.length];
+        const hostLine = (kind) => {
+          const choices = selectedAnimationHost.dialogue[kind] || ["Let's begin!"];
+          return choices[stableAnimationHash(`${hostSeed}:${selectedAnimationHost.slug}:${kind}`) % choices.length];
+        };
+        const selectedAssets = selectedAnimationHost.assets;
+        const [tierIcon, animationHost, celebrationHost, celebrationTalkHost, focusHost, focusTalkHost, strategicHost, strategicTalkHost, revealHost, revealTalkHost, dashHost] = await Promise.all([
           loadCanvasImage(getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath)),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-celebrate.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-celebrate-talk.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-focus.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-focus-talk.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-strategic.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-strategic-talk.png"),
-          loadCanvasImage("./assets/images/animation-hosts/gentildonna-dash.png"),
+          loadCanvasImage(selectedAssets.neutral),
+          loadCanvasImage(selectedAssets.performance),
+          loadCanvasImage(selectedAssets.performanceTalk),
+          loadCanvasImage(selectedAssets.attention),
+          loadCanvasImage(selectedAssets.attentionTalk),
+          loadCanvasImage(selectedAssets.forecast),
+          loadCanvasImage(selectedAssets.forecastTalk),
+          loadCanvasImage(selectedAssets.reveal),
+          loadCanvasImage(selectedAssets.revealTalk),
+          loadCanvasImage(selectedAssets.dash),
         ]);
         const hostVariantSets = {
           performance: [celebrationHost || animationHost, celebrationTalkHost || celebrationHost || animationHost].filter(Boolean),
@@ -2616,9 +2744,9 @@ const { useState, useEffect, useRef } = React;
         const bufferDays = avgThree > 0 ? forecastGap / avgThree : 0;
 
         const sectionChapters = [
-          { kind: "performance", majorPage: 1, eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: "Here's today!" },
-          { kind: "attention", majorPage: 2, eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "Every member below elapsed monthly pace, ordered by the largest gap first.", accent: "#fbbf24", bubble: "Let's focus!" },
-          { kind: "forecast", majorPage: 3, eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: "Looking ahead!" },
+          { kind: "performance", majorPage: 1, eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: hostLine("performance") },
+          { kind: "attention", majorPage: 2, eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "Every member below elapsed monthly pace, ordered by the largest gap first.", accent: "#fbbf24", bubble: hostLine("attention") },
+          { kind: "forecast", majorPage: 3, eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: hostLine("forecast") },
         ];
         const attentionPageRows = belowPaceRows.length
           ? Array.from({ length: Math.ceil(belowPaceRows.length / 3) }, (_, index) => belowPaceRows.slice(index * 3, (index * 3) + 3))
@@ -2641,7 +2769,7 @@ const { useState, useEffect, useRef } = React;
           return clamped * clamped * (3 - (2 * clamped));
         };
         const lerp = (from, to, amount) => from + ((to - from) * amount);
-        const frameDelay = 120;
+        const frameDelay = 90;
         const frameSeconds = (frame) => (frame * frameDelay) / 1000;
         const alpha = (hex, opacity) => {
           const safeOpacity = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, "0");
@@ -2730,19 +2858,20 @@ const { useState, useEffect, useRef } = React;
             const bob = Math.sin((time * 1.46) + (chapter.majorPage * 1.7)) * 3.5;
             const sway = Math.sin((time * 0.73) + chapter.majorPage) * 0.035;
             const pulse = 1 + (Math.sin((time * 1.19) + chapter.majorPage) * 0.022);
-            const hostHeight = 94;
+            const hostHeight = 98;
             const hostWidth = hostHeight * (chapterHost.width / chapterHost.height);
-            fillRounded(678, 28 + (bob * 0.45), 162, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
-            setFont(750, 12);
+            fillRounded(646, 22 + (bob * 0.45), 194, 52, 20, alpha(selectedAnimationHost.accent, 0.15), alpha(selectedAnimationHost.accent, 0.58));
+            drawLabel(selectedAnimationHost.name, 743, 29 + (bob * 0.45), selectedAnimationHost.accent, "center");
+            setFont(750, 11);
             ctx.fillStyle = "#eef0f8";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             const speechDots = speechCycle < 5 ? ".".repeat((Math.floor(time / 0.52) % 3) + 1) : "";
-            ctx.fillText(chapter.bubble + speechDots, 759, 46 + (bob * 0.45));
+            ctx.fillText(fitText(chapter.bubble + speechDots, 168), 743, 56 + (bob * 0.45));
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.save();
-            ctx.translate(883 + (hostWidth / 2), 50 + bob);
+            ctx.translate(884 + (hostWidth / 2), 50 + bob);
             ctx.rotate(sway);
             ctx.scale(pulse, pulse);
             ctx.drawImage(chapterHost, -hostWidth / 2, -hostHeight / 2, hostWidth, hostHeight);
@@ -3064,22 +3193,22 @@ const { useState, useEffect, useRef } = React;
         const drawAcquisitionReveal = (progress, frame, visibility = 1) => {
           const time = frameSeconds(frame);
           const revealCycle = Math.floor(time / 0.78) % 7;
-          const revealHost = revealCycle >= 2 && revealCycle <= 4
-            ? (celebrationTalkHost || celebrationHost || animationHost)
-            : (celebrationHost || animationHost);
-          if (!revealHost || visibility <= 0.01) return;
+          const acquisitionHost = revealCycle >= 2 && revealCycle <= 4
+            ? (revealTalkHost || revealHost || celebrationTalkHost || celebrationHost || animationHost)
+            : (revealHost || celebrationHost || animationHost);
+          if (!acquisitionHost || visibility <= 0.01) return;
           const reveal = smoothstep(progress);
           const entranceScale = lerp(0.56, 1, reveal);
           const lift = lerp(72, 0, reveal);
           const bounce = Math.sin(time * 1.85) * 3;
           const hostHeight = 350;
-          const hostWidth = hostHeight * (revealHost.width / revealHost.height);
+          const hostWidth = hostHeight * (acquisitionHost.width / acquisitionHost.height);
 
           ctx.save();
           ctx.globalAlpha = visibility;
           const spotlight = ctx.createRadialGradient(480, 264, 0, 480, 264, 330);
           spotlight.addColorStop(0, alpha("#fff7cf", 0.36 * reveal));
-          spotlight.addColorStop(0.34, alpha("#f4c45f", 0.2 * reveal));
+          spotlight.addColorStop(0.34, alpha(selectedAnimationHost.accent, 0.22 * reveal));
           spotlight.addColorStop(1, "#00000000");
           ctx.fillStyle = spotlight;
           ctx.fillRect(100, 0, 760, height);
@@ -3090,25 +3219,25 @@ const { useState, useEffect, useRef } = React;
             const angle = ((Math.PI * 2) / 12) * ray + (time * 0.069);
             const inner = 118;
             const outer = 210 + ((ray % 2) * 34);
-            ctx.strokeStyle = alpha(ray % 2 ? "#f4c45f" : "#ffffff", 0.2 * reveal);
+            ctx.strokeStyle = alpha(ray % 2 ? selectedAnimationHost.accent : "#ffffff", 0.2 * reveal);
             ctx.lineWidth = ray % 2 ? 3 : 2;
             ctx.beginPath();
             ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
             ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
             ctx.stroke();
           }
-          ctx.drawImage(revealHost, -hostWidth / 2, -hostHeight / 2, hostWidth, hostHeight);
+          ctx.drawImage(acquisitionHost, -hostWidth / 2, -hostHeight / 2, hostWidth, hostHeight);
           ctx.restore();
 
           ctx.save();
           ctx.globalAlpha = visibility * reveal;
           const plateY = 432 + (lift * 0.18);
-          fillRounded(312, plateY, 336, 67, 18, "#11121fee", "#f4c45faa");
-          drawLabel("DAILY STORY HOST", 480, plateY + 11, "#f4c45f", "center");
+          fillRounded(300, plateY, 360, 67, 18, "#11121ff2", alpha(selectedAnimationHost.accent, 0.72));
+          drawLabel("TODAY'S UMA HOST", 480, plateY + 11, selectedAnimationHost.accent, "center");
           setFont(900, 28);
           ctx.fillStyle = "#f8fafc";
           ctx.textAlign = "center";
-          ctx.fillText("GENTILDONNA", 480, plateY + 29);
+          ctx.fillText(fitText(selectedAnimationHost.name.toUpperCase(), 330), 480, plateY + 29);
           ctx.textAlign = "left";
           ctx.restore();
         };
@@ -3165,18 +3294,34 @@ const { useState, useEffect, useRef } = React;
             ctx.translate(width / 2, height / 2);
             ctx.scale(pulse, pulse);
             ctx.translate(-width / 2, -height / 2);
-            if (tierIcon) ctx.drawImage(tierIcon, 425, 54, 110, 110);
-            drawLabel("DOMINATOR NETWORK · TEN-GATE REVEAL", 480, 177, "#f4c45f", "center");
-            setFont(900, 39);
+            if (tierIcon) ctx.drawImage(tierIcon, 425, 38, 110, 110);
+
+            ctx.save();
+            ctx.shadowColor = "#000000cc";
+            ctx.shadowBlur = 24;
+            ctx.shadowOffsetY = 8;
+            const titlePanel = ctx.createLinearGradient(150, 160, 810, 334);
+            titlePanel.addColorStop(0, "#080a17");
+            titlePanel.addColorStop(0.5, "#101326");
+            titlePanel.addColorStop(1, "#080a17");
+            fillRounded(150, 160, 660, 174, 24, titlePanel, alpha(selectedAnimationHost.accent, 0.72));
+            ctx.restore();
+            fillRounded(174, 160, 612, 3, 2, selectedAnimationHost.accent);
+
+            drawLabel("DOMINATOR NETWORK · TEN-GATE REVEAL", 480, 178, selectedAnimationHost.accent, "center");
+            setFont(900, 37);
             ctx.fillStyle = "#f8fafc";
             ctx.textAlign = "center";
-            ctx.fillText(fitText((club.name + " DAILY REPORT").toUpperCase(), 720), 480, 205);
+            ctx.fillText(fitText((club.name + " DAILY REPORT").toUpperCase(), 610), 480, 204);
             setFont(850, 24);
-            ctx.fillStyle = "#f4c45f";
-            ctx.fillText("DAY #" + today, 480, 262);
-            setFont(750, 15);
-            ctx.fillStyle = "#c7cad9";
-            ctx.fillText("WITH UMA HOST · GENTILDONNA", 480, 303);
+            ctx.fillStyle = selectedAnimationHost.accent;
+            ctx.fillText("DAY #" + today, 480, 254);
+            setFont(700, 11);
+            ctx.fillStyle = "#9297af";
+            ctx.fillText("TODAY'S UMA HOST", 480, 292);
+            setFont(850, 16);
+            ctx.fillStyle = "#f8fafc";
+            ctx.fillText(fitText(selectedAnimationHost.name.toUpperCase(), 360), 480, 307);
 
             const litGateCount = Math.min(10, Math.max(0, Math.floor(time / 0.26) + 1));
             for (let gateIndex = 0; gateIndex < 10; gateIndex += 1) {
@@ -3224,10 +3369,10 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
-        const introFrames = 42;
-        const sceneLength = 46;
-        const transitionStart = 28;
-        const transitionFrames = 18;
+        const introFrames = 56;
+        const sceneLength = 62;
+        const transitionStart = 38;
+        const transitionFrames = 24;
         const totalFrames = introFrames + (storyScenes.length * sceneLength);
         const gif = new window.GIF({
           workers: 2,
@@ -3247,9 +3392,9 @@ const { useState, useEffect, useRef } = React;
 
           if (frame < introFrames) {
             drawStoryScene(0, frame, 1);
-            const openingProgress = frame < 16 ? 0 : smoothstep(clamp01((frame - 16) / 20));
-            const revealProgress = smoothstep(clamp01((frame - 18) / 16));
-            const revealVisibility = 1 - smoothstep(clamp01((frame - 38) / 3));
+            const openingProgress = frame < 21 ? 0 : smoothstep(clamp01((frame - 21) / 27));
+            const revealProgress = smoothstep(clamp01((frame - 24) / 21));
+            const revealVisibility = 1 - smoothstep(clamp01((frame - 51) / 4));
             drawAcquisitionReveal(revealProgress, frame, revealVisibility);
             drawStartingGate(openingProgress, frame);
           } else {
@@ -3288,7 +3433,7 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-smooth-story2";
+        const cacheKey = formatLocalDateKey(dataDate) + "-uma-hosts1";
         return {
           filename,
           label: "Animated Insight Story",
