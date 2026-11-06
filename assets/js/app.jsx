@@ -1475,7 +1475,6 @@ const { useState, useEffect, useRef } = React;
       }, [tab, rankingsTab, activeIdx, clubsPageSelectedIdx, paceCardsCollapsed]);
       const [weeklyCopied, setWeeklyCopied] = useState(false);
       const [animationExportState, setAnimationExportState] = useState(false);
-      const [animationLinkState, setAnimationLinkState] = useState(false);
       const [animationDragAsset, setAnimationDragAsset] = useState(null);
       const [rankHistory, setRankHistory] = useState({});
       const [rankThresholdData, setRankThresholdData] = useState(null);
@@ -2554,15 +2553,22 @@ const { useState, useEffect, useRef } = React;
           image.onerror = () => resolve(null);
           image.src = url;
         });
-        const [tierIcon, animationHost, celebrationHost, focusHost, strategicHost, dashHost] = await Promise.all([
+        const [tierIcon, animationHost, celebrationHost, celebrationTalkHost, focusHost, focusTalkHost, strategicHost, strategicTalkHost, dashHost] = await Promise.all([
           loadCanvasImage(getRankIconUrl(club.tier, viewRankingConfig, viewRankIconPath)),
           loadCanvasImage("./assets/images/animation-hosts/gentildonna.png"),
           loadCanvasImage("./assets/images/animation-hosts/gentildonna-celebrate.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-celebrate-talk.png"),
           loadCanvasImage("./assets/images/animation-hosts/gentildonna-focus.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-focus-talk.png"),
           loadCanvasImage("./assets/images/animation-hosts/gentildonna-strategic.png"),
+          loadCanvasImage("./assets/images/animation-hosts/gentildonna-strategic-talk.png"),
           loadCanvasImage("./assets/images/animation-hosts/gentildonna-dash.png"),
         ]);
-        const chapterHosts = [celebrationHost || animationHost, focusHost || animationHost, strategicHost || animationHost];
+        const hostVariantSets = {
+          performance: [celebrationHost || animationHost, celebrationTalkHost || celebrationHost || animationHost].filter(Boolean),
+          attention: [focusHost || animationHost, focusTalkHost || focusHost || animationHost].filter(Boolean),
+          forecast: [strategicHost || animationHost, strategicTalkHost || strategicHost || animationHost].filter(Boolean),
+        };
 
         const rows = exportData.tableRows;
         const activeCount = rows.length;
@@ -2589,10 +2595,9 @@ const { useState, useEffect, useRef } = React;
         const paceDifference = currentDaily - dailyTarget;
         const acceleratingMembers = rows.filter((row) => Number(row.dailyGain || 0) > Number(row.rolling3DayAvg || 0)).length;
 
-        const belowPaceRows = rows.filter((row) => Number(row.paceDelta || 0) < 0);
-        const priorityRows = (belowPaceRows.length ? belowPaceRows : [...rows])
-          .sort((a, b) => Number(a.paceDelta || 0) - Number(b.paceDelta || 0))
-          .slice(0, 3);
+        const belowPaceRows = rows
+          .filter((row) => Number(row.paceDelta || 0) < 0)
+          .sort((a, b) => Number(a.paceDelta || 0) - Number(b.paceDelta || 0));
         const recoveryLoad = belowPaceRows.reduce((sum, row) => sum + Math.max(0, -Number(row.paceDelta || 0)), 0);
         const remainingDays = Math.max(0, Number(report.daysRemaining ?? (dim - today)));
         const recoveryDaily = remainingDays > 0 ? recoveryLoad / remainingDays : recoveryLoad;
@@ -2610,10 +2615,24 @@ const { useState, useEffect, useRef } = React;
         const requiredDaily = remainingDays > 0 ? Math.max(0, targetValue - monthValue) / remainingDays : 0;
         const bufferDays = avgThree > 0 ? forecastGap / avgThree : 0;
 
-        const chapters = [
-          { eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: "Here's today!" },
-          { eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "The three members furthest behind their elapsed monthly pace.", accent: "#fbbf24", bubble: "Let's focus!" },
-          { eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: "Looking ahead!" },
+        const sectionChapters = [
+          { kind: "performance", majorPage: 1, eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: "Here's today!" },
+          { kind: "attention", majorPage: 2, eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "Every member below elapsed monthly pace, ordered by the largest gap first.", accent: "#fbbf24", bubble: "Let's focus!" },
+          { kind: "forecast", majorPage: 3, eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: "Looking ahead!" },
+        ];
+        const attentionPageRows = belowPaceRows.length
+          ? Array.from({ length: Math.ceil(belowPaceRows.length / 3) }, (_, index) => belowPaceRows.slice(index * 3, (index * 3) + 3))
+          : [[]];
+        const storyScenes = [
+          sectionChapters[0],
+          ...attentionPageRows.map((pageRows, index) => ({
+            ...sectionChapters[1],
+            rows: pageRows,
+            memberStartIndex: index * 3,
+            subPage: index + 1,
+            subPageCount: attentionPageRows.length,
+          })),
+          sectionChapters[2],
         ];
 
         const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -2680,8 +2699,7 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = "#9297af";
           ctx.fillText(fitText(detail, w - 28), x + 14, y + 72);
         };
-        const drawHeader = (chapterIndex, frame) => {
-          const chapter = chapters[chapterIndex];
+        const drawHeader = (chapter, frame) => {
           if (tierIcon) ctx.drawImage(tierIcon, 32, 17, 72, 72);
           else {
             fillRounded(32, 17, 72, 72, 18, tc.bar, tc.border);
@@ -2702,11 +2720,13 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = "#a8acc1";
           ctx.fillText(report.dateLabel + "  ·  " + report.dayLabel + "  ·  " + report.sourceLabel, 118, 72);
 
-          const chapterHost = chapterHosts[chapterIndex] || animationHost;
+          const hostVariants = hostVariantSets[chapter.kind] || [animationHost].filter(Boolean);
+          const speechCycle = Math.floor(frame / 3) % 8;
+          const chapterHost = hostVariants[speechCycle >= 2 && speechCycle <= 4 ? 1 : 0] || hostVariants[0] || animationHost;
           if (chapterHost) {
-            const bob = Math.sin((frame * 0.38) + (chapterIndex * 1.7)) * 3.5;
-            const sway = Math.sin((frame * 0.19) + chapterIndex) * 0.035;
-            const pulse = 1 + (Math.sin((frame * 0.31) + chapterIndex) * 0.022);
+            const bob = Math.sin((frame * 0.38) + (chapter.majorPage * 1.7)) * 3.5;
+            const sway = Math.sin((frame * 0.19) + chapter.majorPage) * 0.035;
+            const pulse = 1 + (Math.sin((frame * 0.31) + chapter.majorPage) * 0.022);
             const hostHeight = 94;
             const hostWidth = hostHeight * (chapterHost.width / chapterHost.height);
             fillRounded(678, 28 + (bob * 0.45), 162, 36, 18, alpha(chapter.accent, 0.14), alpha(chapter.accent, 0.52));
@@ -2714,7 +2734,8 @@ const { useState, useEffect, useRef } = React;
             ctx.fillStyle = "#eef0f8";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(chapter.bubble, 759, 46 + (bob * 0.45));
+            const speechDots = speechCycle < 5 ? ".".repeat((Math.floor(frame / 2) % 3) + 1) : "";
+            ctx.fillText(chapter.bubble + speechDots, 759, 46 + (bob * 0.45));
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.save();
@@ -2732,8 +2753,7 @@ const { useState, useEffect, useRef } = React;
           ctx.lineTo(928, 105);
           ctx.stroke();
         };
-        const drawSceneIntro = (sceneIndex) => {
-          const chapter = chapters[sceneIndex];
+        const drawSceneIntro = (chapter) => {
           drawLabel(chapter.eyebrow, 32, 122, chapter.accent);
           setFont(900, 28);
           ctx.fillStyle = "#f8fafc";
@@ -2742,18 +2762,21 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = "#a7abc0";
           ctx.fillText(fitText(chapter.subtitle, 690), 32, 181);
 
-          chapters.forEach((entry, index) => {
+          sectionChapters.forEach((entry, index) => {
             const x = 772 + (index * 52);
-            fillRounded(x, 145, 42, 6, 3, index === sceneIndex ? entry.accent : "#292b43");
+            fillRounded(x, 145, 42, 6, 3, entry.majorPage === chapter.majorPage ? entry.accent : "#292b43");
           });
           setFont(750, 11);
           ctx.fillStyle = chapter.accent;
           ctx.textAlign = "right";
-          ctx.fillText((sceneIndex + 1) + " OF 3", 928, 166);
+          const subPageLabel = chapter.kind === "attention" && chapter.subPageCount > 1
+            ? ` · FOCUS ${chapter.subPage}/${chapter.subPageCount}`
+            : "";
+          ctx.fillText(chapter.majorPage + " OF 3" + subPageLabel, 928, 166);
           ctx.textAlign = "left";
         };
         const drawPerformanceScene = () => {
-          const accent = chapters[0].accent;
+          const accent = sectionChapters[0].accent;
           drawPanel(32, 218, 330, 267, accent);
           drawLabel("TODAY'S CLUB TOTAL", 54, 239, accent);
           setFont(900, 42);
@@ -2770,11 +2793,11 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = dailyPaceRatio >= 1 ? "#65e5ad" : "#fbbf24";
           ctx.fillText(Math.round(dailyPaceRatio * 100) + "% of today's needed pace", 54, 373);
 
-          fillRounded(54, 408, 286, 55, 12, dailyPaceRatio >= 1 ? "#34d39916" : "#fbbf2416", dailyPaceRatio >= 1 ? "#34d39966" : "#fbbf2466");
-          drawLabel(dailyPaceRatio >= 1 ? "AHEAD TODAY" : "STILL NEEDED TODAY", 70, 420, dailyPaceRatio >= 1 ? "#34d399" : "#fbbf24");
-          setFont(850, 20);
+          fillRounded(54, 400, 286, 68, 12, dailyPaceRatio >= 1 ? "#34d39916" : "#fbbf2416", dailyPaceRatio >= 1 ? "#34d39966" : "#fbbf2466");
+          drawLabel(dailyPaceRatio >= 1 ? "AHEAD TODAY" : "STILL NEEDED TODAY", 70, 412, dailyPaceRatio >= 1 ? "#34d399" : "#fbbf24");
+          setFont(850, 22);
           ctx.fillStyle = dailyPaceRatio >= 1 ? "#65e5ad" : "#ffcf54";
-          ctx.fillText(fmt(Math.abs(paceDifference)), 70, 440);
+          ctx.fillText(fmt(Math.abs(paceDifference)), 70, 437);
 
           drawPanel(380, 218, 548, 158, accent);
           drawLabel("LAST 7 DAYS", 400, 235, accent);
@@ -2839,8 +2862,8 @@ const { useState, useEffect, useRef } = React;
           drawSmallCard(566, 388, cardWidth, "MEMBERS IMPROVING", acceleratingMembers + " / " + activeCount, "Above their 3-day average", "#60a5fa");
           drawSmallCard(752, 388, cardWidth, "OUTPUT CONSISTENCY", consistencyLabel, consistencyScore + "/100 steadiness", "#a78bfa", "#d8b4fe");
         };
-        const drawAttentionScene = () => {
-          const accent = chapters[1].accent;
+        const drawAttentionScene = (chapter) => {
+          const accent = sectionChapters[1].accent;
           drawPanel(32, 218, 896, 76, accent);
           const summaryItems = [
             { value: String(belowPaceRows.length), label: "MEMBERS BELOW PACE" },
@@ -2881,7 +2904,7 @@ const { useState, useEffect, useRef } = React;
           });
           ctx.textAlign = "left";
 
-          priorityRows.forEach((row, index) => {
+          (chapter.rows || []).forEach((row, index) => {
             const rowY = 365 + (index * 39);
             const deficit = Math.max(0, -Number(row.paceDelta || 0));
             const quietDays = Number(row.stagnantDays || 0);
@@ -2894,7 +2917,7 @@ const { useState, useEffect, useRef } = React;
             setFont(800, 10);
             ctx.fillStyle = color;
             ctx.textAlign = "center";
-            ctx.fillText(String(index + 1), 76, rowY + 17);
+            ctx.fillText(String((chapter.memberStartIndex || 0) + index + 1), 76, rowY + 17);
 
             setFont(820, 15);
             ctx.fillStyle = "#eef0f8";
@@ -2920,9 +2943,19 @@ const { useState, useEffect, useRef } = React;
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
           });
+          if (!(chapter.rows || []).length) {
+            setFont(850, 21);
+            ctx.fillStyle = "#65e5ad";
+            ctx.textAlign = "center";
+            ctx.fillText("EVERY MEMBER IS CURRENTLY ON PACE", 480, 392);
+            setFont(650, 12);
+            ctx.fillStyle = "#9ca1b8";
+            ctx.fillText("No member follow-up is needed today.", 480, 425);
+            ctx.textAlign = "left";
+          }
         };
         const drawForecastScene = () => {
-          const accent = chapters[2].accent;
+          const accent = sectionChapters[2].accent;
           drawPanel(32, 218, 330, 267, accent);
           drawLabel("PROJECTED FINISH VS TARGET", 54, 239, accent);
           setFont(900, 40);
@@ -2986,7 +3019,7 @@ const { useState, useEffect, useRef } = React;
         };
 
         const drawStoryScene = (sceneIndex, frame, opacity = 1) => {
-          const chapter = chapters[sceneIndex];
+          const chapter = storyScenes[sceneIndex];
           ctx.save();
           ctx.globalAlpha = opacity;
 
@@ -3005,23 +3038,29 @@ const { useState, useEffect, useRef } = React;
 
           ctx.textBaseline = "top";
           ctx.textAlign = "left";
-          drawHeader(sceneIndex, frame);
-          drawSceneIntro(sceneIndex);
-          if (sceneIndex === 0) drawPerformanceScene();
-          else if (sceneIndex === 1) drawAttentionScene();
+          drawHeader(chapter, frame);
+          drawSceneIntro(chapter);
+          if (chapter.kind === "performance") drawPerformanceScene();
+          else if (chapter.kind === "attention") drawAttentionScene(chapter);
           else drawForecastScene();
 
           setFont(650, 10);
           ctx.fillStyle = "#737890";
           ctx.fillText("Dominator Network Tracker · Member Daily Story", 32, 516);
           ctx.textAlign = "right";
-          ctx.fillText((sceneIndex + 1) + "/3  ·  " + chapter.eyebrow, 928, 516);
+          const footerPage = chapter.kind === "attention" && chapter.subPageCount > 1
+            ? `${chapter.majorPage}${String.fromCharCode(64 + chapter.subPage)}`
+            : String(chapter.majorPage);
+          ctx.fillText(footerPage + "/3  ·  " + chapter.eyebrow, 928, 516);
           ctx.textAlign = "left";
           ctx.restore();
         };
 
         const drawAcquisitionReveal = (progress, frame, visibility = 1) => {
-          const revealHost = celebrationHost || animationHost;
+          const revealCycle = Math.floor(frame / 3) % 7;
+          const revealHost = revealCycle >= 2 && revealCycle <= 4
+            ? (celebrationTalkHost || celebrationHost || animationHost)
+            : (celebrationHost || animationHost);
           if (!revealHost || visibility <= 0.01) return;
           const reveal = smoothstep(progress);
           const entranceScale = lerp(0.56, 1, reveal);
@@ -3119,15 +3158,31 @@ const { useState, useEffect, useRef } = React;
             ctx.translate(width / 2, height / 2);
             ctx.scale(pulse, pulse);
             ctx.translate(-width / 2, -height / 2);
-            if (tierIcon) ctx.drawImage(tierIcon, 421, 96, 118, 118);
-            drawLabel("DOMINATOR NETWORK PRESENTS", 480, 238, "#f4c45f", "center");
-            setFont(900, 38);
+            if (tierIcon) ctx.drawImage(tierIcon, 425, 54, 110, 110);
+            drawLabel("DOMINATOR NETWORK · TEN-GATE REVEAL", 480, 177, "#f4c45f", "center");
+            setFont(900, 39);
             ctx.fillStyle = "#f8fafc";
             ctx.textAlign = "center";
-            ctx.fillText("DAILY CLUB STORY", 480, 267);
-            setFont(700, 15);
+            ctx.fillText(fitText((club.name + " DAILY REPORT").toUpperCase(), 720), 480, 205);
+            setFont(850, 24);
+            ctx.fillStyle = "#f4c45f";
+            ctx.fillText("DAY #" + today, 480, 262);
+            setFont(750, 15);
             ctx.fillStyle = "#c7cad9";
-            ctx.fillText("STARTING GATE", 480, 320);
+            ctx.fillText("WITH UMA HOST · GENTILDONNA", 480, 303);
+
+            const litGateCount = Math.min(10, Math.max(0, Math.floor(frame) + 1));
+            for (let gateIndex = 0; gateIndex < 10; gateIndex += 1) {
+              const gateX = 242 + (gateIndex * 49);
+              const lit = gateIndex < litGateCount;
+              fillRounded(gateX, 369, 36, 42, 8, lit ? "#f4c45f" : "#17182a", lit ? "#fff0a3" : "#4c4260");
+              setFont(900, 15);
+              ctx.fillStyle = lit ? "#17111d" : "#747991";
+              ctx.fillText(String(gateIndex + 1), gateX + 18, 381);
+            }
+            setFont(720, 12);
+            ctx.fillStyle = "#aeb3c8";
+            ctx.fillText(litGateCount < 10 ? "GATES CHARGING…" : "ALL GATES READY", 480, 430);
             ctx.textAlign = "left";
             ctx.restore();
           }
@@ -3159,27 +3214,15 @@ const { useState, useEffect, useRef } = React;
           ctx.globalAlpha = Math.min(1, arc * 1.5);
           ctx.drawImage(transitionHost, flyX, flyY, flyWidth, flyHeight);
 
-          const bubbleAlpha = Math.max(0, 1 - Math.abs(progress - 0.5) * 3.2);
-          if (bubbleAlpha > 0) {
-            ctx.globalAlpha = bubbleAlpha;
-            const nextChapter = chapters[toIndex];
-            fillRounded(356, 208, 248, 58, 18, "#151627ee", alpha(nextChapter.accent, 0.72));
-            drawLabel("UP NEXT", 480, 219, nextChapter.accent, "center");
-            setFont(850, 18);
-            ctx.fillStyle = "#f8fafc";
-            ctx.textAlign = "center";
-            ctx.fillText(nextChapter.eyebrow, 480, 239);
-            ctx.textAlign = "left";
-          }
           ctx.restore();
         };
 
-        const introFrames = 18;
-        const sceneLength = 20;
-        const transitionStart = 13;
-        const transitionFrames = 6;
-        const totalFrames = introFrames + (chapters.length * sceneLength);
-        const frameDelay = 250;
+        const introFrames = 28;
+        const sceneLength = 26;
+        const transitionStart = 16;
+        const transitionFrames = 10;
+        const totalFrames = introFrames + (storyScenes.length * sceneLength);
+        const frameDelay = 260;
         const gif = new window.GIF({
           workers: 2,
           quality: 16,
@@ -3198,19 +3241,19 @@ const { useState, useEffect, useRef } = React;
 
           if (frame < introFrames) {
             drawStoryScene(0, frame, 1);
-            const openingProgress = frame < 3 ? 0 : smoothstep(clamp01((frame - 3) / 7));
-            const revealProgress = smoothstep(clamp01((frame - 6) / 5));
-            const revealVisibility = 1 - smoothstep(clamp01((frame - 14) / 3));
+            const openingProgress = frame < 11 ? 0 : smoothstep(clamp01((frame - 11) / 10));
+            const revealProgress = smoothstep(clamp01((frame - 13) / 8));
+            const revealVisibility = 1 - smoothstep(clamp01((frame - 25) / 2));
             drawAcquisitionReveal(revealProgress, frame, revealVisibility);
             drawStartingGate(openingProgress, frame);
           } else {
             const storyFrame = frame - introFrames;
-            const sceneIndex = Math.min(chapters.length - 1, Math.floor(storyFrame / sceneLength));
+            const sceneIndex = Math.min(storyScenes.length - 1, Math.floor(storyFrame / sceneLength));
             const localFrame = storyFrame - (sceneIndex * sceneLength);
             const rawTransition = clamp01((localFrame - transitionStart) / transitionFrames);
             const transition = smoothstep(rawTransition);
 
-            if (sceneIndex < chapters.length - 1) {
+            if (sceneIndex < storyScenes.length - 1) {
               drawStoryScene(sceneIndex, frame, 1 - transition);
               drawStoryScene(sceneIndex + 1, frame, transition);
               if (transition > 0.01 && transition < 0.99) drawFlyingTransition(sceneIndex, sceneIndex + 1, transition);
@@ -3239,37 +3282,12 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-acquisition1";
+        const cacheKey = formatLocalDateKey(dataDate) + "-ten-gate-talk1";
         return {
           filename,
           label: "Animated Insight Story",
           cacheKey: `${club.id || club.name}-${cacheKey}`,
         };
-      }
-
-      function getHostedAnimationUrl(asset = getAnimationAsset()) {
-        const version = encodeURIComponent(formatLocalDateKey(dataDate) + "-acquisition1");
-        return `https://github.com/Flyingsparks1130/dominatornetworkumafantracker/releases/download/daily-highlights/${encodeURIComponent(asset.filename)}?v=${version}`;
-      }
-
-      async function copyHostedAnimationLink() {
-        if (animationLinkState === "copying") return;
-        try {
-          setErr("");
-          setAnimationLinkState("copying");
-          const asset = getAnimationAsset();
-          const hostedUrl = getHostedAnimationUrl(asset);
-          const maskedLink = `[🎞️ ${club.name} — Animated Daily Story](${hostedUrl})`;
-          if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
-          await navigator.clipboard.writeText(maskedLink);
-          setAnimationLinkState("copied");
-        } catch (error) {
-          console.error("Animated story link copy failed", error);
-          setErr(error?.message || "The clean animation link could not be copied. Refresh and try again.");
-          setAnimationLinkState("error");
-        } finally {
-          window.setTimeout(() => setAnimationLinkState(false), 5200);
-        }
       }
 
       async function loadAnimationFile(asset = getAnimationAsset()) {
@@ -4668,63 +4686,41 @@ const { useState, useEffect, useRef } = React;
                                 : "🎞️ Build Hosted Animated Insight Story"}
                         </button>
                       ) : (
-                        <>
-                          <button
-                            style={{ ...S.btn(true, animationLinkState === "copied" ? "#059669" : animationLinkState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
-                            onClick={copyHostedAnimationLink}
-                            disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || animationLinkState === "copying"}
-                            title="Copies a Discord masked link, so the GIF URL is hidden behind a clean title."
-                          >
-                            {animationLinkState === "copying"
-                              ? "⏳ Copying Clean GIF Link…"
-                              : animationLinkState === "copied"
-                                ? "✓ Clean Link Copied — Paste in Discord"
-                                : animationLinkState === "error"
-                                  ? "⚠ Link Copy Failed — Try Again"
-                                  : "📋 Copy Clean Animated Story Link"}
-                          </button>
-                          <button
-                            style={{ ...S.btn(false, ["ready-drag", "dragging-file"].includes(animationExportState) ? "#059669" : animationExportState === "error" ? "#ef4444" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
-                            onClick={prepareAnimatedGifForDrag}
-                            disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
-                            title="Builds the current animation locally, then creates a draggable file card for Discord."
-                          >
-                            {animationExportState === "rendering"
-                              ? "⏳ Building Current GIF…"
-                              : animationExportState === "preparing-file"
-                              ? "⏳ Preparing Current GIF…"
-                              : animationExportState === "ready-drag"
-                                ? "✓ Current GIF Ready — Drag Below"
-                                : animationExportState === "dragging-file"
-                                  ? "↗ Drop Current GIF into Discord"
-                                : animationExportState === "error"
-                                  ? "⚠ Animation Failed — Try Again"
-                                  : "↗ Build + Drag Current GIF"}
-                          </button>
-                        </>
+                        <button
+                          style={{ ...S.btn(true, ["ready-drag", "dragging-file"].includes(animationExportState) ? "#059669" : animationExportState === "error" ? "#ef4444" : "#7c3aed"), ...(actionButtonDisabledStyle || {}) }}
+                          onClick={prepareAnimatedGifForDrag}
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
+                          title="Builds the current animated report and reveals a full-size copyable preview."
+                        >
+                          {animationExportState === "rendering"
+                            ? "⏳ Building Animated Daily Report…"
+                            : animationExportState === "preparing-file"
+                            ? "⏳ Preparing Animated Daily Report…"
+                            : animationExportState === "ready-drag"
+                              ? "✓ Animated Daily Report Ready"
+                              : animationExportState === "dragging-file"
+                                ? "↗ Drop Animated Report into Discord"
+                              : animationExportState === "error"
+                                ? "⚠ Animation Failed — Try Again"
+                                : "🎞️ Build Animated Daily Report"}
+                        </button>
                       )}
                       {!animationBuildMode && animationDragAsset?.cacheKey === getAnimationAsset().cacheKey && (
-                        <a
-                          href={animationDragAsset.dataUrl}
-                          download={animationDragAsset.filename}
+                        <div
                           draggable
-                          onClick={(event) => event.preventDefault()}
                           onDragStart={handleAnimationDragStart}
                           onDragEnd={handleAnimationDragEnd}
-                          aria-label="Drag the animated report file into Discord"
-                          title="Drag this card into Discord's message box. Clicking it does not download anything."
+                          aria-label="Copy or drag the animated report into Discord"
+                          title="Right-click the preview to copy it, or drag it into Discord's message box."
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            minWidth: 280,
-                            padding: "10px 13px",
+                            flexBasis: "100%",
+                            maxWidth: 680,
+                            padding: 12,
                             borderRadius: 11,
                             border: "1px dashed #a855f7",
                             background: "linear-gradient(135deg, #2e1065cc, #111827ee)",
                             color: "#f5e9ff",
                             cursor: "grab",
-                            textDecoration: "none",
                             userSelect: "none",
                           }}
                         >
@@ -4732,18 +4728,18 @@ const { useState, useEffect, useRef } = React;
                             src={animationDragAsset.dataUrl}
                             alt="Animated report preview"
                             draggable={false}
-                            style={{ width: 64, height: 36, objectFit: "cover", borderRadius: 5, border: "1px solid #7e22ce" }}
+                            style={{ display: "block", width: "100%", aspectRatio: "16 / 9", objectFit: "cover", borderRadius: 8, border: "1px solid #7e22ce", background: "#090a14" }}
                           />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 900 }}>↗ Drag Animation into Discord</div>
-                            <div style={{ color: "#c4b5fd", fontSize: 9.5, marginTop: 2 }}>
-                              Drop in the message box · {(animationDragAsset.file.size / (1024 * 1024)).toFixed(1)} MB · nothing saved
+                          <div style={{ marginTop: 9 }}>
+                            <div style={{ fontSize: 12, fontWeight: 900 }}>Right-click preview → Copy image → paste in Discord</div>
+                            <div style={{ color: "#c4b5fd", fontSize: 10, marginTop: 3 }}>
+                              You can also drag the preview into Discord · {(animationDragAsset.file.size / (1024 * 1024)).toFixed(1)} MB · no download step
                             </div>
                           </div>
-                        </a>
+                        </div>
                       )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>Copy Clean Link works with Ctrl+V and hides the raw URL behind a Discord title. For the exact freshly generated GIF, build once and drag the ready card into Discord. Browsers guarantee PNG clipboard images, but animated GIF clipboard support still varies by browser and operating system.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>Build once, then right-click the large animated preview and choose Copy image for Discord paste. Dragging the preview is available as a second self-serve option.</div>}
                   </div>
                 </div>
               )}
