@@ -3108,14 +3108,15 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
-        const introFrames = 14;
-        const sceneLength = 32;
-        const transitionStart = 24;
-        const transitionFrames = 7;
+        const introFrames = 10;
+        const sceneLength = 20;
+        const transitionStart = 14;
+        const transitionFrames = 5;
         const totalFrames = introFrames + (chapters.length * sceneLength);
+        const frameDelay = 210;
         const gif = new window.GIF({
           workers: 2,
-          quality: 13,
+          quality: 16,
           width,
           height,
           repeat: 0,
@@ -3157,7 +3158,7 @@ const { useState, useEffect, useRef } = React;
             }
           }
 
-          gif.addFrame(canvas, { copy: true, delay: 150 });
+          gif.addFrame(canvas, { copy: true, delay: frameDelay });
         }
 
         return await new Promise((resolve, reject) => {
@@ -3201,8 +3202,17 @@ const { useState, useEffect, useRef } = React;
         return promise;
       }
 
+      function readAnimationFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(reader.error || new Error("The animated report could not be prepared for the clipboard."));
+          reader.readAsDataURL(file);
+        });
+      }
+
       async function copyAnimatedGifAttachment() {
-        const busyStates = ["rendering", "preparing-file", "sharing-file"];
+        const busyStates = ["rendering", "preparing-file"];
         if (busyStates.includes(animationExportState)) return;
 
         const asset = getAnimationAsset();
@@ -3211,54 +3221,30 @@ const { useState, useEffect, useRef } = React;
           const hasCachedFile = animationAssetCacheRef.current.key === asset.cacheKey && animationAssetCacheRef.current.file;
           setAnimationExportState(hasCachedFile ? "preparing-file" : "rendering");
           const file = await loadAnimationFile(asset);
-          const canAttemptGifClipboard = Boolean(
-            navigator.clipboard?.write
-            && window.ClipboardItem
-            && (typeof window.ClipboardItem.supports !== "function" || window.ClipboardItem.supports("image/gif"))
-          );
-
-          if (canAttemptGifClipboard) {
-            try {
-              await navigator.clipboard.write([
-                new ClipboardItem({ "image/gif": file }, { presentationStyle: "attachment" }),
-              ]);
-              setAnimationExportState("copied-file");
-              window.setTimeout(() => setAnimationExportState(false), 4500);
-              return;
-            } catch (clipboardError) {
-              console.info("Animated GIF clipboard format was rejected; trying native file sharing.", clipboardError);
-            }
+          if (!navigator.clipboard?.write || !window.ClipboardItem) {
+            throw new Error("This browser does not expose rich clipboard writing. Update the browser and try again.");
           }
 
-          const shareData = { files: [file], title: club.name + " Daily Club Story" };
-          const canShareFile = Boolean(
-            navigator.share
-            && (!navigator.canShare || navigator.canShare({ files: [file] }))
-          );
-          if (canShareFile) {
-            setAnimationExportState("sharing-file");
-            try {
-              await navigator.share(shareData);
-              setAnimationExportState("shared-file");
-              window.setTimeout(() => setAnimationExportState(false), 4500);
-              return;
-            } catch (shareError) {
-              if (shareError?.name === "AbortError") {
-                setAnimationExportState(false);
-                return;
-              }
-              if (shareError?.name === "NotAllowedError") {
-                setAnimationExportState("ready-share");
-                return;
-              }
-              throw shareError;
-            }
+          const dataUrl = await readAnimationFileAsDataUrl(file);
+          const representations = {
+            "text/html": new Blob([
+              `<img src="${dataUrl}" alt="Animated daily club report" data-filename="${asset.filename}">`,
+            ], { type: "text/html" }),
+            "text/plain": new Blob([""], { type: "text/plain" }),
+          };
+          const customGifType = "web image/gif";
+          if (typeof window.ClipboardItem.supports === "function" && window.ClipboardItem.supports(customGifType)) {
+            representations[customGifType] = file;
           }
 
-          throw new Error("This browser cannot place animated GIF files on the clipboard or open a file share sheet. Browser security does not expose another lossless GIF transfer method.");
+          await navigator.clipboard.write([
+            new ClipboardItem(representations, { presentationStyle: "attachment" }),
+          ]);
+          setAnimationExportState("copied-file");
+          window.setTimeout(() => setAnimationExportState(false), 6500);
         } catch (error) {
-          console.error("Animated GIF handoff failed", error);
-          setErr(error?.message || "Animated GIF sharing failed. Refresh and try again.");
+          console.error("Animated clipboard copy failed", error);
+          setErr(error?.message || "Animated clipboard copy failed. Refresh and try again.");
           setAnimationExportState("error");
           window.setTimeout(() => setAnimationExportState(false), 5200);
         }
@@ -4580,30 +4566,24 @@ const { useState, useEffect, useRef } = React;
                         </button>
                       ) : (
                         <button
-                          style={{ ...S.btn(true, animationExportState === "copied-file" || animationExportState === "shared-file" ? "#059669" : animationExportState === "error" ? "#ef4444" : animationExportState === "ready-share" ? "#f59e0b" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
+                          style={{ ...S.btn(true, animationExportState === "copied-file" ? "#059669" : animationExportState === "error" ? "#ef4444" : "#a855f7"), ...(actionButtonDisabledStyle || {}) }}
                           onClick={copyAnimatedGifAttachment}
-                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file", "sharing-file"].includes(animationExportState)}
-                          title="Builds the animated GIF in this browser, then copies the file when supported or opens the native file share sheet."
+                          disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked || isArchiveView || ["rendering", "preparing-file"].includes(animationExportState)}
+                          title="Builds an animated clipboard image, then copies it for direct paste into Discord."
                         >
                           {animationExportState === "rendering"
                             ? "⏳ Building Animated GIF…"
                             : animationExportState === "preparing-file"
                             ? "⏳ Preparing Animated GIF…"
-                            : animationExportState === "sharing-file"
-                              ? "📤 Opening Share Sheet…"
-                              : animationExportState === "copied-file"
-                                ? "✓ GIF Copied — Paste in Discord"
-                                : animationExportState === "shared-file"
-                                  ? "✓ GIF Shared"
-                                  : animationExportState === "ready-share"
-                                    ? "📤 Tap Again to Share GIF"
-                                    : animationExportState === "error"
-                                      ? "⚠ GIF Handoff Failed — Try Again"
-                                      : "📎 Copy / Share Animated GIF"}
+                                                        : animationExportState === "copied-file"
+                              ? "✓ Animation Copied — Ctrl+V in Discord"
+                              : animationExportState === "error"
+                                ? "⚠ Copy Failed — Try Again"
+                                : "📋 Copy Animated Report"}
                         </button>
                       )}
                     </div>
-                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One button, one GIF file: the tracker builds it in your browser, then copies it for Discord paste where supported or opens the native file share sheet. If prompted after the first build, tap once more to finish sharing. No link is copied and no download is started.</div>}
+                    {!animationBuildMode && <div style={{ color: "#a8a0b8", fontSize: 10, lineHeight: 1.4, marginTop: 7 }}>One click builds the animation and places it on the clipboard as a Discord-ready image. Then paste normally in Discord. No link, download, or share sheet is used.</div>}
                   </div>
                 </div>
               )}
