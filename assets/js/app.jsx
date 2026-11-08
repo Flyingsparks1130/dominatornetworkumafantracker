@@ -2665,6 +2665,17 @@ const { useState, useEffect, useRef } = React;
               forecast: ["Keep it rolling!", "The route looks good!"],
             },
           },
+          {
+            slug: "haru-urara",
+            name: "Haru Urara",
+            accent: "#f472b6",
+            assets: poseSet("haru-urara"),
+            dialogue: {
+              performance: ["We did it together!", "Great job today!"],
+              attention: ["We can catch up!", "Let's keep trying!"],
+              forecast: ["I believe in us!", "Let's run to the goal!"],
+            },
+          },
         ];
         const hostSeed = `${club.id || club.name}:${formatLocalDateKey(dataDate)}`;
         const normalizedClubName = String(club.name || "")
@@ -2673,8 +2684,14 @@ const { useState, useEffect, useRef } = React;
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "");
         const isDominantH = String(club.id || "") === "278155676" || normalizedClubName === "dominant-h";
-        const eligibleAnimationHosts = isDominantH
-          ? animationHostCatalog.filter((host) => ["admire-vega", "mejiro-palmer"].includes(host.slug))
+        const isDominium = String(club.id || "") === "449007774" || normalizedClubName === "dominium";
+        const restrictedAnimationHostSlugs = isDominantH
+          ? ["admire-vega", "mejiro-palmer"]
+          : isDominium
+            ? ["haru-urara"]
+            : null;
+        const eligibleAnimationHosts = restrictedAnimationHostSlugs
+          ? animationHostCatalog.filter((host) => restrictedAnimationHostSlugs.includes(host.slug))
           : animationHostCatalog;
         const normalizedHostOverride = String(club.animationHost || "")
           .trim()
