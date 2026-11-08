@@ -2761,7 +2761,7 @@ const { useState, useEffect, useRef } = React;
           ? recentSeven.reduce((sum, value) => sum + Math.pow(value - avgSeven, 2), 0) / recentSeven.length
           : 0;
         const consistencyScore = avgSeven > 0 ? Math.max(0, Math.min(100, Math.round(100 - ((Math.sqrt(variance) / avgSeven) * 100)))) : 0;
-        const consistencyLabel = consistencyScore >= 82 ? "Very steady" : consistencyScore >= 65 ? "Mostly steady" : "Uneven";
+        const consistencyLabel = consistencyScore >= 82 ? "Steady" : consistencyScore >= 65 ? "Mostly steady" : "Uneven";
         const targetValue = Number(report.targetValue || (Number(club.target || 0) * activeCount));
         const dailyTarget = targetValue / Math.max(1, dim);
         const currentDaily = Number(report.dailyValue || 0);
@@ -2793,9 +2793,9 @@ const { useState, useEffect, useRef } = React;
         const bufferDays = avgThree > 0 ? forecastGap / avgThree : 0;
 
         const sectionChapters = [
-          { kind: "performance", majorPage: 1, eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Club output compared with the daily pace needed for the monthly goal.", accent: "#60a5fa", bubble: hostLine("performance") },
-          { kind: "attention", majorPage: 2, eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "Every member below elapsed monthly pace, ordered by the largest gap first.", accent: "#fbbf24", bubble: hostLine("attention") },
-          { kind: "forecast", majorPage: 3, eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "A forecast range based on the club's latest daily output.", accent: "#a78bfa", bubble: hostLine("forecast") },
+          { kind: "performance", majorPage: 1, eyebrow: "TODAY'S PERFORMANCE", title: "Did we hit today's pace?", subtitle: "Today's club total compared with the daily target.", accent: "#60a5fa", bubble: hostLine("performance") },
+          { kind: "attention", majorPage: 2, eyebrow: "MEMBER CHECK-IN", title: "Who needs attention?", subtitle: "Members below pace, largest gaps first.", accent: "#fbbf24", bubble: hostLine("attention") },
+          { kind: "forecast", majorPage: 3, eyebrow: "MONTH-END OUTLOOK", title: "Where are we heading?", subtitle: "Month-end estimate using the latest three days.", accent: "#a78bfa", bubble: hostLine("forecast") },
         ];
         const attentionPageRows = belowPaceRows.length
           ? Array.from({ length: Math.ceil(belowPaceRows.length / 3) }, (_, index) => belowPaceRows.slice(index * 3, (index * 3) + 3))
@@ -2891,7 +2891,7 @@ const { useState, useEffect, useRef } = React;
             ctx.textBaseline = "top";
           }
 
-          drawLabel("DOMINATOR NETWORK · DAILY CLUB STORY", 118, 15, chapter.accent);
+          drawLabel("DOMINATOR NETWORK · DAILY REPORT", 118, 15, chapter.accent);
           setFont(900, 32);
           ctx.fillStyle = "#f8fafc";
           ctx.fillText(fitText(club.name, 500), 118, 32);
@@ -3041,15 +3041,15 @@ const { useState, useEffect, useRef } = React;
           const cardWidth = 176;
           drawSmallCard(380, 388, cardWidth, "VS YESTERDAY", accelerationPercent == null ? "—" : (accelerationPercent >= 0 ? "+" : "") + accelerationPercent.toFixed(1) + "%", fmtSigned(acceleration) + " change", acceleration >= 0 ? "#34d399" : "#f87171", acceleration >= 0 ? "#65e5ad" : "#ff9292");
           drawSmallCard(566, 388, cardWidth, "MEMBERS IMPROVING", acceleratingMembers + " / " + activeCount, "Above their 3-day average", "#60a5fa");
-          drawSmallCard(752, 388, cardWidth, "OUTPUT CONSISTENCY", consistencyLabel, consistencyScore + "/100 steadiness", "#a78bfa", "#d8b4fe");
+          drawSmallCard(752, 388, cardWidth, "7-DAY PATTERN", consistencyLabel, "Based on daily totals", "#a78bfa", "#d8b4fe");
         };
         const drawAttentionScene = (chapter) => {
           const accent = sectionChapters[1].accent;
           drawPanel(32, 218, 896, 76, accent);
           const summaryItems = [
             { value: String(belowPaceRows.length), label: "MEMBERS BELOW PACE" },
-            { value: fmt(recoveryDaily), label: "EXTRA CLUB OUTPUT / DAY" },
-            { value: String(stalledMembers), label: "QUIET FOR 2+ DAYS" },
+            { value: fmt(recoveryDaily), label: "RECOVERY NEEDED / DAY" },
+            { value: String(stalledMembers), label: "NO GAIN FOR 2+ DAYS" },
           ];
           summaryItems.forEach((item, index) => {
             const left = 52 + (index * 294);
@@ -3168,9 +3168,9 @@ const { useState, useEffect, useRef } = React;
           ctx.textAlign = "left";
 
           const scenarios = [
-            { label: "Recent low repeats", value: conservativeProjection, color: "#fbbf24" },
-            { label: "Current projection", value: baseProjection, color: "#a78bfa" },
-            { label: "Recent high repeats", value: stretchProjection, color: "#34d399" },
+            { label: "If recent low continues", value: conservativeProjection, color: "#fbbf24" },
+            { label: "Current pace", value: baseProjection, color: "#a78bfa" },
+            { label: "If recent high continues", value: stretchProjection, color: "#34d399" },
           ];
           const chartMax = Math.max(targetValue, ...scenarios.map((entry) => entry.value), 1);
           scenarios.forEach((entry, index) => {
@@ -3198,7 +3198,7 @@ const { useState, useEffect, useRef } = React;
           const cardWidth = 176;
           drawSmallCard(380, 400, cardWidth, "DAYS LEFT", String(remainingDays), "Days remaining this month", "#60a5fa");
           drawSmallCard(566, 400, cardWidth, "NEEDED FROM HERE", fmt(requiredDaily), "Club output needed per day", "#a78bfa");
-          drawSmallCard(752, 400, cardWidth, "FORECAST BUFFER", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + " days", bufferDays >= 0 ? "Room above target pace" : "Recovery still needed", forecastGap >= 0 ? "#34d399" : "#f87171", forecastGap >= 0 ? "#65e5ad" : "#ff9292");
+          drawSmallCard(752, 400, cardWidth, "DAYS AHEAD / BEHIND", (bufferDays >= 0 ? "+" : "") + bufferDays.toFixed(1) + " days", bufferDays >= 0 ? "Ahead of target" : "Behind target", forecastGap >= 0 ? "#34d399" : "#f87171", forecastGap >= 0 ? "#65e5ad" : "#ff9292");
         };
 
         const drawStoryScene = (sceneIndex, frame, opacity = 1) => {
@@ -3229,7 +3229,7 @@ const { useState, useEffect, useRef } = React;
 
           setFont(650, 10);
           ctx.fillStyle = "#737890";
-          ctx.fillText("Dominator Network Tracker · Member Daily Story", 32, 516);
+          ctx.fillText("Dominator Network Tracker · Daily Report", 32, 516);
           ctx.textAlign = "right";
           const footerPage = chapter.kind === "attention" && chapter.subPageCount > 1
             ? `${chapter.majorPage}${String.fromCharCode(64 + chapter.subPage)}`
@@ -3357,7 +3357,7 @@ const { useState, useEffect, useRef } = React;
             ctx.restore();
             fillRounded(174, 160, 612, 3, 2, selectedAnimationHost.accent);
 
-            drawLabel("DOMINATOR NETWORK · TEN-GATE REVEAL", 480, 178, selectedAnimationHost.accent, "center");
+            drawLabel("DOMINATOR NETWORK PRESENTS", 480, 178, selectedAnimationHost.accent, "center");
             setFont(900, 37);
             ctx.fillStyle = "#f8fafc";
             ctx.textAlign = "center";
@@ -3383,7 +3383,7 @@ const { useState, useEffect, useRef } = React;
             }
             setFont(720, 12);
             ctx.fillStyle = "#aeb3c8";
-            ctx.fillText(litGateCount < 10 ? "GATES CHARGING…" : "ALL GATES READY", 480, 430);
+            ctx.fillText(litGateCount < 10 ? "ENTERING THE GATES…" : "READY TO RACE", 480, 430);
             ctx.textAlign = "left";
             ctx.restore();
           }
@@ -3489,7 +3489,7 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-fuku-size1";
+        const cacheKey = formatLocalDateKey(dataDate) + "-gif-copy1";
         return {
           filename,
           label: "Animated Insight Story",
