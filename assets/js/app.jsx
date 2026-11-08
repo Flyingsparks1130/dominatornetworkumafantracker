@@ -2581,6 +2581,7 @@ const { useState, useEffect, useRef } = React;
             slug: "gentildonna",
             name: "Gentildonna",
             accent: "#f4c45f",
+            dashFacing: "left",
             assets: {
               neutral: "./assets/images/animation-hosts/gentildonna.png",
               performance: "./assets/images/animation-hosts/gentildonna-celebrate.png",
@@ -2603,6 +2604,7 @@ const { useState, useEffect, useRef } = React;
             slug: "symboli-rudolf",
             name: "Symboli Rudolf",
             accent: "#d4af37",
+            dashFacing: "left",
             assets: poseSet("symboli-rudolf"),
             dialogue: {
               performance: ["The course is set.", "A worthy result."],
@@ -2614,6 +2616,7 @@ const { useState, useEffect, useRef } = React;
             slug: "narita-top-road",
             name: "Narita Top Road",
             accent: "#a78bfa",
+            dashFacing: "left",
             assets: poseSet("narita-top-road"),
             dialogue: {
               performance: ["We kept pushing!", "Great work today!"],
@@ -2625,6 +2628,7 @@ const { useState, useEffect, useRef } = React;
             slug: "tm-opera-o",
             name: "T.M. Opera O",
             accent: "#f97316",
+            dashFacing: "left",
             assets: poseSet("tm-opera-o"),
             dialogue: {
               performance: ["Behold today's act!", "A brilliant showing!"],
@@ -2636,6 +2640,7 @@ const { useState, useEffect, useRef } = React;
             slug: "admire-vega",
             name: "Admire Vega",
             accent: "#818cf8",
+            dashFacing: "left",
             assets: poseSet("admire-vega"),
             dialogue: {
               performance: ["The result is clear.", "Keep your focus."],
@@ -2647,6 +2652,7 @@ const { useState, useEffect, useRef } = React;
             slug: "oguri-cap",
             name: "Oguri Cap",
             accent: "#60a5fa",
+            dashFacing: "left",
             assets: poseSet("oguri-cap"),
             dialogue: {
               performance: ["Good work.", "A solid result."],
@@ -2658,6 +2664,7 @@ const { useState, useEffect, useRef } = React;
             slug: "mejiro-palmer",
             name: "Mejiro Palmer",
             accent: "#34d399",
+            dashFacing: "right",
             assets: poseSet("mejiro-palmer"),
             dialogue: {
               performance: ["Nice pace today!", "That's the vibe!"],
@@ -2669,6 +2676,7 @@ const { useState, useEffect, useRef } = React;
             slug: "haru-urara",
             name: "Haru Urara",
             accent: "#f472b6",
+            dashFacing: "right",
             assets: poseSet("haru-urara"),
             dialogue: {
               performance: ["We did it together!", "Great job today!"],
@@ -3381,13 +3389,17 @@ const { useState, useEffect, useRef } = React;
           const arc = Math.sin(progress * Math.PI);
           const flyHeight = 126 + (arc * 22);
           const flyWidth = flyHeight * (transitionHost.width / transitionHost.height);
-          const flyX = lerp(width + 36, -flyWidth - 36, progress);
+          const travelsRight = selectedAnimationHost.dashFacing === "right";
+          const flyX = travelsRight
+            ? lerp(-flyWidth - 36, width + 36, progress)
+            : lerp(width + 36, -flyWidth - 36, progress);
+          const trailOffset = travelsRight ? -38 : 38;
           const flyY = 248 - (arc * 78) + (Math.sin(progress * Math.PI * 4) * 5);
           ctx.save();
           ctx.globalAlpha = Math.min(1, arc * 1.5);
           for (let trail = 4; trail >= 1; trail -= 1) {
             ctx.globalAlpha = arc * (0.045 * trail);
-            ctx.drawImage(transitionHost, flyX + (trail * 38), flyY + (trail * 5), flyWidth, flyHeight);
+            ctx.drawImage(transitionHost, flyX + (trail * trailOffset), flyY + (trail * 5), flyWidth, flyHeight);
           }
           ctx.globalAlpha = Math.min(1, arc * 1.5);
           ctx.drawImage(transitionHost, flyX, flyY, flyWidth, flyHeight);
