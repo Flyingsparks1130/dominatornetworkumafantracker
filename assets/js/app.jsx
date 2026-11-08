@@ -2684,6 +2684,18 @@ const { useState, useEffect, useRef } = React;
               forecast: ["I believe in us!", "Let's run to the goal!"],
             },
           },
+          {
+            slug: "matikanefukukitaru",
+            name: "Matikanefukukitaru",
+            accent: "#f59e0b",
+            dashFacing: "left",
+            assets: poseSet("matikanefukukitaru"),
+            dialogue: {
+              performance: ["Good fortune found us!", "Today's luck is shining!"],
+              attention: ["Let's turn our luck around!", "A better draw is coming!"],
+              forecast: ["Fortune favors our finish!", "The lucky path is clear!"],
+            },
+          },
         ];
         const hostSeed = `${club.id || club.name}:${formatLocalDateKey(dataDate)}`;
         const normalizedClubName = String(club.name || "")
@@ -2693,11 +2705,14 @@ const { useState, useEffect, useRef } = React;
           .replace(/(^-|-$)/g, "");
         const isDominantH = String(club.id || "") === "278155676" || normalizedClubName === "dominant-h";
         const isDominium = String(club.id || "") === "449007774" || normalizedClubName === "dominium";
+        const isDominacion = String(club.id || "") === "739453372" || normalizedClubName === "dominacion";
         const restrictedAnimationHostSlugs = isDominantH
           ? ["admire-vega", "mejiro-palmer"]
           : isDominium
             ? ["haru-urara"]
-            : null;
+            : isDominacion
+              ? ["matikanefukukitaru"]
+              : null;
         const eligibleAnimationHosts = restrictedAnimationHostSlugs
           ? animationHostCatalog.filter((host) => restrictedAnimationHostSlugs.includes(host.slug))
           : animationHostCatalog;
@@ -3407,9 +3422,12 @@ const { useState, useEffect, useRef } = React;
           ctx.restore();
         };
 
-        const introFrames = 56;
-        const sceneLength = 62;
-        const transitionStart = 38;
+        // Keep the same 11.1 FPS, full resolution, and 24-frame transitions while
+        // trimming only static hold time. A standard three-scene GIF drops from
+        // 242 frames to 210 frames without reducing visual or motion quality.
+        const introFrames = 48;
+        const sceneLength = 54;
+        const transitionStart = 30;
         const transitionFrames = 24;
         const totalFrames = introFrames + (storyScenes.length * sceneLength);
         const gif = new window.GIF({
@@ -3430,9 +3448,9 @@ const { useState, useEffect, useRef } = React;
 
           if (frame < introFrames) {
             drawStoryScene(0, frame, 1);
-            const openingProgress = frame < 21 ? 0 : smoothstep(clamp01((frame - 21) / 27));
-            const revealProgress = smoothstep(clamp01((frame - 24) / 21));
-            const revealVisibility = 1 - smoothstep(clamp01((frame - 51) / 4));
+            const openingProgress = frame < 18 ? 0 : smoothstep(clamp01((frame - 18) / 24));
+            const revealProgress = smoothstep(clamp01((frame - 20) / 18));
+            const revealVisibility = 1 - smoothstep(clamp01((frame - 43) / 4));
             drawAcquisitionReveal(revealProgress, frame, revealVisibility);
             drawStartingGate(openingProgress, frame);
           } else {
@@ -3471,7 +3489,7 @@ const { useState, useEffect, useRef } = React;
 
       function getAnimationAsset() {
         const filename = safeFilename(club.name) + "-daily-highlight.gif";
-        const cacheKey = formatLocalDateKey(dataDate) + "-uma-hosts1";
+        const cacheKey = formatLocalDateKey(dataDate) + "-fuku-size1";
         return {
           filename,
           label: "Animated Insight Story",
