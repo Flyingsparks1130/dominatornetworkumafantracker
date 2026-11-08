@@ -2667,13 +2667,22 @@ const { useState, useEffect, useRef } = React;
           },
         ];
         const hostSeed = `${club.id || club.name}:${formatLocalDateKey(dataDate)}`;
+        const normalizedClubName = String(club.name || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+        const isDominantH = String(club.id || "") === "278155676" || normalizedClubName === "dominant-h";
+        const eligibleAnimationHosts = isDominantH
+          ? animationHostCatalog.filter((host) => ["admire-vega", "mejiro-palmer"].includes(host.slug))
+          : animationHostCatalog;
         const normalizedHostOverride = String(club.animationHost || "")
           .trim()
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "");
-        const selectedAnimationHost = animationHostCatalog.find((host) => host.slug === normalizedHostOverride)
-          || animationHostCatalog[stableAnimationHash(hostSeed) % animationHostCatalog.length];
+        const selectedAnimationHost = eligibleAnimationHosts.find((host) => host.slug === normalizedHostOverride)
+          || eligibleAnimationHosts[stableAnimationHash(hostSeed) % eligibleAnimationHosts.length];
         const hostLine = (kind) => {
           const choices = selectedAnimationHost.dialogue[kind] || ["Let's begin!"];
           return choices[stableAnimationHash(`${hostSeed}:${selectedAnimationHost.slug}:${kind}`) % choices.length];
