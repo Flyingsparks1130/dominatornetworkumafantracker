@@ -44,7 +44,7 @@ To pin a club to a preferred host, add an `animationHost` value to that club in 
 "animationHost": "oguri-cap"
 ```
 
-Supported values are `gentildonna`, `symboli-rudolf`, `narita-top-road`, `tm-opera-o`, `admire-vega`, `oguri-cap`, and `mejiro-palmer`. Remove the property to restore automatic daily selection.
+Supported values are `gentildonna`, `symboli-rudolf`, `narita-top-road`, `tm-opera-o`, `admire-vega`, `oguri-cap`, `mejiro-palmer`, and `haru-urara`. Remove the property to restore automatic daily selection.
 
 ## Protected Chronogenesis boundary
 
