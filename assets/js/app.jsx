@@ -4411,16 +4411,27 @@ const { useState, useEffect, useRef } = React;
         });
 
         y += outlookHeight + sectionGap;
-        const resultX = outerPadding + 306;
+        const tableLeft = outerPadding;
+        const tableRight = width - outerPadding;
+        const memberRight = tableLeft + 290;
+        const resultRight = memberRight + 176;
+        const weekRight = resultRight + 150;
+        const goalRight = weekRight + 150;
+        const changeRight = goalRight + 120;
+        const resultX = memberRight + 13;
         const resultWidth = 150;
         const column = {
-          member: outerPadding + 22,
+          member: tableLeft + 22,
           result: resultX,
           resultCenter: resultX + (resultWidth / 2),
-          weekRight: outerPadding + 606,
-          goalRight: outerPadding + 756,
-          changeRight: outerPadding + 906,
-          forecastRight: width - outerPadding - 22,
+          weekHeaderCenter: resultRight + ((weekRight - resultRight) / 2),
+          goalHeaderCenter: weekRight + ((goalRight - weekRight) / 2),
+          changeHeaderCenter: goalRight + ((changeRight - goalRight) / 2),
+          forecastHeaderCenter: changeRight + ((tableRight - changeRight) / 2),
+          weekRight: weekRight - 18,
+          goalRight: goalRight - 18,
+          changeRight: changeRight - 18,
+          forecastRight: tableRight - 22,
         };
         fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
         ctx.textBaseline = "middle";
@@ -4431,14 +4442,14 @@ const { useState, useEffect, useRef } = React;
         ctx.fillText("Catch-up → close → on pace", column.member, tableHeaderCenterY + 13);
         ctx.textAlign = "center";
         drawLabel("Result", column.resultCenter, tableHeaderCenterY);
-        ctx.textAlign = "right";
-        drawLabel("Week gain", column.weekRight, tableHeaderCenterY);
-        drawLabel("Vs goal", column.goalRight, tableHeaderCenterY);
-        drawLabel("Vs last", column.changeRight, tableHeaderCenterY);
-        drawLabel("Month forecast", column.forecastRight, tableHeaderCenterY - 10);
+        ctx.textAlign = "center";
+        drawLabel("Week gain", column.weekHeaderCenter, tableHeaderCenterY);
+        drawLabel("Vs goal", column.goalHeaderCenter, tableHeaderCenterY);
+        drawLabel("Vs last", column.changeHeaderCenter, tableHeaderCenterY);
+        drawLabel("Month forecast", column.forecastHeaderCenter, tableHeaderCenterY - 10);
         setFont(600, 12);
         ctx.fillStyle = "#7f849b";
-        ctx.fillText("vs monthly quota", column.forecastRight, tableHeaderCenterY + 13);
+        ctx.fillText("vs monthly quota", column.forecastHeaderCenter, tableHeaderCenterY + 13);
         ctx.textAlign = "left";
         y += tableHeaderHeight;
 
