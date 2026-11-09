@@ -3690,69 +3690,79 @@ const { useState, useEffect, useRef } = React;
 
       async function exportDiscordPayload(exportData, filename = "circle-report.png", pngRenderer = () => renderDiscordTablePng(exportData, 2)) {
         if (!isDiscordExportsEnabled) return false;
-        let result = "text";
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        const userAgent = navigator.userAgent || "";
+        const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        const isAndroidChromium = /Android/i.test(userAgent) && /(Chrome|Chromium|EdgA|OPR|SamsungBrowser)/i.test(userAgent);
+        const pngFilename = /\.png$/i.test(filename) ? filename : `${filename}.png`;
+        let pngBlob = null;
+        let pngFile = null;
 
         try {
-          const pngBlob = await pngRenderer();
+          pngBlob = await pngRenderer();
+          if (pngBlob) {
+            const typedPngBlob = pngBlob.type === "image/png"
+              ? pngBlob
+              : new Blob([pngBlob], { type: "image/png" });
+            pngFile = new File([typedPngBlob], pngFilename, { type: "image/png" });
+          }
 
-          if (isIOS && pngBlob && navigator.share) {
-            const file = new File([pngBlob], filename, { type: "image/png" });
-            const shareData = { files: [file] };
-            if (!navigator.canShare || navigator.canShare(shareData)) {
+          if ((isIOS || isAndroidChromium) && pngFile) {
+            const shareData = { files: [pngFile] };
+            if (navigator.share && navigator.canShare?.(shareData)) {
               await navigator.share(shareData);
-              result = "shared";
-            } else if (navigator.clipboard?.writeText) {
-              await navigator.clipboard.writeText(exportData.fullMessage);
-              result = "text";
+              return "shared";
             }
-          } else if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
+            if (isAndroidChromium) {
+              downloadBlob(pngFile, pngFilename);
+              return "downloaded";
+            }
+          }
+
+          if (pngBlob && window.ClipboardItem && navigator.clipboard?.write) {
             await navigator.clipboard.write([
               new ClipboardItem({
                 "text/plain": new Blob([exportData.textOnlyMessage], { type: "text/plain" }),
                 "image/png": pngBlob
               })
             ]);
-            result = "image";
-          } else if (pngBlob && navigator.share) {
-            const file = new File([pngBlob], filename, { type: "image/png" });
-            const shareData = { text: exportData.textOnlyMessage, files: [file] };
-            if (!navigator.canShare || navigator.canShare(shareData)) {
+            return "image";
+          }
+
+          if (pngFile) {
+            const shareData = { files: [pngFile] };
+            if (navigator.share && navigator.canShare?.(shareData)) {
               await navigator.share(shareData);
-              result = "shared";
-            } else if (navigator.clipboard?.writeText) {
-              await navigator.clipboard.writeText(exportData.fullMessage);
-              result = "text";
+              return "shared";
             }
-          } else if (navigator.clipboard?.writeText) {
+            downloadBlob(pngFile, pngFilename);
+            return "downloaded";
+          }
+
+          if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(exportData.fullMessage);
-            result = "text";
+            return "text";
           }
         } catch (error) {
+          if (error?.name === "AbortError") return false;
+          console.warn("PNG report export failed; using the safest available fallback.", error);
           try {
-            const pngBlob = await pngRenderer();
-            if (pngBlob && navigator.share) {
-              const file = new File([pngBlob], filename, { type: "image/png" });
-              const shareData = isIOS ? { files: [file] } : { text: exportData.textOnlyMessage, files: [file] };
-              if (!navigator.canShare || navigator.canShare(shareData)) {
-                await navigator.share(shareData);
-                result = "shared";
-              } else if (navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(exportData.fullMessage);
-                result = "text";
-              }
-            } else if (navigator.clipboard?.writeText) {
-              await navigator.clipboard.writeText(exportData.fullMessage);
-              result = "text";
+            if (pngFile) {
+              downloadBlob(pngFile, pngFilename);
+              return "downloaded";
             }
-          } catch (fallbackError) {
             if (navigator.clipboard?.writeText) {
               await navigator.clipboard.writeText(exportData.fullMessage);
+              return "text";
             }
-            result = "text";
+          } catch (fallbackError) {
+            console.error("PNG report fallback failed.", fallbackError);
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(exportData.fullMessage);
+              return "text";
+            }
           }
         }
-        return result;
+        return false;
       }
 
       async function copyDiscord() {
@@ -5060,9 +5070,9 @@ const { useState, useEffect, useRef } = React;
 
               {view === "club" && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || !completedWeeklyCheckpointDay || resetWindowBlocksExports || discordActionsBlocked} title={completedWeeklyCheckpointDay ? actionButtonTitle : "The first weekly checkpoint is available on Day 7."}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : completedWeeklyCheckpointDay ? `📅 Create Day ${completedWeeklyCheckpointDay} Weekly Report + PNG` : "📅 Weekly Report available Day 7"}</button>
-                  <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
-                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
+                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || !completedWeeklyCheckpointDay || resetWindowBlocksExports || discordActionsBlocked} title={completedWeeklyCheckpointDay ? actionButtonTitle : "The first weekly checkpoint is available on Day 7."}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : weeklyCopied === "downloaded" ? "✓ Weekly PNG Downloaded" : "✓ Weekly Report Copied!") : completedWeeklyCheckpointDay ? `📅 Create Day ${completedWeeklyCheckpointDay} Weekly Report + PNG` : "📅 Weekly Report available Day 7"}</button>
+                  <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : reminderCopied === "downloaded" ? "✓ Action Board PNG Downloaded" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
+                  <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : copied === "downloaded" ? "✓ Daily PNG Downloaded" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
                   <div style={{ flexBasis: "100%", marginTop: 4, padding: "12px", border: "1px solid #a855f755", borderRadius: 12, background: "#a855f70c" }}>
                     <div style={{ color: "#d8b4fe", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Animated Insight Story</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
