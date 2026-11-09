@@ -3828,92 +3828,93 @@ const { useState, useEffect, useRef } = React;
       }
 
       function buildWeeklyComparisonExportData() {
-        const ds = dataDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        const previousWeek = monthWeeks.find((week) => week.number === (currentWeek?.number || 1) - 1) || null;
-        const title = `📊 **[${club.tier}] ${club.name} — Weekly Report** | ${ds}`;
+        const completedCheckpointDays = [7, 14, 21, 28].filter((day) => day <= today && day <= dim);
+        const checkpointDay = completedCheckpointDays[completedCheckpointDays.length - 1] || null;
+        const reportWeek = checkpointDay == null ? null : findWeekForDay(monthWeeks, checkpointDay);
+        const previousWeek = reportWeek ? monthWeeks.find((week) => week.number === reportWeek.number - 1) || null : null;
+        const checkpointDate = checkpointDay == null ? dataDate : new Date(year, monthIndex, checkpointDay);
+        const ds = checkpointDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const title = `📊 **[${club.tier}] ${club.name} — Weekly Report** | ${checkpointDay == null ? ds : `Day ${checkpointDay} · ${ds}`}`;
         const sourceLine = `🗂️ Source: ${getSourceLabel()}`;
         const footer = `> 🤖 *Dominator Network Tracker · ${getDiscordPingLabel()}*`;
 
-        if (!currentWeek) {
-          const message = [title, sourceLine, "A weekly period is not available for this date.", "", footer].join("\n");
+        if (!reportWeek || checkpointDay == null) {
+          const message = [title, sourceLine, "The first weekly checkpoint will be available on Day 7.", "", footer].join("\n");
           return { fullMessage: message, textOnlyMessage: message, pngMessage: message, reportMeta: null, tableRows: [] };
         }
 
-        const currentObservedEndDay = Math.min(today, currentWeek.endDay);
-        const currentObservedDays = Math.max(0, currentObservedEndDay - currentWeek.startDay + 1);
-        const matchedDays = previousWeek ? Math.min(previousWeek.dayCount, currentObservedDays) : currentObservedDays;
-        if (matchedDays <= 0) {
-          const message = [title, sourceLine, "The current week does not have a recorded day yet.", "", footer].join("\n");
-          return { fullMessage: message, textOnlyMessage: message, pngMessage: message, reportMeta: null, tableRows: [] };
-        }
-
-        const previousMatchedEndDay = previousWeek ? previousWeek.startDay + matchedDays - 1 : null;
-        const currentMatchedEndDay = currentWeek.startDay + matchedDays - 1;
-        const getMatchedLabel = (week, endDay) => `${getDateLabel(year, monthIndex, week.startDay)} – ${getDateLabel(year, monthIndex, endDay)}`;
-        const getMatchedGain = (member, week) => (member.dailyGainSeries || [])
-          .slice(Math.max(0, week.startDay - 1), Math.max(0, week.startDay - 1 + matchedDays))
+        const matchedDays = reportWeek.dayCount;
+        const getWeekGain = (member, week) => (member.dailyGainSeries || [])
+          .slice(Math.max(0, week.startDay - 1), Math.max(0, week.endDay))
           .reduce((sum, value) => sum + (Number(value) || 0), 0);
         const perMemberDailyTarget = club.target / Math.max(dim, 1);
-        const perMemberMatchedTarget = Math.round(perMemberDailyTarget * matchedDays);
+        const perMemberWeeklyTarget = Math.round(perMemberDailyTarget * matchedDays);
         const stableThreshold = 0.05;
+        const closeThreshold = 0.15;
 
         const comparisons = decoratedMembers.map((member) => {
-          const previousGain = previousWeek ? getMatchedGain(member, previousWeek) : null;
-          const currentGain = getMatchedGain(member, currentWeek);
-          const previousDailyAverage = previousWeek ? previousGain / matchedDays : null;
-          const currentDailyAverage = currentGain / matchedDays;
-          const dailyAverageDelta = previousWeek ? currentDailyAverage - previousDailyAverage : null;
+          const previousGain = previousWeek ? getWeekGain(member, previousWeek) : null;
+          const currentGain = getWeekGain(member, reportWeek);
+          const weeklyDelta = currentGain - perMemberWeeklyTarget;
           const changeRatio = !previousWeek
             ? null
-            : previousDailyAverage > 0
-            ? dailyAverageDelta / previousDailyAverage
-            : currentDailyAverage > 0 ? Infinity : 0;
-          const previousUnderPlan = previousWeek ? previousGain < perMemberMatchedTarget : null;
-          const currentUnderPlan = currentGain < perMemberMatchedTarget;
-          const newlyUnderPlan = previousWeek ? currentUnderPlan && !previousUnderPlan : currentUnderPlan;
-          const isStable = previousWeek && Number.isFinite(changeRatio) && Math.abs(changeRatio) < stableThreshold;
-          const movement = !previousWeek
-            ? (currentUnderPlan ? "newly-under" : "on-track")
-            : newlyUnderPlan
-            ? "newly-under"
-            : isStable ? "stable"
-            : dailyAverageDelta > 0 ? "improved"
-            : dailyAverageDelta < 0 ? "declined"
-            : "stable";
+            : previousGain > 0
+            ? (currentGain - previousGain) / previousGain
+            : currentGain > 0 ? Infinity : 0;
+          const trend = !previousWeek
+            ? "first"
+            : Number.isFinite(changeRatio) && Math.abs(changeRatio) < stableThreshold
+            ? "steady"
+            : changeRatio > 0 ? "improving" : changeRatio < 0 ? "slowing" : "steady";
+          const resultKey = weeklyDelta >= 0
+            ? "on-pace"
+            : weeklyDelta >= -(perMemberWeeklyTarget * closeThreshold)
+            ? "close"
+            : "catch-up";
+          const monthGain = (member.dailyGainSeries || [])
+            .slice(0, checkpointDay)
+            .reduce((sum, value) => sum + (Number(value) || 0), 0);
+          const monthProjection = checkpointDay > 0 ? Math.round((monthGain / checkpointDay) * dim) : 0;
           return {
             name: member.name,
             previousGain,
             currentGain,
-            previousDailyAverage,
-            currentDailyAverage,
-            dailyAverageDelta,
             changeRatio,
-            planDelta: currentGain - perMemberMatchedTarget,
-            movement,
+            weeklyDelta,
+            monthGain,
+            monthProjection,
+            trend,
+            resultKey,
           };
         });
 
-        const improved = comparisons.filter((entry) => entry.movement === "improved").sort((a, b) => b.dailyAverageDelta - a.dailyAverageDelta);
-        const stable = comparisons.filter((entry) => entry.movement === "stable").sort((a, b) => Math.abs(b.dailyAverageDelta) - Math.abs(a.dailyAverageDelta));
-        const declined = comparisons.filter((entry) => entry.movement === "declined").sort((a, b) => a.dailyAverageDelta - b.dailyAverageDelta);
-        const newlyUnderPlan = comparisons.filter((entry) => entry.movement === "newly-under").sort((a, b) => a.planDelta - b.planDelta);
-        const onTrack = comparisons.filter((entry) => entry.movement === "on-track").sort((a, b) => b.planDelta - a.planDelta);
-        const needsAttention = [...newlyUnderPlan, ...declined].sort((a, b) => a.dailyAverageDelta - b.dailyAverageDelta);
+        const resultPriority = { "catch-up": 0, close: 1, "on-pace": 2 };
+        const orderedComparisons = [...comparisons].sort((a, b) =>
+          (resultPriority[a.resultKey] - resultPriority[b.resultKey]) ||
+          (a.weeklyDelta - b.weeklyDelta) ||
+          String(a.name || "").localeCompare(String(b.name || ""))
+        );
+        const onPace = comparisons.filter((entry) => entry.resultKey === "on-pace");
+        const close = comparisons.filter((entry) => entry.resultKey === "close");
+        const needsCatchUp = comparisons.filter((entry) => entry.resultKey === "catch-up");
+        const improving = comparisons.filter((entry) => entry.trend === "improving");
+        const steady = comparisons.filter((entry) => entry.trend === "steady" || entry.trend === "first");
+        const slowing = comparisons.filter((entry) => entry.trend === "slowing");
 
-        const previousClubGain = previousWeek ? comparisons.reduce((sum, entry) => sum + entry.previousGain, 0) : null;
         const currentClubGain = comparisons.reduce((sum, entry) => sum + entry.currentGain, 0);
-        const previousClubDailyAverage = previousWeek ? previousClubGain / matchedDays : null;
-        const currentClubDailyAverage = currentClubGain / matchedDays;
-        const clubDailyAverageDelta = previousWeek ? currentClubDailyAverage - previousClubDailyAverage : null;
-        const clubChangeRatio = !previousWeek ? null : previousClubDailyAverage > 0 ? clubDailyAverageDelta / previousClubDailyAverage : currentClubDailyAverage > 0 ? Infinity : 0;
-        const clubTargetThroughMatchedDays = Math.round(perMemberMatchedTarget * comparisons.length);
-        const clubPlanDelta = currentClubGain - clubTargetThroughMatchedDays;
+        const clubWeeklyTarget = Math.round(perMemberWeeklyTarget * comparisons.length);
+        const clubWeeklyDelta = currentClubGain - clubWeeklyTarget;
+        const clubMonthGain = comparisons.reduce((sum, entry) => sum + entry.monthGain, 0);
+        const clubMonthProjection = comparisons.reduce((sum, entry) => sum + entry.monthProjection, 0);
+        const clubMonthTarget = comparisons.length * club.target;
+        const projectionRatio = clubMonthTarget > 0 ? clubMonthProjection / clubMonthTarget : 0;
+        const remainingDays = Math.max(0, dim - checkpointDay);
+        const nextCheckpointDay = [7, 14, 21, 28].find((day) => day > checkpointDay && day <= dim) || null;
+        const requiredDaily = remainingDays > 0 ? Math.max(0, clubMonthTarget - clubMonthGain) / remainingDays : 0;
+        const forecastConfidence = checkpointDay >= 28 ? "High" : checkpointDay >= 21 ? "Moderate" : checkpointDay >= 14 ? "Developing" : "Early";
         const comparisonLine = previousWeek
-          ? `W${previousWeek.number} (${getMatchedLabel(previousWeek, previousMatchedEndDay)}) vs W${currentWeek.number} (${getMatchedLabel(currentWeek, currentMatchedEndDay)}) · matched ${matchedDays} day${matchedDays === 1 ? "" : "s"}`
-          : `W${currentWeek.number} (${getWeekLabel(currentWeek, year, monthIndex)}) · ${matchedDays}/${currentWeek.dayCount} day${currentWeek.dayCount === 1 ? "" : "s"} recorded`;
-        const currentWeekState = currentObservedDays < currentWeek.dayCount
-          ? `Current week is partial: ${currentObservedDays}/${currentWeek.dayCount} days recorded.`
-          : `Current week is complete: ${currentObservedDays}/${currentWeek.dayCount} days recorded.`;
+          ? `Week ${reportWeek.number} (${getWeekLabel(reportWeek, year, monthIndex)}) compared with Week ${previousWeek.number}`
+          : `Week ${reportWeek.number} (${getWeekLabel(reportWeek, year, monthIndex)}) · first checkpoint`;
 
         const formatChangePercent = (entry) => {
           if (entry.changeRatio == null) return "—";
@@ -3921,48 +3922,61 @@ const { useState, useEffect, useRef } = React;
           return `${entry.changeRatio >= 0 ? "+" : ""}${(entry.changeRatio * 100).toFixed(1)}%`;
         };
         const rankMap = rankHistory[cid] || {};
-        const previousRank = previousMatchedEndDay == null ? null : (rankMap[formatDateKey(year, monthIndex + 1, previousMatchedEndDay)]?.rank ?? null);
-        const currentRank = rankMap[formatDateKey(year, monthIndex + 1, currentMatchedEndDay)]?.rank ?? null;
+        const previousCheckpointDay = previousWeek?.endDay ?? null;
+        const previousRank = previousCheckpointDay == null ? null : (rankMap[formatDateKey(year, monthIndex + 1, previousCheckpointDay)]?.rank ?? null);
+        const currentRank = rankMap[formatDateKey(year, monthIndex + 1, checkpointDay)]?.rank ?? null;
         const rankDelta = previousRank != null && currentRank != null ? previousRank - currentRank : null;
         const rankLine = currentRank == null
           ? null
           : `🌐 Rank: #${Number(currentRank).toLocaleString()}${rankDelta == null || rankDelta === 0 ? "" : ` ${rankDelta > 0 ? "▲" : "▼"}${Math.abs(rankDelta)}`}`;
 
+        const requiredHistoryDays = Math.max(3, Math.ceil(checkpointDay * 0.70));
+        const historyEligibleMembers = decoratedMembers.filter((member) => {
+          const observedDays = Array.from(new Set((member.observedHistoryDays || [])
+            .map((observedDay) => Number(observedDay))
+            .filter((observedDay) => Number.isFinite(observedDay) && observedDay >= 1 && observedDay <= checkpointDay)))
+            .sort((a, b) => a - b);
+          return observedDays.length >= requiredHistoryDays && observedDays[0] <= Math.min(3, checkpointDay) && observedDays[observedDays.length - 1] >= Math.max(1, checkpointDay - 2);
+        }).length;
+        const checkpointThresholdForecast = buildRankThresholdForecast(rankThresholdData, thresholdMonthKey, checkpointDay, dim);
+        const officialRankForecast = getOfficialClubRankForecast(
+          {
+            totalProjected: clubMonthProjection,
+            hasReliableHistory: comparisons.length > 0 && (historyEligibleMembers / comparisons.length) >= 0.70,
+          },
+          checkpointThresholdForecast,
+          rankMap,
+          thresholdMonthKey,
+          checkpointDay,
+          dim
+        );
+
         const messageLines = [
           title,
           sourceLine,
           comparisonLine,
-          `ℹ️ ${currentWeekState}`,
           "",
           "**CLUB SUMMARY**",
-          previousWeek
-            ? `Weekly gain: ${fmt(previousClubGain)} → ${fmt(currentClubGain)} (${fmtSigned(currentClubGain - previousClubGain)})`
-            : `Weekly gain: ${fmt(currentClubGain)} through ${matchedDays}/${currentWeek.dayCount} days`,
-          previousWeek
-            ? `Daily average: ${fmt(previousClubDailyAverage)} → ${fmt(currentClubDailyAverage)} (${fmtSigned(clubDailyAverageDelta)} · ${formatChangePercent({ changeRatio: clubChangeRatio })})`
-            : `Daily average: ${fmt(currentClubDailyAverage)} across the club`,
-          `${clubPlanDelta >= 0 ? "🟢 Ahead of pace" : "🔴 Behind pace"}: ${fmtSigned(clubPlanDelta)} against ${fmt(clubTargetThroughMatchedDays)} target`,
+          `Week result: ${fmt(currentClubGain)} / ${fmt(clubWeeklyTarget)} target (${fmtSigned(clubWeeklyDelta)})`,
+          `Month through Day ${checkpointDay}: ${fmt(clubMonthGain)} · Forecast ${fmt(clubMonthProjection)} (${Math.round(projectionRatio * 100)}% of target)`,
+          remainingDays > 0 ? `Required pace: ${fmt(requiredDaily)}/day club-wide for the remaining ${remainingDays} days` : `Month complete: ${fmtSigned(clubMonthGain - clubMonthTarget)} vs target`,
         ];
         if (rankLine) messageLines.push(rankLine);
+        if (officialRankForecast) messageLines.push(`🎯 Estimated final rank: ≈#${officialRankForecast.rank.toLocaleString()} · ${officialRankForecast.confidence}`);
         messageLines.push(
           "",
-          "**MEMBER MOVEMENT**",
-          previousWeek
-            ? `🟢 Improved: ${improved.length} · ⚪ Stable: ${stable.length} · 🟡 Declined: ${declined.length} · 🔴 Newly under plan: ${newlyUnderPlan.length}`
-            : `🟢 On pace: ${onTrack.length} · 🔴 Under plan: ${newlyUnderPlan.length}`,
+          "**MEMBER RESULTS**",
+          `🟢 On pace: ${onPace.length} · 🟡 Close: ${close.length} · 🔴 Need catch-up: ${needsCatchUp.length}`,
+          previousWeek ? `📈 Improving: ${improving.length} · ➖ Steady: ${steady.length} · 📉 Slowing: ${slowing.length}` : "ℹ️ Week-over-week movement begins at the Day 14 checkpoint.",
         );
 
-        if (improved.length) {
-          messageLines.push("", "📈 **Top improvements**");
-          improved.slice(0, 3).forEach((entry) => messageLines.push(`↑ **${entry.name}** — ${fmt(entry.currentDailyAverage)}/day · ${formatChangePercent(entry)} · ${fmtSigned(entry.planDelta)} vs plan`));
-        }
-        messageLines.push("", "⚠️ **Needs attention**");
-        if (needsAttention.length) {
-          needsAttention.slice(0, 3).forEach((entry) => messageLines.push(`${entry.movement === "newly-under" ? "❗" : "↓"} **${entry.name}** — ${fmt(entry.currentDailyAverage)}/day · ${formatChangePercent(entry)} · ${fmtSigned(entry.planDelta)} vs plan`));
+        messageLines.push("", "⚠️ **Catch-up priorities**");
+        if (needsCatchUp.length || close.length) {
+          [...needsCatchUp, ...close].sort((a, b) => a.weeklyDelta - b.weeklyDelta).slice(0, 3).forEach((entry) => messageLines.push(`• **${entry.name}** — ${fmt(entry.currentGain)} this week · ${fmtSigned(entry.weeklyDelta)} vs goal · ${fmt(entry.monthProjection)} month estimate`));
         } else {
-          messageLines.push("✅ No members declined beyond the 5% stable range.");
+          messageLines.push("✅ Every active member reached the weekly goal.");
         }
-        messageLines.push("", "> Full matched-period member comparison is included in the PNG.", footer);
+        messageLines.push("", "> The PNG includes every active member, ordered by catch-up need.", footer);
 
         const charDisplayWidth = (char) => {
           const code = char?.codePointAt(0) ?? 0;
@@ -3993,32 +4007,24 @@ const { useState, useEffect, useRef } = React;
           const padding = " ".repeat(Math.max(0, width - displayWidth(text)));
           return alignRight ? `${padding}${text}` : `${text}${padding}`;
         };
-        const movementIcon = (entry) => entry.movement === "newly-under" ? "❗" : entry.movement === "improved" || entry.movement === "on-track" ? "✅" : entry.movement === "declined" ? "⚠️" : "•";
-        const orderedComparisons = previousWeek
-          ? [...newlyUnderPlan, ...declined, ...stable, ...improved]
-          : [...newlyUnderPlan, ...onTrack];
-        const pngRows = [
-          ...orderedComparisons,
-        ].map((entry) => `${movementIcon(entry)} ${fitCell(entry.name, 18)} | ${fitCell(fmt(entry.previousDailyAverage), 9, true)} | ${fitCell(fmt(entry.currentDailyAverage), 9, true)} | ${fitCell(fmtSigned(entry.dailyAverageDelta), 9, true)} | ${fitCell(formatChangePercent(entry), 7, true)} | ${fitCell(fmtSigned(entry.planDelta), 9, true)}`);
+        const resultIcon = (entry) => entry.resultKey === "on-pace" ? "✅" : entry.resultKey === "close" ? "🟡" : "⚠️";
+        const pngRows = orderedComparisons.map((entry) => `${resultIcon(entry)} ${fitCell(entry.name, 18)} | ${fitCell(fmt(entry.currentGain), 9, true)} | ${fitCell(fmtSigned(entry.weeklyDelta), 9, true)} | ${fitCell(formatChangePercent(entry), 8, true)} | ${fitCell(fmt(entry.monthProjection), 10, true)}`);
         const pngMessage = [
           `📊 [${club.tier}] ${club.name} — Weekly Report | ${ds}`,
           `🗂️ Source: ${getSourceLabel()}`,
           comparisonLine,
-          currentWeekState,
           "",
-          previousWeek
-            ? `CLUB GAIN       ${fitCell(fmt(previousClubGain), 10, true)} → ${fitCell(fmt(currentClubGain), 10, true)}  (${fmtSigned(currentClubGain - previousClubGain)})`
-            : `CLUB GAIN       ${fitCell(fmt(currentClubGain), 10, true)} through ${matchedDays}/${currentWeek.dayCount} days`,
-          previousWeek
-            ? `DAILY AVERAGE   ${fitCell(fmt(previousClubDailyAverage), 10, true)} → ${fitCell(fmt(currentClubDailyAverage), 10, true)}  (${fmtSigned(clubDailyAverageDelta)} · ${formatChangePercent({ changeRatio: clubChangeRatio })})`
-            : `DAILY AVERAGE   ${fitCell(fmt(currentClubDailyAverage), 10, true)}`,
-          `TARGET PACE     ${fitCell(fmt(clubTargetThroughMatchedDays), 10, true)} · ${clubPlanDelta >= 0 ? "ahead" : "behind"} ${fmtSigned(clubPlanDelta)}`,
+          `WEEK RESULT     ${fitCell(fmt(currentClubGain), 10, true)} / ${fitCell(fmt(clubWeeklyTarget), 10, true)}  (${fmtSigned(clubWeeklyDelta)})`,
+          `MONTH FORECAST  ${fitCell(fmt(clubMonthProjection), 10, true)} / ${fitCell(fmt(clubMonthTarget), 10, true)}  (${Math.round(projectionRatio * 100)}%)`,
+          `REQUIRED / DAY  ${fitCell(fmt(requiredDaily), 10, true)} · ${remainingDays} days remaining`,
           rankLine ? rankLine.replace(/\*\*/g, "") : "",
+          officialRankForecast ? `EST. FINAL RANK ≈#${officialRankForecast.rank.toLocaleString()} · ${officialRankForecast.confidence}` : "EST. FINAL RANK Not ready",
           "",
-          `MOVEMENT        Improved ${improved.length} · Stable ${stable.length} · Declined ${declined.length} · Newly under ${newlyUnderPlan.length}`,
+          `RESULTS         On pace ${onPace.length} · Close ${close.length} · Catch-up ${needsCatchUp.length}`,
+          previousWeek ? `MOMENTUM        Improving ${improving.length} · Steady ${steady.length} · Slowing ${slowing.length}` : "MOMENTUM        Starts at Day 14",
           "",
-          `${fitCell("MEMBER", 21)} | ${fitCell("PREV/DAY", 9, true)} | ${fitCell("CURR/DAY", 9, true)} | ${fitCell("Δ/DAY", 9, true)} | ${fitCell("Δ%", 7, true)} | ${fitCell("VS PLAN", 9, true)}`,
-          `${"─".repeat(21)}-+-${"─".repeat(9)}-+-${"─".repeat(9)}-+-${"─".repeat(9)}-+-${"─".repeat(7)}-+-${"─".repeat(9)}`,
+          `${fitCell("MEMBER", 21)} | ${fitCell("WEEK", 9, true)} | ${fitCell("VS GOAL", 9, true)} | ${fitCell("VS LAST", 8, true)} | ${fitCell("MONTH EST", 10, true)}`,
+          `${"─".repeat(21)}-+-${"─".repeat(9)}-+-${"─".repeat(9)}-+-${"─".repeat(8)}-+-${"─".repeat(10)}`,
           ...pngRows,
           "",
           `> Dominator Network Tracker · ${getDiscordPingLabel()}`,
@@ -4035,24 +4041,40 @@ const { useState, useEffect, useRef } = React;
             dateLabel: ds,
             sourceLabel: getSourceLabel(),
             pingLabel: getDiscordPingLabel(),
-            periodLabel: `Week ${currentWeek.number} · ${getWeekLabel(currentWeek, year, monthIndex)}`,
-            observedLabel: `${matchedDays}/${currentWeek.dayCount} days recorded`,
-            activeLabel: `${comparisons.length}/${viewMaxMembers} active`,
-            targetLabel: `${fmt(perMemberMatchedTarget)} / member`,
+            checkpointDay,
+            periodLabel: `Week ${reportWeek.number} · ${getWeekLabel(reportWeek, year, monthIndex)}`,
+            observedLabel: `Day ${checkpointDay} checkpoint`,
+            activeLabel: `${comparisons.length} active member${comparisons.length === 1 ? "" : "s"}`,
+            targetLabel: `${fmt(perMemberWeeklyTarget)}/member`,
             previousAvailable: Boolean(previousWeek),
-            previousWeekLabel: previousWeek ? `W${previousWeek.number} gain` : "Pace target",
-            previousGain: previousWeek ? fmtSigned(previousClubGain) : fmt(clubTargetThroughMatchedDays),
-            currentWeekLabel: `W${currentWeek.number} gain`,
+            currentWeekLabel: `Week ${reportWeek.number}`,
+            currentGainValue: currentClubGain,
             currentGain: fmtSigned(currentClubGain),
-            planDelta: fmtSigned(clubPlanDelta),
-            planPositive: clubPlanDelta >= 0,
+            weeklyTargetValue: clubWeeklyTarget,
+            weeklyTarget: fmt(clubWeeklyTarget),
+            weeklyProgressRatio: clubWeeklyTarget > 0 ? currentClubGain / clubWeeklyTarget : 0,
+            planDelta: fmtSigned(clubWeeklyDelta),
+            planPositive: clubWeeklyDelta >= 0,
+            monthGain: clubMonthGain,
+            monthForecast: clubMonthProjection,
+            monthForecastLabel: fmt(clubMonthProjection),
+            monthTarget: clubMonthTarget,
+            projectionRatio,
+            forecastConfidence,
+            requiredDaily,
+            requiredDailyLabel: remainingDays > 0 ? `${fmt(requiredDaily)}/day` : "Complete",
+            remainingDays,
+            nextCheckpointDay,
+            estimatedRank: officialRankForecast?.rank ?? null,
+            estimatedRankConfidence: officialRankForecast?.confidence ?? "Not ready",
             rankValue: currentRank == null ? null : Number(currentRank),
             rankDelta,
-            improved: improved.length,
-            stable: stable.length,
-            declined: declined.length,
-            newlyUnder: newlyUnderPlan.length,
-            onTrack: onTrack.length,
+            onPace: onPace.length,
+            close: close.length,
+            catchUp: needsCatchUp.length,
+            improving: improving.length,
+            steady: steady.length,
+            slowing: slowing.length,
             matchedDays,
             memberCount: comparisons.length,
           },
@@ -4085,15 +4107,19 @@ const { useState, useEffect, useRef } = React;
 
         const width = 1160;
         const outerPadding = 44;
-        const headerHeight = 162;
-        const metricHeight = 152;
+        const headerHeight = 126;
+        const checkpointTrackHeight = 78;
+        const metricHeight = 184;
         const metricGap = 14;
-        const summaryHeight = 82;
+        const summaryHeight = 86;
+        const outlookHeight = 108;
         const tableHeaderHeight = 66;
+        const groupHeaderHeight = 46;
         const rowHeight = 76;
         const footerHeight = 78;
         const sectionGap = 22;
-        const height = outerPadding + headerHeight + sectionGap + metricHeight + sectionGap + summaryHeight + sectionGap + tableHeaderHeight + (rows.length * rowHeight) + footerHeight + outerPadding;
+        const resultGroupCount = new Set(rows.map((row) => row.resultKey)).size;
+        const height = outerPadding + headerHeight + sectionGap + checkpointTrackHeight + sectionGap + metricHeight + sectionGap + summaryHeight + sectionGap + outlookHeight + sectionGap + tableHeaderHeight + (resultGroupCount * groupHeaderHeight) + (rows.length * rowHeight) + footerHeight + outerPadding;
 
         canvas.width = Math.ceil(width * scale);
         canvas.height = Math.ceil(height * scale);
@@ -4151,13 +4177,94 @@ const { useState, useEffect, useRef } = React;
           ctx.fillStyle = detailColor;
           ctx.fillText(fitText(detail, w - 44), x + 22, y + 106);
         };
-        const movementMeta = (movement) => ({
-          "on-track": { label: "On pace", color: "#34d399", bg: "#10332d", border: "#1e6758" },
-          improved: { label: "Improved", color: "#34d399", bg: "#10332d", border: "#1e6758" },
-          stable: { label: "Stable", color: "#c4c7d7", bg: "#252637", border: "#45475e" },
-          declined: { label: "Declined", color: "#fbbf24", bg: "#3a2d13", border: "#765718" },
-          "newly-under": { label: "Under plan", color: "#f87171", bg: "#3b1c24", border: "#7d2e3d" },
-        }[movement] || { label: "Stable", color: "#c4c7d7", bg: "#252637", border: "#45475e" });
+        const drawRankMetricCard = ({ x, y, w, accent, detailColor }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, accent);
+          drawLabel("Club rank", x + 108, y + 24);
+          const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
+          const rankDetail = !report.previousAvailable
+            ? "First checkpoint"
+            : report.rankDelta == null
+              ? "Unavailable"
+              : report.rankDelta > 0
+                ? `▲${Math.abs(report.rankDelta)} vs D${report.checkpointDay - 7}`
+                : report.rankDelta < 0
+                  ? `▼${Math.abs(report.rankDelta)} vs D${report.checkpointDay - 7}`
+                  : "No change";
+          const rankIconSize = 64;
+          const iconX = x + 24;
+          const valueX = x + 108;
+          if (currentRankIconImage) ctx.drawImage(currentRankIconImage, iconX, y + 54, rankIconSize, rankIconSize);
+          setFont(850, 48);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(rankText, valueX, y + 55);
+          setFont(700, 17);
+          ctx.fillStyle = detailColor;
+          ctx.fillText(fitText(rankDetail, w - 130), valueX, y + 140);
+        };
+        const drawProgressTrack = ({ x, y, w, ratio, color }) => {
+          fillRounded(x, y, w, 12, 6, "#25273b");
+          fillRounded(x, y, Math.max(12, Math.min(w, w * Math.max(0, ratio))), 12, 6, color);
+        };
+        const quotaStatusForRatio = (ratio) => ratio >= 1
+          ? { accent: "#34d399", text: "#65e5ad", label: "ON TARGET" }
+          : ratio >= 0.9
+            ? { accent: "#fbbf24", text: "#fbbf24", label: "WITHIN 10%" }
+            : { accent: "#f87171", text: "#ff9292", label: "BELOW 90%" };
+        const monthQuotaStatus = quotaStatusForRatio(report.projectionRatio);
+        const drawWeekScorecard = ({ x, y, w }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, report.planPositive ? "#34d399" : "#f87171");
+          drawLabel(`${report.currentWeekLabel} result`, x + 22, y + 22, "#93c5fd");
+          setFont(900, 46);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(report.currentGain, x + 22, y + 52);
+          setFont(850, 25);
+          ctx.textAlign = "right";
+          ctx.fillStyle = report.planPositive ? "#65e5ad" : "#ff9292";
+          ctx.fillText(`${Math.round(report.weeklyProgressRatio * 100)}%`, x + w - 22, y + 58);
+          ctx.textAlign = "left";
+          drawProgressTrack({ x: x + 22, y: y + 112, w: w - 44, ratio: report.weeklyProgressRatio, color: report.planPositive ? "#34d399" : "#f87171" });
+          setFont(700, 16);
+          ctx.fillStyle = "#a9adc2";
+          ctx.fillText(`Goal ${report.weeklyTarget}`, x + 22, y + 140);
+          ctx.textAlign = "right";
+          ctx.fillStyle = report.planPositive ? "#65e5ad" : "#ff9292";
+          ctx.fillText(`${report.planDelta} vs goal`, x + w - 22, y + 140);
+          ctx.textAlign = "left";
+        };
+        const drawMonthOutlookCard = ({ x, y, w }) => {
+          fillRounded(x, y, w, metricHeight, 18, "#17182a", "#2a2c45");
+          fillRounded(x, y, 5, metricHeight, 3, monthQuotaStatus.accent);
+          drawLabel("Month projection", x + 22, y + 22, monthQuotaStatus.text);
+          setFont(900, 40);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(report.monthForecastLabel, x + 22, y + 52);
+          drawProgressTrack({ x: x + 22, y: y + 106, w: w - 44, ratio: report.projectionRatio, color: monthQuotaStatus.accent });
+          setFont(750, 15);
+          ctx.fillStyle = monthQuotaStatus.text;
+          ctx.fillText(`${Math.round(report.projectionRatio * 100)}% of quota · ${monthQuotaStatus.label}`, x + 22, y + 130);
+          setFont(700, 14);
+          ctx.fillStyle = "#a9adc2";
+          const rankForecastText = report.estimatedRank == null ? "Rank pending" : `Est. rank #${report.estimatedRank.toLocaleString()}`;
+          ctx.fillText(fitText(rankForecastText, w - 44), x + 22, y + 155);
+          ctx.textAlign = "right";
+          ctx.fillText(report.forecastConfidence, x + w - 22, y + 155);
+          ctx.textAlign = "left";
+        };
+        const resultMeta = (resultKey) => ({
+          "on-pace": { label: "On pace", sectionLabel: "On pace", color: "#34d399", bg: "#10332d", border: "#1e6758" },
+          close: { label: "Close", sectionLabel: "Close to weekly goal", color: "#fbbf24", bg: "#3a2d13", border: "#765718" },
+          "catch-up": { label: "Catch up", sectionLabel: "Catch-up priority", color: "#f87171", bg: "#3b1c24", border: "#7d2e3d" },
+        }[resultKey] || { label: "Close", color: "#fbbf24", bg: "#3a2d13", border: "#765718" });
+        const trendText = (row) => {
+          if (!report.previousAvailable || row.changeRatio == null) return "—";
+          if (!Number.isFinite(row.changeRatio)) return "NEW";
+          const magnitude = `${Math.abs(row.changeRatio * 100).toFixed(0)}%`;
+          if (row.trend === "improving") return `▲${magnitude}`;
+          if (row.trend === "slowing") return `▼${magnitude}`;
+          return `→${magnitude}`;
+        };
 
         const background = ctx.createLinearGradient(0, 0, width, height);
         background.addColorStop(0, "#090a14");
@@ -4173,7 +4280,6 @@ const { useState, useEffect, useRef } = React;
 
         let y = outerPadding;
         const headerIconSize = 84;
-        const headerTextX = outerPadding + 108;
         if (tierIconImage) {
           ctx.drawImage(tierIconImage, outerPadding, y + 5, headerIconSize, headerIconSize);
         } else {
@@ -4184,57 +4290,81 @@ const { useState, useEffect, useRef } = React;
           ctx.fillText(club.tier, outerPadding + (headerIconSize / 2), y + 32);
           ctx.textAlign = "left";
         }
-        drawLabel("Dominator Network · Weekly Report", headerTextX, y + 4, tc.text);
+        ctx.textAlign = "center";
+        drawLabel("Dominator Network · Weekly Checkpoint", width / 2, y + 4, tc.text);
         setFont(850, 42);
         ctx.fillStyle = "#f8fafc";
-        ctx.textAlign = "center";
         ctx.fillText(fitText(club.name, width - 360), width / 2, y + 31);
-        ctx.textAlign = "left";
-        setFont(550, 20);
+        setFont(600, 15);
         ctx.fillStyle = "#a9adc2";
-        ctx.fillText(`${report.periodLabel}  ·  ${report.observedLabel}  ·  ${report.sourceLabel}`, headerTextX, y + 88);
-        ctx.fillText(`${report.pingLabel}  ·  ${report.activeLabel}  ·  Target ${report.targetLabel}`, headerTextX, y + 119);
+        ctx.fillText(
+          fitText(`${report.periodLabel}  ·  ${report.observedLabel}  ·  ${report.sourceLabel}  ·  ${report.pingLabel}  ·  ${report.activeLabel}  ·  Goal ${report.targetLabel}`, width - 250),
+          width / 2,
+          y + 91
+        );
+        ctx.textAlign = "left";
 
         y += headerHeight + sectionGap;
         const metricsWidth = width - (outerPadding * 2);
-        const cardWidth = (metricsWidth - (metricGap * 3)) / 4;
+        fillRounded(outerPadding, y, metricsWidth, checkpointTrackHeight, 18, "#141526", "#4a3a24");
+        drawLabel("Checkpoint track", outerPadding + 22, y + 14, "#fbbf24");
+        const checkpointDays = [7, 14, 21, 28];
+        const trackStartX = outerPadding + 270;
+        const trackEndX = width - outerPadding - 44;
+        const trackY = y + 39;
+        ctx.strokeStyle = "#45475e";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(trackStartX, trackY);
+        ctx.lineTo(trackEndX, trackY);
+        ctx.stroke();
+        const completedTrackEndX = trackStartX + ((trackEndX - trackStartX) * ((Math.max(7, report.checkpointDay) - 7) / 21));
+        ctx.strokeStyle = "#fbbf24";
+        ctx.beginPath();
+        ctx.moveTo(trackStartX, trackY);
+        ctx.lineTo(completedTrackEndX, trackY);
+        ctx.stroke();
+        checkpointDays.forEach((day, index) => {
+          const nodeX = trackStartX + ((trackEndX - trackStartX) * (index / (checkpointDays.length - 1)));
+          const isCurrent = day === report.checkpointDay;
+          const isComplete = day <= report.checkpointDay;
+          ctx.fillStyle = isComplete ? "#fbbf24" : "#34364d";
+          ctx.beginPath();
+          ctx.arc(nodeX, trackY, isCurrent ? 13 : 9, 0, Math.PI * 2);
+          ctx.fill();
+          if (isCurrent) {
+            ctx.strokeStyle = "#fde68a";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+          setFont(isCurrent ? 850 : 700, isCurrent ? 14 : 12);
+          ctx.fillStyle = isCurrent ? "#fde68a" : isComplete ? "#fbbf24" : "#7f849b";
+          ctx.textAlign = "center";
+          ctx.fillText(`DAY ${day}`, nodeX, y + 57);
+        });
+        ctx.textAlign = "left";
+
+        y += checkpointTrackHeight + sectionGap;
+        const rankCardWidth = 260;
+        const weekScorecardWidth = 480;
+        const monthOutlookWidth = metricsWidth - rankCardWidth - weekScorecardWidth - (metricGap * 2);
         const rankAccent = report.rankDelta > 0 ? "#34d399" : report.rankDelta < 0 ? "#f87171" : "#8187a5";
         const rankDetailColor = report.rankDelta > 0 ? "#65e5ad" : report.rankDelta < 0 ? "#ff9292" : "#a9adc2";
-        fillRounded(outerPadding, y, cardWidth, metricHeight, 18, "#17182a", "#2a2c45");
-        fillRounded(outerPadding, y, 5, metricHeight, 3, rankAccent);
-        drawLabel("Club rank", outerPadding + 22, y + 20);
-        const rankText = report.rankValue == null ? "—" : Number(report.rankValue).toLocaleString();
-        const rankIconSize = 64;
-        if (currentRankIconImage) ctx.drawImage(currentRankIconImage, outerPadding + 22, y + 35, rankIconSize, rankIconSize);
-        setFont(800, 44);
-        ctx.fillStyle = "#f8fafc";
-        ctx.fillText(rankText, outerPadding + 22 + (currentRankIconImage ? rankIconSize + 10 : 0), y + 45);
-        setFont(650, 18);
-        ctx.fillStyle = rankDetailColor;
-        const rankDetail = report.rankDelta == null ? "Unavailable" : report.rankDelta > 0 ? `▲${Math.abs(report.rankDelta)} this week` : report.rankDelta < 0 ? `▼${Math.abs(report.rankDelta)} this week` : "No change";
-        ctx.fillText(rankDetail, outerPadding + 22, y + 106);
-        drawMetricCard({ x: outerPadding + cardWidth + metricGap, y, w: cardWidth, label: report.currentWeekLabel, value: report.currentGain, detail: "Current period", accent: "#60a5fa" });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 2, y, w: cardWidth, label: report.previousWeekLabel, value: report.previousGain, detail: report.previousAvailable ? "Matched prior period" : "Elapsed target", accent: tc.text });
-        drawMetricCard({ x: outerPadding + (cardWidth + metricGap) * 3, y, w: cardWidth, label: "Vs pace", value: report.planDelta, detail: report.planPositive ? "Ahead of pace" : "Behind pace", accent: report.planPositive ? "#34d399" : "#f87171", detailColor: report.planPositive ? "#65e5ad" : "#ff9292" });
+        drawRankMetricCard({ x: outerPadding, y, w: rankCardWidth, accent: rankAccent, detailColor: rankDetailColor });
+        const weekScorecardX = outerPadding + rankCardWidth + metricGap;
+        drawWeekScorecard({ x: weekScorecardX, y, w: weekScorecardWidth });
+        drawMonthOutlookCard({ x: weekScorecardX + weekScorecardWidth + metricGap, y, w: monthOutlookWidth });
 
         y += metricHeight + sectionGap;
         fillRounded(outerPadding, y, metricsWidth, summaryHeight, 16, "#141526", "#282a42");
         const summaryCenterY = y + (summaryHeight / 2);
         ctx.textBaseline = "middle";
-        drawLabel(report.previousAvailable ? "Member movement" : "Member pace", outerPadding + 22, summaryCenterY);
-        const summaryItems = report.previousAvailable
-          ? [
-              { label: "IMPROVED", value: report.improved, color: "#34d399" },
-              { label: "STABLE", value: report.stable, color: "#c4c7d7" },
-              { label: "DECLINED", value: report.declined, color: "#fbbf24" },
-              { label: "UNDER PLAN", value: report.newlyUnder, color: "#f87171" },
-            ]
-          : [
-              { label: "ON PACE", value: report.onTrack, color: "#34d399" },
-              { label: "UNDER PLAN", value: report.newlyUnder, color: "#f87171" },
-              { label: "DAYS", value: report.matchedDays, color: "#60a5fa" },
-              { label: "ACTIVE", value: report.memberCount, color: "#c4c7d7" },
-            ];
+        drawLabel("Weekly results", outerPadding + 22, summaryCenterY);
+        const summaryItems = [
+          { label: "ON PACE", value: report.onPace, color: "#34d399" },
+          { label: "CLOSE", value: report.close, color: "#fbbf24" },
+          { label: "NEED CATCH-UP", value: report.catchUp, color: "#f87171" },
+        ];
         const summaryLabelWidth = 220;
         const summaryGroupWidth = (metricsWidth - summaryLabelWidth) / summaryItems.length;
         summaryItems.forEach((item, index) => {
@@ -4256,57 +4386,115 @@ const { useState, useEffect, useRef } = React;
         ctx.textBaseline = "top";
 
         y += summaryHeight + sectionGap;
-        const movementX = outerPadding + 330;
-        const movementWidth = 150;
+        const outlookItems = [
+          { label: "REQUIRED PACE", value: report.requiredDailyLabel, detail: report.remainingDays ? `${report.remainingDays} days remaining` : "Month complete", color: monthQuotaStatus.text },
+          { label: "MOMENTUM", value: report.previousAvailable ? `↑${report.improving}  →${report.steady}  ↓${report.slowing}` : "Starts Day 14", detail: "Members vs last week", color: report.slowing > report.improving ? "#fbbf24" : "#34d399" },
+          { label: "ACTIVE ROSTER", value: `${report.memberCount} members`, detail: "Goals use active roster only", color: "#c4b5fd" },
+          { label: "NEXT CHECKPOINT", value: report.nextCheckpointDay ? `Day ${report.nextCheckpointDay}` : "Final checkpoint", detail: report.nextCheckpointDay ? `${report.nextCheckpointDay - report.checkpointDay} days away` : "Day 28 report locked", color: "#60a5fa" },
+        ];
+        const outlookGap = 12;
+        const outlookGroupWidth = (metricsWidth - (outlookGap * (outlookItems.length - 1))) / outlookItems.length;
+        outlookItems.forEach((item, index) => {
+          const cardX = outerPadding + ((outlookGroupWidth + outlookGap) * index);
+          const itemX = cardX + 18;
+          fillRounded(cardX, y, outlookGroupWidth, outlookHeight, 16, "#141526", "#282a42");
+          fillRounded(cardX, y, 4, outlookHeight, 2, item.color);
+          setFont(750, 12);
+          ctx.fillStyle = "#8f93ad";
+          ctx.fillText(item.label, itemX, y + 18);
+          setFont(850, 23);
+          ctx.fillStyle = item.color;
+          ctx.fillText(fitText(item.value, outlookGroupWidth - 36), itemX, y + 44);
+          setFont(600, 13);
+          ctx.fillStyle = "#9297af";
+          ctx.fillText(fitText(item.detail, outlookGroupWidth - 36), itemX, y + 76);
+        });
+
+        y += outlookHeight + sectionGap;
+        const resultX = outerPadding + 306;
+        const resultWidth = 150;
         const column = {
           member: outerPadding + 22,
-          movement: movementX,
-          movementCenter: movementX + (movementWidth / 2),
-          previousRight: outerPadding + 606,
-          currentRight: outerPadding + 756,
-          changeRight: outerPadding + 901,
-          planRight: width - outerPadding - 22,
+          result: resultX,
+          resultCenter: resultX + (resultWidth / 2),
+          weekRight: outerPadding + 606,
+          goalRight: outerPadding + 756,
+          changeRight: outerPadding + 906,
+          forecastRight: width - outerPadding - 22,
         };
         fillRounded(outerPadding, y, metricsWidth, tableHeaderHeight, 15, "#1a1b2e", "#2c2e48");
         ctx.textBaseline = "middle";
         const tableHeaderCenterY = y + (tableHeaderHeight / 2);
-        drawLabel("Member", column.member, tableHeaderCenterY);
+        drawLabel("Member", column.member, tableHeaderCenterY - 10);
+        setFont(600, 12);
+        ctx.fillStyle = "#7f849b";
+        ctx.fillText("Catch-up → close → on pace", column.member, tableHeaderCenterY + 13);
         ctx.textAlign = "center";
-        drawLabel("Movement", column.movementCenter, tableHeaderCenterY);
+        drawLabel("Result", column.resultCenter, tableHeaderCenterY);
         ctx.textAlign = "right";
-        drawLabel("Prev / day", column.previousRight, tableHeaderCenterY);
-        drawLabel("Current / day", column.currentRight, tableHeaderCenterY);
-        drawLabel("Change", column.changeRight, tableHeaderCenterY);
-        drawLabel("Vs plan", column.planRight, tableHeaderCenterY);
+        drawLabel("Week gain", column.weekRight, tableHeaderCenterY);
+        drawLabel("Vs goal", column.goalRight, tableHeaderCenterY);
+        drawLabel("Vs last", column.changeRight, tableHeaderCenterY);
+        drawLabel("Month forecast", column.forecastRight, tableHeaderCenterY - 10);
+        setFont(600, 12);
+        ctx.fillStyle = "#7f849b";
+        ctx.fillText("vs monthly quota", column.forecastRight, tableHeaderCenterY + 13);
         ctx.textAlign = "left";
         y += tableHeaderHeight;
 
+        const groupCounts = rows.reduce((counts, row) => {
+          counts[row.resultKey] = (counts[row.resultKey] || 0) + 1;
+          return counts;
+        }, {});
+        let activeResultGroup = null;
         rows.forEach((row, index) => {
-          const movement = movementMeta(row.movement);
+          const result = resultMeta(row.resultKey);
+          if (row.resultKey !== activeResultGroup) {
+            activeResultGroup = row.resultKey;
+            ctx.fillStyle = result.bg;
+            ctx.fillRect(outerPadding, y, metricsWidth, groupHeaderHeight);
+            ctx.fillStyle = result.color;
+            ctx.fillRect(outerPadding, y, 5, groupHeaderHeight);
+            setFont(850, 15);
+            ctx.textAlign = "left";
+            ctx.fillText(String(result.sectionLabel || result.label).toUpperCase(), outerPadding + 22, y + (groupHeaderHeight / 2));
+            setFont(650, 13);
+            ctx.fillStyle = "#a9adc2";
+            ctx.textAlign = "right";
+            const groupCount = groupCounts[row.resultKey] || 0;
+            ctx.fillText(`${groupCount} member${groupCount === 1 ? "" : "s"} · largest weekly shortfall first`, width - outerPadding - 22, y + (groupHeaderHeight / 2));
+            ctx.textAlign = "left";
+            y += groupHeaderHeight;
+          }
           const rowFill = index % 2 === 0 ? "#111221" : "#0d0e1a";
           const rowCenterY = y + (rowHeight / 2);
           ctx.fillStyle = rowFill;
           ctx.fillRect(outerPadding, y, metricsWidth, rowHeight);
-          ctx.fillStyle = movement.color;
+          ctx.fillStyle = result.color;
           ctx.fillRect(outerPadding, y, 4, rowHeight);
           setFont(700, 27);
           ctx.fillStyle = "#eef0f8";
-          ctx.fillText(fitText(row.name, 250), column.member, rowCenterY);
-          fillRounded(column.movement, y + ((rowHeight - 38) / 2), movementWidth, 38, 19, movement.bg, movement.border);
+          ctx.fillText(fitText(row.name, 230), column.member, rowCenterY);
+          fillRounded(column.result, y + ((rowHeight - 38) / 2), resultWidth, 38, 19, result.bg, result.border);
           setFont(750, 15);
-          ctx.fillStyle = movement.color;
+          ctx.fillStyle = result.color;
           ctx.textAlign = "center";
-          ctx.fillText(movement.label.toUpperCase(), column.movementCenter, rowCenterY);
+          ctx.fillText(result.label.toUpperCase(), column.resultCenter, rowCenterY);
           const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
           setFont(700, 23, mono);
           ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
-          ctx.fillText(report.previousAvailable ? fmt(row.previousDailyAverage) : "—", column.previousRight, rowCenterY);
-          ctx.fillText(fmt(row.currentDailyAverage), column.currentRight, rowCenterY);
-          ctx.fillStyle = row.dailyAverageDelta == null ? "#9ca3af" : row.dailyAverageDelta >= 0 ? "#65e5ad" : "#ff9292";
-          ctx.fillText(row.dailyAverageDelta == null ? "—" : fmtSigned(row.dailyAverageDelta), column.changeRight, rowCenterY);
-          ctx.fillStyle = row.planDelta >= 0 ? "#65e5ad" : "#ff9292";
-          ctx.fillText(fmtSigned(row.planDelta), column.planRight, rowCenterY);
+          ctx.fillText(fmt(row.currentGain), column.weekRight, rowCenterY);
+          ctx.fillStyle = row.weeklyDelta >= 0 ? "#65e5ad" : row.resultKey === "close" ? "#fbbf24" : "#ff9292";
+          ctx.fillText(fmtSigned(row.weeklyDelta), column.goalRight, rowCenterY);
+          ctx.fillStyle = row.trend === "improving" ? "#65e5ad" : row.trend === "slowing" ? "#ff9292" : "#a9adc2";
+          ctx.fillText(trendText(row), column.changeRight, rowCenterY);
+          const memberMonthRatio = club.target > 0 ? row.monthProjection / club.target : 0;
+          const memberMonthStatus = quotaStatusForRatio(memberMonthRatio);
+          ctx.fillStyle = memberMonthStatus.text;
+          ctx.fillText(fmt(row.monthProjection), column.forecastRight, rowCenterY - 9);
+          setFont(650, 12);
+          ctx.fillText(`${Math.round(memberMonthRatio * 100)}% of quota`, column.forecastRight, rowCenterY + 17);
           ctx.textAlign = "left";
           y += rowHeight;
         });
@@ -4703,6 +4891,7 @@ const { useState, useEffect, useRef } = React;
         return sorted.map((member, index) => ({ member, rank: index + 1 }));
       })();
       const currentWeek = findWeekForDay(monthWeeks, today);
+      const completedWeeklyCheckpointDay = [28, 21, 14, 7].find((day) => day <= today && day <= dim) || null;
 
       const S = {
         root: { background: "transparent", minHeight: "100vh", color: "#f3e9ee", fontFamily: "'Inter',system-ui,sans-serif", padding: "16px", maxWidth: 1480, margin: "0 auto" },
@@ -4860,7 +5049,7 @@ const { useState, useEffect, useRef } = React;
 
               {view === "club" && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : "📅 Generate Weekly Report + PNG"}</button>
+                  <button style={{ ...S.btn(false, weeklyCopied ? "#059669" : "#60a5fa"), ...(actionButtonDisabledStyle || {}) }} onClick={copyWeeklyDiscord} disabled={!decoratedMembers.length || !completedWeeklyCheckpointDay || resetWindowBlocksExports || discordActionsBlocked} title={completedWeeklyCheckpointDay ? actionButtonTitle : "The first weekly checkpoint is available on Day 7."}>{weeklyCopied ? (weeklyCopied === "image" ? "✓ Weekly Report + PNG" : weeklyCopied === "shared" ? "✓ Weekly Report Shared" : "✓ Weekly Report Copied!") : completedWeeklyCheckpointDay ? `📅 Create Day ${completedWeeklyCheckpointDay} Weekly Report + PNG` : "📅 Weekly Report available Day 7"}</button>
                   <button style={{ ...S.btn(false, reminderCopied ? "#059669" : "#f59e0b"), ...(actionButtonDisabledStyle || {}) }} onClick={copyReminderDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{reminderCopied ? (reminderCopied === "image" ? "✓ Action Board + PNG" : reminderCopied === "shared" ? "✓ Action Board Shared" : "✓ Action Board Copied!") : "🚨 Generate Officer Action Board + PNG"}</button>
                   <button style={{ ...S.btn(true, copied ? "#059669" : tc.bar), ...(actionButtonDisabledStyle || {}) }} onClick={copyDiscord} disabled={!decoratedMembers.length || resetWindowBlocksExports || discordActionsBlocked} title={actionButtonTitle}>{copied ? (copied === "image" ? "✓ Daily Report + PNG" : copied === "shared" ? "✓ Daily Report Shared" : "✓ Daily Report Copied!") : "📊 Generate Daily Report + PNG"}</button>
                   <div style={{ flexBasis: "100%", marginTop: 4, padding: "12px", border: "1px solid #a855f755", borderRadius: 12, background: "#a855f70c" }}>
