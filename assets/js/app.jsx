@@ -3876,14 +3876,15 @@ const { useState, useEffect, useRef } = React;
             : Number.isFinite(changeRatio) && Math.abs(changeRatio) < stableThreshold
             ? "steady"
             : changeRatio > 0 ? "improving" : changeRatio < 0 ? "slowing" : "steady";
-          const resultKey = weeklyDelta >= 0
+          const monthGain = (member.dailyGainSeries || [])
+            .slice(0, checkpointDay)
+            .reduce((sum, value) => sum + (Number(value) || 0), 0);
+          const quotaMet = club.target > 0 && monthGain >= club.target;
+          const resultKey = quotaMet || weeklyDelta >= 0
             ? "on-pace"
             : weeklyDelta >= -(perMemberWeeklyTarget * closeThreshold)
             ? "close"
             : "catch-up";
-          const monthGain = (member.dailyGainSeries || [])
-            .slice(0, checkpointDay)
-            .reduce((sum, value) => sum + (Number(value) || 0), 0);
           const monthProjection = checkpointDay > 0 ? Math.round((monthGain / checkpointDay) * dim) : 0;
           return {
             name: member.name,
@@ -3893,6 +3894,7 @@ const { useState, useEffect, useRef } = React;
             weeklyDelta,
             monthGain,
             monthProjection,
+            quotaMet,
             trend,
             resultKey,
           };
@@ -4500,13 +4502,13 @@ const { useState, useEffect, useRef } = React;
           setFont(750, 15);
           ctx.fillStyle = result.color;
           ctx.textAlign = "center";
-          ctx.fillText(result.label.toUpperCase(), column.resultCenter, rowCenterY);
+          ctx.fillText(row.quotaMet ? "QUOTA MET" : result.label.toUpperCase(), column.resultCenter, rowCenterY);
           const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
           setFont(700, 23, mono);
           ctx.fillStyle = "#d8dbea";
           ctx.textAlign = "right";
           ctx.fillText(fmt(row.currentGain), column.weekRight, rowCenterY);
-          ctx.fillStyle = row.weeklyDelta >= 0 ? "#65e5ad" : row.resultKey === "close" ? "#fbbf24" : "#ff9292";
+          ctx.fillStyle = row.quotaMet ? "#a9adc2" : row.weeklyDelta >= 0 ? "#65e5ad" : row.resultKey === "close" ? "#fbbf24" : "#ff9292";
           ctx.fillText(fmtSigned(row.weeklyDelta), column.goalRight, rowCenterY);
           ctx.fillStyle = row.trend === "improving" ? "#65e5ad" : row.trend === "slowing" ? "#ff9292" : "#a9adc2";
           ctx.fillText(trendText(row), column.changeRight, rowCenterY);
@@ -4992,6 +4994,7 @@ const { useState, useEffect, useRef } = React;
                   <a href="./index.html" style={navLinkStyle(PAGE_MODE === "home", "#a93f56")}>🏠 Home</a>
                   <a href="./clubs.html" style={navLinkStyle(PAGE_MODE === "clubs", "#a93f56")}>📋 Clubs</a>
                   <a href="./rankings.html" style={navLinkStyle(PAGE_MODE === "rankings", "#2563eb")}>🌐 Rankings</a>
+                  <a href="./leaderboard.html" style={navLinkStyle(PAGE_MODE === "leaderboard", "#f59e0b")}>🏆 Live Leaderboard</a>
                   <a href={clubDetailHref} style={navLinkStyle(PAGE_MODE === "club", tc.bar)}>🏇 Club Detail</a>
                   <a href={insightsHref} style={navLinkStyle(PAGE_MODE === "archives", "#f4a4b1")}>🔎 Deeper Insights</a>
                 </div>
@@ -5187,6 +5190,7 @@ const { useState, useEffect, useRef } = React;
                   {[
                     { href: "./clubs.html", icon: "📋", title: "Clubs", description: "Browse every club and open a focused high-level club summary.", color: "#a93f56" },
                     { href: "./rankings.html", icon: "🌐", title: "Rankings", description: "Explore club rankings, member leaderboards, pace, health, and movement insights.", color: "#2563eb" },
+                    { href: "./leaderboard.html", icon: "🏆", title: "Live Leaderboard", description: "See every network club ordered by its latest official global circle rank.", color: "#f59e0b" },
                     { href: clubDetailHref, icon: "🏇", title: "Club Detail", description: "Open the full Overview, Members, and Pace dashboard for a single club.", color: tc.bar },
                     { href: insightsHref, icon: "🔎", title: "Deeper Insights", description: "Reserved for the nerds: forecasts, stress tests, member patterns, and roster decision tools.", color: "#f4a4b1" },
                   ].map((item) => (
@@ -5789,6 +5793,7 @@ const { useState, useEffect, useRef } = React;
             <a href="./index.html" style={{ ...S.btn(PAGE_MODE === "home", "#a93f56"), flex: 1, textDecoration: "none", textAlign: "center" }}>🏠 Home</a>
             <a href="./clubs.html" style={{ ...S.btn(PAGE_MODE === "clubs", "#a93f56"), flex: 1, textDecoration: "none", textAlign: "center" }}>📋 Clubs</a>
             <a href="./rankings.html" style={{ ...S.btn(PAGE_MODE === "rankings", "#2563eb"), flex: 1, textDecoration: "none", textAlign: "center" }}>🌐 Ranks</a>
+            <a href="./leaderboard.html" style={{ ...S.btn(PAGE_MODE === "leaderboard", "#f59e0b"), flex: 1, textDecoration: "none", textAlign: "center" }}>🏆 Live</a>
             <a href={clubDetailHref} style={{ ...S.btn(PAGE_MODE === "club", tc.bar), flex: 1, textDecoration: "none", textAlign: "center" }}>🏇 Detail</a>
             <a href={insightsHref} style={{ ...S.btn(PAGE_MODE === "archives", "#f4a4b1"), flex: 1, textDecoration: "none", textAlign: "center" }}>🔎 Insights</a>
           </div>
