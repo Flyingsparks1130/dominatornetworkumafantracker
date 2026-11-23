@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Live global circle rankings for every Dominator Network club, powered by scheduled uma.moe snapshots."/>
+  <title>Live Club Leaderboard — Dominator Network</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="./assets/css/app.css?v=20260905-coral-clean3"/>
+  <link rel="stylesheet" href="./assets/css/leaderboard.css?v=20261113-live-board1"/>
+</head>
+<body data-page="leaderboard">
+  <div class="bg-stage" aria-hidden="true">
+    <div class="bg-sky"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-streaks"></div>
+    <div class="bg-aurora"></div>
+  </div>
+
+  <div class="lb-page">
+    <header class="lb-header">
+      <a class="lb-brand" href="./index.html" aria-label="Dominator Network home">
+        <span class="gate-badge">⬡</span>
+        <span>
+          <span class="wordmark">Dominator Network</span>
+          <span class="wordmark-sub">Live Circle Standings</span>
+        </span>
+      </a>
+      <nav class="lb-nav" aria-label="Primary navigation">
+        <a href="./index.html">Home</a>
+        <a href="./clubs.html">Clubs</a>
+        <a href="./rankings.html">Tracker Rankings</a>
+        <a class="active" href="./leaderboard.html" aria-current="page">Live Leaderboard</a>
+        <a href="./archives.html">Insights</a>
+      </nav>
+      <button class="lb-refresh" id="refresh-button" type="button">
+        <span aria-hidden="true">↻</span>
+        <span>Refresh data</span>
+      </button>
+    </header>
+
+    <main>
+      <section class="lb-hero" aria-labelledby="leaderboard-title">
+        <div class="lb-hero-copy">
+          <div class="lb-eyebrow"><span class="lb-live-dot"></span> Official global circle positions</div>
+          <h1 id="leaderboard-title">Network Live Leaderboard</h1>
+          <p>Every Dominator Network club, ordered by its current global circle rank. Live values are used when available; the stable monthly rank takes over automatically during rollover.</p>
+          <div class="lb-hero-meta">
+            <span class="lb-source-pill">Data snapshot: uma.moe</span>
+            <span id="last-updated">Loading latest snapshot…</span>
+            <span id="next-refresh">Browser refresh in 5:00</span>
+          </div>
+        </div>
+        <div class="lb-hero-mark" aria-hidden="true">
+          <span>DN</span>
+          <small>15 clubs · one network</small>
+        </div>
+      </section>
+
+      <div id="snapshot-status" class="lb-status loading" role="status" aria-live="polite">
+        <span class="lb-status-icon" aria-hidden="true">●</span>
+        <span>Loading the latest leaderboard snapshot…</span>
+      </div>
+
+      <section class="lb-summary" id="summary-cards" aria-label="Leaderboard summary"></section>
+
+      <section class="lb-podium-section" aria-labelledby="podium-title">
+        <div class="lb-section-heading">
+          <div>
+            <span class="lb-kicker">Front runners</span>
+            <h2 id="podium-title">Top three in the network</h2>
+          </div>
+          <span class="lb-section-note">Ordered by current global rank</span>
+        </div>
+        <div class="lb-podium" id="podium" aria-live="polite"></div>
+      </section>
+
+      <section class="lb-board" aria-labelledby="standings-title">
+        <div class="lb-board-header">
+          <div>
+            <span class="lb-kicker">Full field</span>
+            <h2 id="standings-title">Current network standings</h2>
+          </div>
+          <div class="lb-legend" aria-label="Rank movement legend">
+            <span class="up">▲ Improved</span>
+            <span class="down">▼ Dropped</span>
+            <span class="flat">— No change</span>
+          </div>
+        </div>
+
+        <div class="lb-table-wrap">
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th scope="col">Network</th>
+                <th scope="col">Club</th>
+                <th scope="col">Global rank</th>
+                <th scope="col">Today</th>
+                <th scope="col">Monthly points</th>
+                <th scope="col">Roster</th>
+                <th scope="col">Source update</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+              <tr class="lb-loading-row"><td colspan="7">Loading club standings…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="lb-footer">
+      <span>Dominator Network Tracker</span>
+      <span>Ranks refresh when your cron snapshot reaches GitHub Pages.</span>
+    </footer>
+  </div>
+
+  <nav class="lb-mobile-dock" aria-label="Mobile navigation">
+    <a href="./index.html">🏠<span>Home</span></a>
+    <a href="./clubs.html">📋<span>Clubs</span></a>
+    <a href="./rankings.html">🌐<span>Ranks</span></a>
+    <a class="active" href="./leaderboard.html" aria-current="page">🏆<span>Live</span></a>
+    <a href="./archives.html">🔎<span>Insights</span></a>
+  </nav>
+
+  <script src="./assets/js/network-leaderboard.js?v=20261113-live-board1" defer></script>
+</body>
+</html>

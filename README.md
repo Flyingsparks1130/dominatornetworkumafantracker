@@ -10,6 +10,7 @@ A static GitHub Pages tracker for the Dominator Network. The frontend reads the 
 - `rankings.html` — Rankings Home with the network pace chart and club rank history
 - `rankings.html?section=clubs` — club rankings, top-five players by club, network critical members, and club health scores
 - `rankings.html?section=individual` — individual member rankings (top 25 initially, expandable 10 at a time)
+- `leaderboard.html` — cron-fed network leaderboard ordered by current uma.moe global circle rank
 - `archives.html` — reserved Deeper Insights page
 - `assets/css/app.css` — shared styling
 - `assets/js/app.jsx` — shared React application
@@ -24,15 +25,15 @@ Edit `config/frontend.json`. Clubs inherit the target assigned to their tier:
 "tierTargets": {
   "S+": 330000000,
   "S": 250000000,
-  "A+": 110000000,
-  "A": 75000000,
-  "B+": 30000000
+  "A+": 130000000,
+  "A": 80000000,
+  "B+": 35000000
 }
 ```
 
 To give one club a temporary exception, add `"targetOverride": 123000000` to that club. Without an override, every club in the same tier automatically shares the tier target.
 
-The frontend and Chronogenesis updater both define 15 clubs. Dominate (`147185239`) is assigned to A+ and inherits the shared 110 million target. All A clubs inherit the shared 75 million target.
+The frontend and Chronogenesis updater both define 15 clubs. Dominate (`147185239`) is assigned to A+ and inherits the shared 130 million target. All A clubs inherit the shared 80 million target; B+ clubs inherit 35 million.
 
 ## Animated daily-report host
 
@@ -86,7 +87,33 @@ Then open `http://localhost:8000/`.
 
 ## Data architecture
 
-The retired uma.moe/Playwright updater, root UMA JSON, and separate UMA rank-history files have been removed. The frontend now reads only Chronogenesis current and archive data.
+Chronogenesis remains the source for member, club-detail, report, and archive data. uma.moe supplies two separate scheduled snapshots: official rank-tier thresholds and the live network club leaderboard. Browser code never receives the uma.moe API key.
+
+## Network leaderboard cron
+
+`scripts/update-network-leaderboard.mjs` reads the 15 club IDs from `config/frontend.json`, requests each exact circle from uma.moe, and atomically writes `data/network-leaderboard.json`. It prefers `live_rank` and `live_points`, then automatically uses the stable monthly values during rollover. Partial failures preserve the prior row; a total API failure leaves the entire existing snapshot untouched.
+
+Required environment:
+
+```bash
+export UMA_API_KEY="your-server-side-key"
+```
+
+Optional environment:
+
+```bash
+export LEADERBOARD_EXPECTED_REFRESH_MINUTES=60
+export UMA_REQUEST_CONCURRENCY=3
+export UMA_REQUEST_ATTEMPTS=3
+```
+
+For a Linux checkout that publishes through GitHub Pages, the included wrapper pulls, locks against overlap, updates, commits only the generated JSON, and pushes:
+
+```cron
+17 * * * * cd /absolute/path/to/dominatornetworkumafantracker && /usr/bin/env bash scripts/run-network-leaderboard-cron.sh >> /var/log/dominator-leaderboard.log 2>&1
+```
+
+Run `node scripts/update-network-leaderboard.mjs --bootstrap` only when seeding a new checkout without an API key. Bootstrap rows are visibly marked stale until the first uma.moe cron refresh.
 
 ## Frontend behavior notes
 
