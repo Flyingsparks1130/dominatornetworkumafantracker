@@ -1,0 +1,531 @@
+:root {
+  --lb-panel: rgba(25, 19, 25, 0.88);
+  --lb-panel-strong: rgba(31, 23, 30, 0.96);
+  --lb-line: rgba(244, 164, 177, 0.18);
+  --lb-muted: #bda8b1;
+  --lb-gold: #fbbf24;
+  --lb-blue: #60a5fa;
+  --lb-green: #34d399;
+  --lb-red: #fb7185;
+}
+
+body {
+  color: #f3e9ee;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.lb-page {
+  position: relative;
+  z-index: 1;
+  width: min(1440px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 18px 0 34px;
+  animation: page-in 0.45s ease both;
+}
+
+.lb-header {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(255px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--lb-line);
+  border-radius: 18px;
+  background: rgba(18, 13, 17, 0.86);
+  box-shadow: 0 16px 48px rgba(3, 2, 10, 0.48);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.lb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.lb-brand .wordmark { display: block; font-size: 18px; }
+.lb-brand .wordmark-sub { display: block; font-size: 8px; }
+
+.lb-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lb-nav a,
+.lb-refresh {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #c3a7b2;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.lb-nav a:hover { color: #fff; background: rgba(244, 164, 177, 0.08); }
+.lb-nav a.active { color: #fff; border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.12); }
+
+.lb-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.1);
+  color: #bfdbfe;
+}
+
+.lb-refresh:disabled { opacity: 0.55; cursor: wait; }
+.lb-refresh.refreshing span:first-child { animation: lb-spin 0.8s linear infinite; }
+@keyframes lb-spin { to { transform: rotate(360deg); } }
+
+.lb-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 28px;
+  min-height: 270px;
+  margin-bottom: 14px;
+  padding: clamp(28px, 5vw, 60px);
+  overflow: hidden;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 24px;
+  background:
+    linear-gradient(112deg, rgba(44, 26, 36, 0.95) 0%, rgba(23, 18, 28, 0.95) 54%, rgba(20, 28, 48, 0.9) 100%);
+  box-shadow: 0 28px 72px rgba(3, 2, 10, 0.55), inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.lb-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 300px at 80% 24%, rgba(96, 165, 250, 0.18), transparent 65%),
+    repeating-linear-gradient(115deg, transparent 0 58px, rgba(251, 191, 36, 0.035) 58px 60px);
+}
+
+.lb-hero-copy,
+.lb-hero-mark { position: relative; z-index: 1; }
+
+.lb-eyebrow,
+.lb-kicker {
+  color: #fcd34d;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lb-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--lb-green);
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.9);
+}
+
+.lb-hero h1 {
+  max-width: 850px;
+  margin: 10px 0 12px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: clamp(38px, 6vw, 70px);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+  color: #fff7f8;
+}
+
+.lb-hero p {
+  max-width: 760px;
+  color: #cbbbc2;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.lb-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 20px;
+  color: #a99aa2;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lb-source-pill {
+  padding: 7px 10px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.08);
+  color: #6ee7b7;
+}
+
+.lb-hero-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 190px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.14), rgba(251, 191, 36, 0.03) 64%, transparent 66%);
+  box-shadow: 0 0 52px rgba(251, 191, 36, 0.12);
+}
+
+.lb-hero-mark span {
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fcd34d;
+}
+
+.lb-hero-mark small {
+  margin-top: 9px;
+  color: #cab6be;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.lb-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 11px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.08);
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lb-status.ok { border-color: rgba(52, 211, 153, 0.3); background: rgba(52, 211, 153, 0.08); color: #a7f3d0; }
+.lb-status.warning { border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.09); color: #fde68a; }
+.lb-status.error { border-color: rgba(251, 113, 133, 0.35); background: rgba(251, 113, 133, 0.09); color: #fecdd3; }
+.lb-status-icon { font-size: 9px; }
+
+.lb-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.lb-stat {
+  position: relative;
+  min-width: 0;
+  padding: 18px 18px 17px;
+  overflow: hidden;
+  border: 1px solid var(--lb-line);
+  border-radius: 16px;
+  background: var(--lb-panel);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035), 0 14px 32px rgba(3, 2, 10, 0.26);
+}
+
+.lb-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--stat-color, #f4a4b1);
+}
+
+.lb-stat-label {
+  color: #aa98a1;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lb-stat-value {
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--stat-color, #fff);
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: clamp(22px, 2.5vw, 32px);
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-stat-sub { margin-top: 7px; color: #9d8d95; font-size: 10px; line-height: 1.4; }
+
+.lb-podium-section,
+.lb-board {
+  margin-bottom: 16px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--lb-line);
+  border-radius: 20px;
+  background: rgba(21, 16, 21, 0.78);
+  box-shadow: 0 20px 54px rgba(3, 2, 10, 0.34);
+}
+
+.lb-section-heading,
+.lb-board-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.lb-section-heading h2,
+.lb-board-header h2 {
+  margin-top: 4px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.lb-section-note { color: #9e8f96; font-size: 10px; }
+
+.lb-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.lb-podium-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 15px;
+  min-height: 132px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(244, 164, 177, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(150deg, rgba(42, 30, 39, 0.92), rgba(20, 17, 24, 0.94));
+  color: inherit;
+  text-decoration: none;
+}
+
+.lb-podium-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -30% -80% 15%;
+  height: 170%;
+  background: radial-gradient(circle, var(--podium-glow, rgba(244,164,177,.12)), transparent 66%);
+  pointer-events: none;
+}
+
+.lb-podium-card.first { border-color: rgba(251, 191, 36, 0.46); --podium-glow: rgba(251, 191, 36, 0.18); }
+.lb-podium-card.second { border-color: rgba(191, 219, 254, 0.35); --podium-glow: rgba(147, 197, 253, 0.15); }
+.lb-podium-card.third { border-color: rgba(251, 146, 60, 0.36); --podium-glow: rgba(251, 146, 60, 0.14); }
+.lb-podium-card:hover { transform: translateY(-2px); filter: brightness(1.06); }
+
+.lb-podium-place {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 54px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #fcd34d;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.lb-podium-name { font-size: 17px; font-weight: 900; }
+.lb-podium-officer { margin-top: 4px; color: #a8959e; font-size: 10px; }
+.lb-podium-rank { position: relative; z-index: 1; text-align: right; }
+.lb-podium-rank img { width: 48px; height: 48px; object-fit: contain; vertical-align: middle; }
+.lb-podium-rank strong { display: block; margin-top: 3px; color: #fff; font-size: 22px; }
+.lb-podium-rank small { color: #a8959e; font-size: 9px; text-transform: uppercase; }
+
+.lb-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; font-size: 10px; font-weight: 800; }
+.lb-legend .up { color: var(--lb-green); }
+.lb-legend .down { color: var(--lb-red); }
+.lb-legend .flat { color: #a99aa2; }
+
+.lb-table-wrap { overflow-x: auto; border: 1px solid rgba(244, 164, 177, 0.12); border-radius: 15px; }
+.lb-table { width: 100%; border-collapse: collapse; min-width: 940px; }
+.lb-table th {
+  padding: 12px 14px;
+  background: rgba(55, 40, 51, 0.68);
+  color: #bfaab3;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.lb-table th:first-child,
+.lb-table td:first-child { text-align: center; }
+.lb-table td {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(244, 164, 177, 0.09);
+  background: rgba(17, 14, 19, 0.58);
+  color: #ded4d9;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.lb-table tr:nth-child(even) td { background: rgba(28, 22, 28, 0.6); }
+.lb-table tr:hover td { background: rgba(53, 38, 49, 0.7); }
+.lb-table tr.stale td { opacity: 0.68; }
+
+.lb-network-place {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(244, 164, 177, 0.2);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #f5cbd2;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 700;
+}
+
+.lb-club-link { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
+.lb-club-link:hover .lb-club-name { color: #ffd0d8; }
+.lb-club-icon { width: 40px; height: 40px; flex: 0 0 auto; object-fit: contain; }
+.lb-club-name { color: #fff; font-size: 13px; font-weight: 900; }
+.lb-club-meta { margin-top: 3px; color: #9d8d95; font-size: 9px; }
+.lb-quota-tier { color: #fcd34d; font-weight: 800; }
+
+.lb-rank-cell { display: flex; align-items: center; gap: 9px; }
+.lb-rank-cell strong { display: block; color: #fff; font-family: "Chakra Petch", sans-serif; font-size: 18px; }
+.lb-rank-cell small { display: block; color: #9d8d95; font-size: 9px; }
+
+.lb-movement { font-weight: 900; white-space: nowrap; }
+.lb-movement.up { color: var(--lb-green); }
+.lb-movement.down { color: var(--lb-red); }
+.lb-movement.flat { color: #a99aa2; }
+.lb-movement-sub { display: block; margin-top: 3px; color: #877982; font-size: 8px; font-weight: 700; }
+.lb-points { color: #f3e9ee; font-family: "Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; }
+.lb-points small { display: block; margin-top: 3px; color: #8f8189; font-family: "Inter", sans-serif; font-size: 8px; font-weight: 700; }
+.lb-roster { font-weight: 800; white-space: nowrap; }
+.lb-row-update { color: #b8a7af; font-size: 10px; line-height: 1.4; }
+.lb-row-update .stale { color: #fcd34d; font-weight: 800; }
+.lb-loading-row td { padding: 48px !important; color: #bda8b1 !important; text-align: center !important; }
+
+.lb-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 4px 0;
+  color: #776b71;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.lb-mobile-dock { display: none; }
+
+@media (max-width: 1120px) {
+  .lb-header { grid-template-columns: minmax(220px, 1fr) auto; }
+  .lb-nav { display: none; }
+  .lb-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lb-podium { grid-template-columns: 1fr; }
+  .lb-podium-card { min-height: 110px; }
+}
+
+@media (max-width: 720px) {
+  .lb-page { width: min(100% - 20px, 1440px); padding-top: 10px; padding-bottom: 92px; }
+  .lb-header { top: 6px; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-radius: 14px; }
+  .lb-brand .wordmark { font-size: 14px; }
+  .lb-brand .wordmark-sub { font-size: 7px; letter-spacing: 0.2em; }
+  .lb-brand .gate-badge { width: 32px; height: 32px; }
+  .lb-refresh { padding: 8px 10px; }
+  .lb-refresh span:last-child { display: none; }
+  .lb-hero { grid-template-columns: 1fr; min-height: 0; padding: 28px 22px; border-radius: 18px; }
+  .lb-hero h1 { font-size: clamp(36px, 12vw, 54px); }
+  .lb-hero p { font-size: 12px; }
+  .lb-hero-mark { display: none; }
+  .lb-summary { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .lb-stat { padding: 15px 14px; }
+  .lb-section-heading, .lb-board-header { align-items: flex-start; flex-direction: column; }
+  .lb-podium-section, .lb-board { padding: 16px 12px; border-radius: 17px; }
+  .lb-podium-card { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 14px 12px; }
+  .lb-podium-rank img { width: 40px; height: 40px; }
+  .lb-table-wrap { overflow: visible; border: 0; }
+  .lb-table { min-width: 0; }
+  .lb-table thead { display: none; }
+  .lb-table, .lb-table tbody, .lb-table tr, .lb-table td { display: block; width: 100%; }
+  .lb-table tbody { display: grid; gap: 9px; }
+  .lb-table tr {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr) minmax(105px, auto);
+    grid-template-areas:
+      "network club rank"
+      "movement points roster"
+      "update update update";
+    align-items: center;
+    overflow: hidden;
+    border: 1px solid rgba(244, 164, 177, 0.14);
+    border-radius: 14px;
+    background: rgba(19, 15, 19, 0.82);
+  }
+  .lb-table td { border: 0; background: transparent !important; padding: 10px 12px; }
+  .lb-table td::before { display: block; margin-bottom: 4px; color: #806f78; font-size: 7px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; content: attr(data-label); }
+  .lb-table td:nth-child(1) { grid-area: network; align-self: stretch; display: flex; align-items: center; justify-content: center; border-right: 1px solid rgba(244,164,177,.1); padding: 8px; }
+  .lb-table td:nth-child(1)::before, .lb-table td:nth-child(2)::before { display: none; }
+  .lb-table td:nth-child(2) { grid-area: club; }
+  .lb-table td:nth-child(3) { grid-area: rank; }
+  .lb-table td:nth-child(4) { grid-area: movement; border-top: 1px solid rgba(244,164,177,.08); }
+  .lb-table td:nth-child(5) { grid-area: points; border-top: 1px solid rgba(244,164,177,.08); }
+  .lb-table td:nth-child(6) { grid-area: roster; border-top: 1px solid rgba(244,164,177,.08); }
+  .lb-table td:nth-child(7) { grid-area: update; padding-top: 8px; padding-bottom: 9px; background: rgba(255,255,255,.018) !important; border-top: 1px solid rgba(244,164,177,.08); }
+  .lb-club-icon { width: 34px; height: 34px; }
+  .lb-club-link { gap: 8px; }
+  .lb-footer { flex-direction: column; gap: 4px; }
+  .lb-mobile-dock {
+    position: fixed;
+    z-index: 30;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 7px;
+    border: 1px solid rgba(244,164,177,.25);
+    border-radius: 17px;
+    background: rgba(23,18,22,.94);
+    box-shadow: 0 14px 40px rgba(3,2,10,.7);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .lb-mobile-dock a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 3px; border-radius: 10px; color: #bca8b1; font-size: 12px; font-weight: 800; text-align: center; text-decoration: none; }
+  .lb-mobile-dock a span { font-size: 8px; }
+  .lb-mobile-dock a.active { background: rgba(251,191,36,.13); color: #fde68a; }
+}
+
+@media (max-width: 430px) {
+  .lb-summary { grid-template-columns: 1fr; }
+  .lb-table tr { grid-template-columns: 50px minmax(0, 1fr) 98px; }
+  .lb-table td { padding-right: 8px; padding-left: 8px; }
+  .lb-podium-name { font-size: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-page, .lb-refresh.refreshing span:first-child { animation: none; }
+}
